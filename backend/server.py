@@ -28,9 +28,20 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# MongoDB connection
+# MongoDB connection with SSL fix
 mongo_url = os.environ.get('MONGO_URL', 'mongodb://localhost:27017')
-client = AsyncIOMotorClient(mongo_url, serverSelectionTimeoutMS=5000)
+
+# Add TLS settings for Atlas
+if 'mongodb+srv' in mongo_url or 'mongodb.net' in mongo_url:
+    import certifi
+    client = AsyncIOMotorClient(
+        mongo_url,
+        serverSelectionTimeoutMS=5000,
+        tlsCAFile=certifi.where()
+    )
+else:
+    client = AsyncIOMotorClient(mongo_url, serverSelectionTimeoutMS=5000)
+
 db = client[os.environ.get('DB_NAME', 'class_one_savings')]
 
 # JWT Configuration
