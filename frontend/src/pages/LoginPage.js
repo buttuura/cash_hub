@@ -45,7 +45,7 @@ const LoginPage = () => {
         <div className="relative z-10 flex flex-col justify-center px-12 text-white">
           <div className="flex items-center gap-3 mb-6">
             <img 
-              src="https://customer-assets.emergentagent.com/job_group-cash-hub/artifacts/5vjnuyyi_Screenshot_20260408_004609_WhatsAppBusiness.jpg" 
+              src="/logo.jpg" 
               alt="Class One Logo"
               className="w-16 h-16 rounded-full object-cover border-2 border-white/30"
             />
@@ -66,7 +66,7 @@ const LoginPage = () => {
           <CardHeader className="space-y-1">
             <div className="lg:hidden flex items-center gap-2 mb-4">
               <img 
-                src="https://customer-assets.emergentagent.com/job_group-cash-hub/artifacts/5vjnuyyi_Screenshot_20260408_004609_WhatsAppBusiness.jpg" 
+                src="/logo.jpg" 
                 alt="Class One Logo"
                 className="w-10 h-10 rounded-full object-cover"
               />

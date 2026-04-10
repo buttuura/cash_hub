@@ -292,7 +292,7 @@ const Dashboard = () => {
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-3">
               <img 
-                src="https://customer-assets.emergentagent.com/job_group-cash-hub/artifacts/5vjnuyyi_Screenshot_20260408_004609_WhatsAppBusiness.jpg" 
+                src="/logo.jpg" 
                 alt="Class One Logo"
                 className="w-10 h-10 rounded-full object-cover"
               />
