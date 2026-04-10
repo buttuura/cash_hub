@@ -1,0 +1,71 @@
+{
+  "theme": "light",
+  "archetype": "Organic & Earthy",
+  "colors": {
+    "background": "#FAFAF8",
+    "surface": "#FFFFFF",
+    "primary": "#2C5530",
+    "primary_hover": "#214024",
+    "secondary": "#D48C70",
+    "secondary_hover": "#BD7B60",
+    "text_primary": "#1E231F",
+    "text_secondary": "#5C665D",
+    "border": "#E8EBE8",
+    "success": "#347242",
+    "warning": "#E8B25C",
+    "danger": "#D05A49"
+  },
+  "typography": {
+    "fonts": {
+      "heading": "Manrope",
+      "body": "IBM Plex Sans"
+    },
+    "hierarchy": {
+      "h1": "text-4xl sm:text-5xl font-extrabold tracking-tight text-[#1E231F]",
+      "h2": "text-2xl sm:text-3xl font-bold tracking-tight text-[#1E231F]",
+      "h3": "text-xl sm:text-2xl font-semibold text-[#1E231F]",
+      "body": "text-base font-normal leading-relaxed text-[#5C665D]",
+      "small": "text-sm font-medium tracking-wide uppercase text-[#5C665D]"
+    }
+  },
+  "spacing_and_layout": {
+    "padding_philosophy": "Generous Spacing: Containers must have p-6 or p-8. Use gap-6 or gap-8 in grids to let data breathe.",
+    "grid_strategy": "Control Room Grid: Base grid-cols-1 md:grid-cols-3 lg:grid-cols-4. Gap-6. Total balance card should span col-span-full or md:col-span-2.",
+    "border_radius": "rounded-2xl for main cards, rounded-xl for inner data elements, rounded-full for interactive pills/buttons.",
+    "alignment": "Left-align numbers unless in tables. Keep currency formatting consistent."
+  },
+  "components": {
+    "cards": "Clay & Crisp style: bg-white, 1px border border-[#E8EBE8], soft shadow-sm. Hover: -translate-y-1 shadow-md transition-all duration-300.",
+    "buttons": "Primary: bg-[#2C5530] text-white rounded-full px-6 py-2.5 hover:bg-[#214024] font-semibold. Secondary: bg-[#D48C70] text-white rounded-full hover:bg-[#BD7B60].",
+    "navigation": "Sticky top nav or side nav: backdrop-blur-xl bg-white/90 border-b border-[#E8EBE8].",
+    "tables": "Minimalist data-rich aesthetics. text-left, generous py-4 px-6 per cell, border-b border-[#E8EBE8]. Hover row bg-[#F5F7F5].",
+    "badges": "Premium status: bg-[#2C5530]/10 text-[#2C5530] rounded-full px-3 py-1. Ordinary status: bg-[#5C665D]/10 text-[#5C665D] rounded-full px-3 py-1."
+  },
+  "icons": {
+    "library": "lucide-react",
+    "style": "Stroke width 1.5, standard sizing w-5 h-5. Use earthy tones matching the text context."
+  },
+  "media": {
+    "auth_background": "https://images.pexels.com/photos/6109006/pexels-photo-6109006.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+    "community_collaboration": "https://images.unsplash.com/photo-1775172990797-dac8556f2669?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1Nzl8MHwxfHNlYXJjaHwxfHxjb21tdW5pdHklMjBncm91cCUyMGNvbGxhYm9yYXRpb258ZW58MHx8fHwxNzc1ODE5OTAzfDA&ixlib=rb-4.1.0&q=85"
+  },
+  "motion": {
+    "hover": "transform transition-transform duration-200 ease-in-out",
+    "entrance": "fade-in slide-in-from-bottom-4 duration-500"
+  },
+  "accessibility": {
+    "contrast": "Ensure all text over images or buttons has contrast ratio > 4.5:1. Use Text Shadow on image overlays if text is white.",
+    "focus": "focus:ring-2 focus:ring-[#2C5530] focus:ring-offset-2",
+    "testing": "All interactive elements and key text elements must have data-testid."
+  },
+  "instructions_to_main_agent": [
+    "Install and import 'Manrope' for headings and 'IBM Plex Sans' for body text from Google Fonts.",
+    "The UI is a community savings platform. Avoid generic fintech blue. Use the provided Earthy/Organic Light theme (Deep Greens, Terracottas, Off-whites).",
+    "Format currency using 'UGX 55,000' with commas to denote thousands. Always use IBM Plex Sans for numbers so they align cleanly.",
+    "For the login/signup screens, use the `auth_background` image with a soft gradient overlay (bg-white/80 or bg-[#FAFAF8]/90) so form is perfectly readable.",
+    "In the dashboard, create a high-impact 'Total Group Balance' card using the primary green background (#2C5530) and white text to make it stand out.",
+    "For Member List, visually distinguish 'Premium' (UGX 55000/month) and 'Ordinary' members using colored badges.",
+    "Ensure the Super Admin view clearly highlights the destructive/sensitive actions (Delete User, Change Role) using the danger color (#D05A49) cautiously.",
+    "Ensure Shadcn/UI components (like Dialogs, Tables, Dropdowns) are styled to match the 'Clay & Crisp' 1px border aesthetic with soft rounded corners."
+  ]
+}
