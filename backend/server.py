@@ -29,12 +29,12 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # MongoDB connection
-mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+mongo_url = os.environ.get('MONGO_URL', 'mongodb://localhost:27017')
+client = AsyncIOMotorClient(mongo_url, serverSelectionTimeoutMS=5000)
+db = client[os.environ.get('DB_NAME', 'class_one_savings')]
 
 # JWT Configuration
-JWT_SECRET = os.environ['JWT_SECRET']
+JWT_SECRET = os.environ.get('JWT_SECRET', 'default-secret-change-in-production')
 JWT_ALGORITHM = "HS256"
 
 # Google Sheets Configuration
@@ -42,7 +42,7 @@ SPREADSHEET_ID = os.environ.get('GOOGLE_SPREADSHEET_ID')
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
 
 # Create the main app
-app = FastAPI(title="Group Cash Management API")
+app = FastAPI(title="Class One Savings API")
 
 # Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
@@ -1256,15 +1256,24 @@ async def add_custom_entry(entry: CustomDataEntry, user: dict = Depends(require_
 
 @app.on_event("startup")
 async def startup_event():
-    # Create indexes
-    await db.users.create_index("email", unique=True)
-    await db.deposits.create_index("user_id")
-    await db.loans.create_index("user_id")
-    await db.withdrawals.create_index("user_id")
-    await db.activity_log.create_index("timestamp")
-    
-    # Seed super admin
-    await seed_super_admin()
+    try:
+        # Test MongoDB connection
+        await client.admin.command('ping')
+        logger.info("MongoDB connected successfully")
+        
+        # Create indexes
+        await db.users.create_index("email", unique=True)
+        await db.deposits.create_index("user_id")
+        await db.loans.create_index("user_id")
+        await db.withdrawals.create_index("user_id")
+        await db.activity_log.create_index("timestamp")
+        
+        # Seed super admin
+        await seed_super_admin()
+        
+    except Exception as e:
+        logger.error(f"Database connection failed: {e}")
+        # Continue anyway - app will fail on first DB request
     
     # Initial sync to Google Sheets (in background to not block startup)
     try:
