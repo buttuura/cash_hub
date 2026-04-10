@@ -59,7 +59,7 @@ This app consists of:
 
 | Variable | Value | Description |
 |----------|-------|-------------|
-| `MONGO_URL` | `mongodb+srv://...` | Your MongoDB Atlas connection string |
+| `MONGO_URL` | `mongodb+srv://Group_cash:Buttuura@cluster0.od3sa0a.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0` | Your MongoDB Atlas connection string |
 | `DB_NAME` | `class_one_savings` | Database name |
 | `JWT_SECRET` | (auto-generated) | Secret for JWT tokens |
 | `ADMIN_EMAIL` | `superadmin@savingsgroup.com` | Super admin email |
