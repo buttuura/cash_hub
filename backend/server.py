@@ -1289,10 +1289,7 @@ async def startup_event():
 async def shutdown_db_client():
     client.close()
 
-# Include the router
-app.include_router(api_router)
-
-# CORS middleware
+# CORS middleware - must be added BEFORE routes
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
@@ -1301,19 +1298,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Include the API router FIRST
+app.include_router(api_router)
+
 @api_router.get("/")
 async def root():
-    return {"message": "Group Cash Management API", "version": "1.0.0"}
+    return {"message": "Class One Savings API", "version": "1.0.0"}
 
-# Serve static frontend files (for production deployment)
+# Serve static frontend files LAST (for production deployment)
 static_dir = ROOT_DIR / "static"
 if static_dir.exists():
-    app.mount("/static", StaticFiles(directory=str(static_dir / "static")), name="static-assets")
+    # Mount static assets
+    static_assets = static_dir / "static"
+    if static_assets.exists():
+        app.mount("/static", StaticFiles(directory=str(static_assets)), name="static-assets")
     
+    # Catch-all for frontend routes - MUST be last
     @app.get("/{full_path:path}")
     async def serve_frontend(full_path: str):
         # Don't serve frontend for API routes
-        if full_path.startswith("api/"):
+        if full_path.startswith("api"):
             raise HTTPException(status_code=404, detail="Not found")
         
         # Try to serve the exact file first

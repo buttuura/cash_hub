@@ -39,7 +39,7 @@ import {
 } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL;
+const API_URL = process.env.REACT_APP_BACKEND_URL || '';
 
 const formatCurrency = (amount) => {
   return `UGX ${Number(amount || 0).toLocaleString()}`;
