@@ -1,14 +1,16 @@
 services:
-  # Backend API Service
   - type: web
-    name: class-one-api
+    name: class-one-savings
     runtime: python
-    region: oregon
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn server:app --host 0.0.0.0 --port $PORT
+    buildCommand: |
+      cd frontend && yarn install && yarn build &&
+      mkdir -p ../backend/static &&
+      cp -r build/* ../backend/static/ &&
+      cd ../backend && pip install -r requirements.txt
+    startCommand: cd backend && uvicorn server:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: MONGO_URL
-        sync: false
+        value: mongodb+srv://Group_cash:Buttuura@cluster0.od3sa0a.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0
       - key: DB_NAME
         value: class_one_savings
       - key: JWT_SECRET
@@ -16,40 +18,18 @@ services:
       - key: ADMIN_EMAIL
         value: superadmin@savingsgroup.com
       - key: ADMIN_PASSWORD
-        sync: false
+        value: SuperAdmin@123
       - key: GOOGLE_SPREADSHEET_ID
-        sync: false
+        value: 1gbSYI3EOP2L6ZqvL0lWbWKyyqpXK46Y_f9s3F5S34HI
       - key: GOOGLE_SERVICE_ACCOUNT_EMAIL
-        sync: false
+        value: class-one-savings-group@awesome-habitat-374402.iam.gserviceaccount.com
       - key: GOOGLE_PROJECT_ID
-        sync: false
+        value: awesome-habitat-374402
       - key: GOOGLE_PRIVATE_KEY_ID
-        sync: false
+        value: ca1c848f1eab886c1c4dbb21af6d165ac79024af
       - key: GOOGLE_PRIVATE_KEY
         sync: false
       - key: GOOGLE_CLIENT_ID
-        sync: false
+        value: "107913506020948964345"
       - key: CORS_ORIGINS
-        sync: false
-    healthCheckPath: /api/
-
-  # Frontend Static Site
-  - type: web
-    name: class-one-frontend
-    runtime: static
-    buildCommand: cd frontend && yarn install && yarn build
-    staticPublishPath: frontend/build
-    envVars:
-      - key: REACT_APP_BACKEND_URL
-        fromService:
-          name: class-one-api
-          type: web
-          property: host
-    headers:
-      - path: /*
-        name: X-Frame-Options
-        value: SAMEORIGIN
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html
+        value: "*"
