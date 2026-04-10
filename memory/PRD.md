@@ -157,3 +157,42 @@ Create a web app for group managing cash with a super admin who can add other ad
 1. Add monthly contribution tracking
 2. Implement email notifications
 3. Add transaction export to CSV
+
+---
+
+## Update: Enhanced Google Sheets Auto-Sync (Jan 2026)
+
+### New Features Added
+
+1. **Auto-Column Detection**: When new data fields are added to any collection, the system automatically adds new columns to the corresponding Google Sheet
+
+2. **Sheet Registry**: Centralized configuration for all sheet types with predefined column orders and exclusion rules
+
+3. **Activity Logging**: All admin actions are logged to both MongoDB and a dedicated Activity_Log sheet
+
+4. **Group Stats Tracking**: Automatic snapshots of group statistics appended to Group_Stats sheet
+
+5. **Admin Sync Controls**:
+   - "Sync to Google Sheets" button in Admin Panel
+   - Google Sheets connection status display
+   - Setup instructions when permissions need configuration
+
+### Registered Sheets
+- Members (users collection)
+- Deposits
+- Loans
+- Withdrawals
+- Activity_Log
+- Group_Stats (computed snapshots)
+
+### API Endpoints Added
+- POST /api/admin/sync-sheets - Trigger full sync
+- GET /api/admin/sheets-status - Check connection status
+- POST /api/admin/create-sheet - Create new worksheet
+- POST /api/admin/sync-collection - Sync specific collection
+- POST /api/data/add-entry - Add custom data entry
+
+### Setup Required
+The Google Spreadsheet must be shared with the service account:
+`class-one-savings-group@awesome-habitat-374402.iam.gserviceaccount.com`
+as an Editor for sync to work.

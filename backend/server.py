@@ -159,7 +159,41 @@ async def require_super_admin(request: Request) -> dict:
         raise HTTPException(status_code=403, detail="Super Admin access required")
     return user
 
-# ==================== GOOGLE SHEETS SYNC ====================
+# ==================== GOOGLE SHEETS SYNC (ENHANCED AUTO-SYNC) ====================
+
+# Sheet configuration registry - automatically manages all data types
+SHEET_REGISTRY = {
+    "Members": {
+        "collection": "users",
+        "exclude_fields": ["password_hash", "_id"],
+        "column_order": ["email", "name", "phone", "role", "membership_type", "total_savings", "created_at"]
+    },
+    "Deposits": {
+        "collection": "deposits",
+        "exclude_fields": ["_id"],
+        "column_order": ["user_name", "user_email", "amount", "description", "status", "created_at", "approved_at", "approved_by", "notes"]
+    },
+    "Loans": {
+        "collection": "loans",
+        "exclude_fields": ["_id"],
+        "column_order": ["user_name", "user_email", "amount", "reason", "status", "repaid", "created_at", "approved_at", "approved_by", "notes"]
+    },
+    "Withdrawals": {
+        "collection": "withdrawals",
+        "exclude_fields": ["_id"],
+        "column_order": ["user_name", "user_email", "amount", "reason", "status", "created_at", "approved_at", "approved_by", "notes"]
+    },
+    "Activity_Log": {
+        "collection": "activity_log",
+        "exclude_fields": ["_id"],
+        "column_order": ["timestamp", "user_email", "action", "details", "ip_address"]
+    },
+    "Group_Stats": {
+        "collection": None,  # Computed, not from collection
+        "exclude_fields": [],
+        "column_order": ["date", "total_members", "premium_members", "ordinary_members", "total_savings", "total_deposits", "total_withdrawals", "active_loans"]
+    }
+}
 
 def get_sheets_client():
     try:
@@ -182,32 +216,263 @@ def get_sheets_client():
         logger.error(f"Failed to connect to Google Sheets: {e}")
         return None
 
-async def sync_to_sheets(sheet_name: str, data: list):
-    """Sync data to Google Sheets"""
+def get_or_create_worksheet(spreadsheet, sheet_name: str, rows: int = 1000, cols: int = 30):
+    """Get existing worksheet or create new one with proper sizing"""
+    try:
+        worksheet = spreadsheet.worksheet(sheet_name)
+        # Expand if needed
+        current_rows = worksheet.row_count
+        current_cols = worksheet.col_count
+        if current_rows < rows or current_cols < cols:
+            worksheet.resize(rows=max(current_rows, rows), cols=max(current_cols, cols))
+        return worksheet
+    except gspread.exceptions.WorksheetNotFound:
+        worksheet = spreadsheet.add_worksheet(title=sheet_name, rows=rows, cols=cols)
+        logger.info(f"Created new worksheet: {sheet_name}")
+        return worksheet
+
+def extract_all_columns(data: list, predefined_order: list = None) -> list:
+    """Extract all unique columns from data, preserving order and adding new ones"""
+    all_columns = set()
+    for row in data:
+        all_columns.update(row.keys())
+    
+    # Start with predefined order if provided
+    if predefined_order:
+        ordered = [col for col in predefined_order if col in all_columns]
+        # Add any new columns not in predefined order
+        new_cols = sorted([col for col in all_columns if col not in predefined_order])
+        ordered.extend(new_cols)
+        return ordered
+    
+    return sorted(list(all_columns))
+
+def serialize_value(value) -> str:
+    """Serialize any value to string for sheets"""
+    if value is None:
+        return ""
+    if isinstance(value, datetime):
+        return value.isoformat()
+    if isinstance(value, bool):
+        return "Yes" if value else "No"
+    if isinstance(value, (list, dict)):
+        return str(value)
+    return str(value)
+
+async def sync_to_sheets(sheet_name: str, data: list, append_mode: bool = False):
+    """
+    Enhanced sync to Google Sheets with auto-column detection
+    
+    Args:
+        sheet_name: Name of the worksheet
+        data: List of dictionaries to sync
+        append_mode: If True, append rows instead of replacing all data
+    """
     try:
         gc = get_sheets_client()
         if not gc:
             logger.warning("Google Sheets client not available")
-            return
+            return False
+        
+        try:
+            spreadsheet = gc.open_by_key(SPREADSHEET_ID)
+        except gspread.exceptions.APIError as e:
+            if "403" in str(e) or "permission" in str(e).lower():
+                logger.error(f"Permission denied accessing spreadsheet. Please share the spreadsheet with: {os.environ.get('GOOGLE_SERVICE_ACCOUNT_EMAIL')}")
+            raise
+        
+        # Get or create worksheet
+        worksheet = get_or_create_worksheet(spreadsheet, sheet_name)
+        
+        if not data:
+            logger.info(f"No data to sync to {sheet_name}")
+            return True
+        
+        # Get column order from registry if available
+        config = SHEET_REGISTRY.get(sheet_name, {})
+        predefined_order = config.get("column_order", [])
+        exclude_fields = config.get("exclude_fields", ["_id", "password_hash"])
+        
+        # Filter excluded fields from data
+        filtered_data = []
+        for row in data:
+            filtered_row = {k: v for k, v in row.items() if k not in exclude_fields}
+            filtered_data.append(filtered_row)
+        
+        # Extract all columns (including new ones)
+        headers = extract_all_columns(filtered_data, predefined_order)
+        
+        if append_mode:
+            # Get existing headers
+            existing_headers = worksheet.row_values(1) if worksheet.row_count > 0 else []
+            
+            # Merge headers (add new columns)
+            new_headers = [h for h in headers if h not in existing_headers]
+            if new_headers:
+                all_headers = existing_headers + new_headers
+                # Update header row
+                worksheet.update('A1', [all_headers])
+                headers = all_headers
+                logger.info(f"Added new columns to {sheet_name}: {new_headers}")
+            else:
+                headers = existing_headers if existing_headers else headers
+            
+            # Append new rows
+            rows_to_append = [[serialize_value(row.get(h, '')) for h in headers] for row in filtered_data]
+            if rows_to_append:
+                worksheet.append_rows(rows_to_append)
+        else:
+            # Full replace mode
+            worksheet.clear()
+            
+            # Prepare all rows
+            all_rows = [headers]  # Header row
+            for row in filtered_data:
+                row_values = [serialize_value(row.get(h, '')) for h in headers]
+                all_rows.append(row_values)
+            
+            # Batch update for efficiency
+            worksheet.update('A1', all_rows)
+        
+        logger.info(f"Synced {len(filtered_data)} rows with {len(headers)} columns to {sheet_name}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Failed to sync to sheets ({sheet_name}): {e}")
+        return False
+
+async def append_single_row(sheet_name: str, row_data: dict):
+    """Append a single row to a sheet (for real-time logging)"""
+    try:
+        gc = get_sheets_client()
+        if not gc:
+            return False
         
         spreadsheet = gc.open_by_key(SPREADSHEET_ID)
+        worksheet = get_or_create_worksheet(spreadsheet, sheet_name)
         
-        # Try to get the worksheet, or create it
-        try:
-            worksheet = spreadsheet.worksheet(sheet_name)
-        except gspread.exceptions.WorksheetNotFound:
-            worksheet = spreadsheet.add_worksheet(title=sheet_name, rows=1000, cols=20)
+        # Get or create headers
+        existing_headers = worksheet.row_values(1) if worksheet.row_count > 0 else []
         
-        if data:
-            # Clear and update
-            worksheet.clear()
-            headers = list(data[0].keys()) if data else []
-            if headers:
-                worksheet.update('A1', [headers] + [[str(row.get(h, '')) for h in headers] for row in data])
+        config = SHEET_REGISTRY.get(sheet_name, {})
+        predefined_order = config.get("column_order", [])
         
-        logger.info(f"Synced {len(data)} rows to {sheet_name}")
+        if not existing_headers:
+            # Create headers from row data and predefined order
+            headers = extract_all_columns([row_data], predefined_order)
+            worksheet.update('A1', [headers])
+            existing_headers = headers
+        
+        # Check for new columns in row_data
+        new_cols = [k for k in row_data.keys() if k not in existing_headers and k not in config.get("exclude_fields", [])]
+        if new_cols:
+            existing_headers.extend(new_cols)
+            worksheet.update('A1', [existing_headers])
+            logger.info(f"Added new columns to {sheet_name}: {new_cols}")
+        
+        # Append the row
+        row_values = [serialize_value(row_data.get(h, '')) for h in existing_headers]
+        worksheet.append_row(row_values)
+        
+        return True
     except Exception as e:
-        logger.error(f"Failed to sync to sheets: {e}")
+        logger.error(f"Failed to append row to {sheet_name}: {e}")
+        return False
+
+async def log_activity(user_email: str, action: str, details: str = "", ip_address: str = ""):
+    """Log activity to both MongoDB and Google Sheets"""
+    log_entry = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "user_email": user_email,
+        "action": action,
+        "details": details,
+        "ip_address": ip_address
+    }
+    
+    # Save to MongoDB
+    await db.activity_log.insert_one(log_entry)
+    
+    # Append to Google Sheets
+    await append_single_row("Activity_Log", log_entry)
+
+async def sync_all_data_to_sheets():
+    """Full sync of all collections to Google Sheets"""
+    logger.info("Starting full sync to Google Sheets...")
+    
+    # Sync Members
+    members = await db.users.find({}, {"_id": 0, "password_hash": 0}).to_list(10000)
+    await sync_to_sheets("Members", members)
+    
+    # Sync Deposits
+    deposits = await db.deposits.find({}, {"_id": 0}).to_list(10000)
+    await sync_to_sheets("Deposits", deposits)
+    
+    # Sync Loans
+    loans = await db.loans.find({}, {"_id": 0}).to_list(10000)
+    await sync_to_sheets("Loans", loans)
+    
+    # Sync Withdrawals
+    withdrawals = await db.withdrawals.find({}, {"_id": 0}).to_list(10000)
+    await sync_to_sheets("Withdrawals", withdrawals)
+    
+    # Sync Activity Log
+    activity = await db.activity_log.find({}, {"_id": 0}).to_list(10000)
+    await sync_to_sheets("Activity_Log", activity)
+    
+    # Sync Group Stats snapshot
+    stats = await compute_group_stats()
+    stats["date"] = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    await append_single_row("Group_Stats", stats)
+    
+    logger.info("Full sync completed")
+
+async def compute_group_stats() -> dict:
+    """Compute current group statistics"""
+    total_members = await db.users.count_documents({})
+    premium_members = await db.users.count_documents({"membership_type": "premium"})
+    ordinary_members = await db.users.count_documents({"membership_type": "ordinary"})
+    
+    # Total savings
+    pipeline = [{"$group": {"_id": None, "total": {"$sum": "$total_savings"}}}]
+    result = await db.users.aggregate(pipeline).to_list(1)
+    total_savings = result[0]["total"] if result else 0
+    
+    # Total deposits
+    pipeline = [{"$match": {"status": "approved"}}, {"$group": {"_id": None, "total": {"$sum": "$amount"}}}]
+    result = await db.deposits.aggregate(pipeline).to_list(1)
+    total_deposits = result[0]["total"] if result else 0
+    
+    # Total withdrawals
+    pipeline = [{"$match": {"status": "approved"}}, {"$group": {"_id": None, "total": {"$sum": "$amount"}}}]
+    result = await db.withdrawals.aggregate(pipeline).to_list(1)
+    total_withdrawals = result[0]["total"] if result else 0
+    
+    # Active loans
+    pipeline = [{"$match": {"status": "approved", "repaid": False}}, {"$group": {"_id": None, "total": {"$sum": "$amount"}}}]
+    result = await db.loans.aggregate(pipeline).to_list(1)
+    active_loans = result[0]["total"] if result else 0
+    
+    return {
+        "total_members": total_members,
+        "premium_members": premium_members,
+        "ordinary_members": ordinary_members,
+        "total_savings": total_savings,
+        "total_deposits": total_deposits,
+        "total_withdrawals": total_withdrawals,
+        "active_loans": active_loans
+    }
+
+def register_new_sheet(sheet_name: str, collection: str = None, column_order: list = None, exclude_fields: list = None):
+    """
+    Register a new sheet type dynamically
+    Call this when adding new data types/pages to the app
+    """
+    SHEET_REGISTRY[sheet_name] = {
+        "collection": collection,
+        "exclude_fields": exclude_fields or ["_id"],
+        "column_order": column_order or []
+    }
+    logger.info(f"Registered new sheet type: {sheet_name}")
 
 # ==================== AUTH ENDPOINTS ====================
 
@@ -802,6 +1067,189 @@ async def seed_super_admin():
         f.write(f"- GET /api/auth/me\n")
         f.write(f"- POST /api/auth/logout\n")
 
+# ==================== SHEETS MANAGEMENT ENDPOINTS ====================
+
+@api_router.post("/admin/sync-sheets")
+async def trigger_full_sync(user: dict = Depends(require_admin)):
+    """Trigger a full sync of all data to Google Sheets (Admin only)"""
+    try:
+        await sync_all_data_to_sheets()
+        await log_activity(user["email"], "full_sheets_sync", "Triggered full sync to Google Sheets")
+        return {"message": "Full sync completed successfully", "status": "success"}
+    except Exception as e:
+        logger.error(f"Full sync failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Sync failed: {str(e)}")
+
+@api_router.get("/admin/sheets-status")
+async def get_sheets_status(user: dict = Depends(require_admin)):
+    """Check Google Sheets connection status and list worksheets"""
+    service_account_email = os.environ.get('GOOGLE_SERVICE_ACCOUNT_EMAIL', '')
+    
+    try:
+        gc = get_sheets_client()
+        if not gc:
+            return {
+                "status": "disconnected", 
+                "message": "Failed to connect to Google Sheets",
+                "service_account_email": service_account_email
+            }
+        
+        try:
+            spreadsheet = gc.open_by_key(SPREADSHEET_ID)
+            worksheets = [ws.title for ws in spreadsheet.worksheets()]
+            
+            return {
+                "status": "connected",
+                "spreadsheet_id": SPREADSHEET_ID,
+                "spreadsheet_title": spreadsheet.title,
+                "worksheets": worksheets,
+                "registered_sheets": list(SHEET_REGISTRY.keys()),
+                "service_account_email": service_account_email
+            }
+        except PermissionError:
+            return {
+                "status": "permission_denied",
+                "message": "Please share your Google Spreadsheet with this email as Editor",
+                "service_account_email": service_account_email,
+                "spreadsheet_id": SPREADSHEET_ID,
+                "instructions": [
+                    "1. Open your Google Spreadsheet",
+                    "2. Click 'Share' button",
+                    f"3. Add this email: {service_account_email}",
+                    "4. Set permission to 'Editor'",
+                    "5. Click 'Send' (or 'Share')"
+                ]
+            }
+        except gspread.exceptions.APIError as e:
+            if "403" in str(e) or "permission" in str(e).lower():
+                return {
+                    "status": "permission_denied",
+                    "message": "Please share your Google Spreadsheet with this email as Editor",
+                    "service_account_email": service_account_email,
+                    "spreadsheet_id": SPREADSHEET_ID,
+                    "instructions": [
+                        "1. Open your Google Spreadsheet",
+                        "2. Click 'Share' button",
+                        f"3. Add this email: {service_account_email}",
+                        "4. Set permission to 'Editor'",
+                        "5. Click 'Send' (or 'Share')"
+                    ]
+                }
+            raise
+    except Exception as e:
+        error_msg = str(e)
+        if not error_msg:
+            error_msg = "Permission denied - please share the spreadsheet with the service account"
+        return {
+            "status": "permission_denied" if "permission" in str(type(e).__name__).lower() else "error", 
+            "message": error_msg,
+            "service_account_email": service_account_email,
+            "spreadsheet_id": SPREADSHEET_ID,
+            "instructions": [
+                "1. Open your Google Spreadsheet",
+                "2. Click 'Share' button",
+                f"3. Add this email: {service_account_email}",
+                "4. Set permission to 'Editor'",
+                "5. Click 'Send' (or 'Share')"
+            ]
+        }
+
+@api_router.post("/admin/create-sheet")
+async def create_new_sheet(
+    sheet_name: str,
+    collection_name: str = None,
+    user: dict = Depends(require_super_admin)
+):
+    """Create a new sheet and register it (Super Admin only)"""
+    try:
+        gc = get_sheets_client()
+        if not gc:
+            raise HTTPException(status_code=500, detail="Google Sheets not connected")
+        
+        spreadsheet = gc.open_by_key(SPREADSHEET_ID)
+        
+        # Check if sheet already exists
+        existing_sheets = [ws.title for ws in spreadsheet.worksheets()]
+        if sheet_name in existing_sheets:
+            raise HTTPException(status_code=400, detail=f"Sheet '{sheet_name}' already exists")
+        
+        # Create the worksheet
+        worksheet = spreadsheet.add_worksheet(title=sheet_name, rows=1000, cols=30)
+        
+        # Register in the system
+        register_new_sheet(sheet_name, collection=collection_name)
+        
+        await log_activity(user["email"], "create_sheet", f"Created new sheet: {sheet_name}")
+        
+        return {
+            "message": f"Sheet '{sheet_name}' created successfully",
+            "sheet_name": sheet_name,
+            "collection": collection_name
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.post("/admin/sync-collection")
+async def sync_specific_collection(
+    sheet_name: str,
+    user: dict = Depends(require_admin)
+):
+    """Sync a specific collection to its sheet"""
+    try:
+        config = SHEET_REGISTRY.get(sheet_name)
+        if not config:
+            raise HTTPException(status_code=404, detail=f"Sheet '{sheet_name}' not registered")
+        
+        collection_name = config.get("collection")
+        if collection_name:
+            collection = db[collection_name]
+            exclude = config.get("exclude_fields", [])
+            projection = {field: 0 for field in exclude if field != "_id"}
+            projection["_id"] = 0
+            
+            data = await collection.find({}, projection).to_list(10000)
+            await sync_to_sheets(sheet_name, data)
+            
+            return {"message": f"Synced {len(data)} rows to {sheet_name}"}
+        else:
+            return {"message": f"Sheet '{sheet_name}' has no associated collection"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ==================== CUSTOM DATA ENDPOINTS ====================
+
+class CustomDataEntry(BaseModel):
+    sheet_name: str
+    data: dict
+
+@api_router.post("/data/add-entry")
+async def add_custom_entry(entry: CustomDataEntry, user: dict = Depends(require_admin)):
+    """Add a custom data entry to any sheet (auto-creates columns)"""
+    try:
+        # Add metadata
+        entry.data["added_by"] = user["email"]
+        entry.data["added_at"] = datetime.now(timezone.utc).isoformat()
+        
+        # Save to MongoDB if collection exists
+        config = SHEET_REGISTRY.get(entry.sheet_name, {})
+        collection_name = config.get("collection")
+        
+        if collection_name:
+            await db[collection_name].insert_one(entry.data.copy())
+        
+        # Append to sheets (will auto-add new columns)
+        await append_single_row(entry.sheet_name, entry.data)
+        
+        await log_activity(user["email"], "add_entry", f"Added entry to {entry.sheet_name}")
+        
+        return {"message": "Entry added successfully", "sheet": entry.sheet_name}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ==================== APP EVENTS ====================
 
 @app.on_event("startup")
@@ -811,9 +1259,18 @@ async def startup_event():
     await db.deposits.create_index("user_id")
     await db.loans.create_index("user_id")
     await db.withdrawals.create_index("user_id")
+    await db.activity_log.create_index("timestamp")
     
     # Seed super admin
     await seed_super_admin()
+    
+    # Initial sync to Google Sheets (in background to not block startup)
+    try:
+        logger.info("Starting initial Google Sheets sync...")
+        await sync_all_data_to_sheets()
+        logger.info("Initial Google Sheets sync completed")
+    except Exception as e:
+        logger.warning(f"Initial sheets sync failed (non-blocking): {e}")
     
     logger.info("Application started successfully")
 

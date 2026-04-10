@@ -33,6 +33,9 @@ import {
   X,
   Shield,
   Crown,
+  RefreshCw,
+  FileSpreadsheet,
+  Database,
 } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
 
@@ -52,6 +55,8 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [syncingSheets, setSyncingSheets] = useState(false);
+  const [sheetsStatus, setSheetsStatus] = useState(null);
 
   // Form states
   const [depositAmount, setDepositAmount] = useState('');
@@ -81,11 +86,36 @@ const Dashboard = () => {
       setLoans(loansRes.data);
       setWithdrawals(withdrawalsRes.data);
       setMembers(membersRes.data);
+      
+      // Fetch sheets status for admins
+      if (isAdmin) {
+        try {
+          const sheetsRes = await axios.get(`${API_URL}/api/admin/sheets-status`, { headers });
+          setSheetsStatus(sheetsRes.data);
+        } catch (err) {
+          console.error('Failed to fetch sheets status:', err);
+        }
+      }
     } catch (err) {
       console.error('Failed to fetch data:', err);
       toast.error('Failed to load data');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSyncToSheets = async () => {
+    setSyncingSheets(true);
+    try {
+      await axios.post(`${API_URL}/api/admin/sync-sheets`, {}, { headers: getAuthHeaders() });
+      toast.success('Data synced to Google Sheets successfully!');
+      // Refresh sheets status
+      const sheetsRes = await axios.get(`${API_URL}/api/admin/sheets-status`, { headers: getAuthHeaders() });
+      setSheetsStatus(sheetsRes.data);
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Failed to sync to sheets');
+    } finally {
+      setSyncingSheets(false);
     }
   };
 
@@ -843,7 +873,93 @@ const Dashboard = () => {
 
         {activeTab === 'admin' && isAdmin && (
           <div className="space-y-8 animate-fade-in" data-testid="admin-tab">
-            <h2 className="text-2xl font-bold font-['Manrope'] text-[#1E231F]">Admin Panel</h2>
+            <div className="flex items-center justify-between">
+              <h2 className="text-2xl font-bold font-['Manrope'] text-[#1E231F]">Admin Panel</h2>
+              
+              {/* Google Sheets Sync Button */}
+              <Button
+                onClick={handleSyncToSheets}
+                disabled={syncingSheets}
+                className="bg-[#347242] hover:bg-[#2C5530] rounded-full flex items-center gap-2"
+                data-testid="sync-sheets-button"
+              >
+                <RefreshCw className={`w-4 h-4 ${syncingSheets ? 'animate-spin' : ''}`} />
+                {syncingSheets ? 'Syncing...' : 'Sync to Google Sheets'}
+              </Button>
+            </div>
+
+            {/* Google Sheets Status Card */}
+            {sheetsStatus && (
+              <Card className="bg-white border border-[#E8EBE8] shadow-sm">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-lg font-['Manrope'] text-[#1E231F] flex items-center gap-2">
+                    <FileSpreadsheet className="w-5 h-5 text-[#347242]" />
+                    Google Sheets Status
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center gap-4 mb-4">
+                    <Badge className={sheetsStatus.status === 'connected' 
+                      ? 'bg-[#347242]/10 text-[#347242]' 
+                      : 'bg-[#D05A49]/10 text-[#D05A49]'
+                    }>
+                      {sheetsStatus.status === 'connected' ? (
+                        <><CheckCircle className="w-3 h-3 mr-1" /> Connected</>
+                      ) : (
+                        <><XCircle className="w-3 h-3 mr-1" /> Disconnected</>
+                      )}
+                    </Badge>
+                    {sheetsStatus.spreadsheet_title && (
+                      <span className="text-sm text-[#5C665D]">
+                        Spreadsheet: <span className="font-medium text-[#1E231F]">{sheetsStatus.spreadsheet_title}</span>
+                      </span>
+                    )}
+                  </div>
+                  {sheetsStatus.worksheets && (
+                    <div>
+                      <p className="text-sm font-medium text-[#5C665D] mb-2">Active Worksheets:</p>
+                      <div className="flex flex-wrap gap-2">
+                        {sheetsStatus.worksheets.map((ws) => (
+                          <Badge key={ws} className="bg-[#2C5530]/10 text-[#2C5530]">
+                            <Database className="w-3 h-3 mr-1" />
+                            {ws}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Permission Setup Instructions */}
+            {sheetsStatus && (sheetsStatus.status === 'permission_denied' || sheetsStatus.status === 'error') && (
+              <Card className="bg-[#E8B25C]/10 border border-[#E8B25C]/30">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-lg font-['Manrope'] text-[#1E231F] flex items-center gap-2">
+                    <FileSpreadsheet className="w-5 h-5 text-[#E8B25C]" />
+                    Google Sheets Setup Required
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-[#5C665D] mb-4">{sheetsStatus.message || 'Please share your Google Spreadsheet with the service account'}</p>
+                  <div className="bg-white rounded-xl p-4 border border-[#E8EBE8]">
+                    <p className="font-medium text-[#1E231F] mb-2">Share your spreadsheet with:</p>
+                    <code className="block bg-[#FAFAF8] p-2 rounded text-sm text-[#2C5530] break-all mb-4">
+                      {sheetsStatus.service_account_email}
+                    </code>
+                    <ol className="list-decimal list-inside space-y-1 text-sm text-[#5C665D]">
+                      <li>Open your Google Spreadsheet</li>
+                      <li>Click the 'Share' button (top right)</li>
+                      <li>Paste the email above</li>
+                      <li>Set permission to 'Editor'</li>
+                      <li>Click 'Send' or 'Share'</li>
+                      <li>Then click "Sync to Google Sheets" above</li>
+                    </ol>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Pending Approvals */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
