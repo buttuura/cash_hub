@@ -36,7 +36,9 @@ if 'mongodb+srv' in mongo_url or 'mongodb.net' in mongo_url:
     import certifi
     client = AsyncIOMotorClient(
         mongo_url,
-        serverSelectionTimeoutMS=5000,
+        serverSelectionTimeoutMS=10000,
+        tls=True,
+        tlsAllowInvalidCertificates=True,
         tlsCAFile=certifi.where()
     )
 else:
