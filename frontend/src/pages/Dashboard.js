@@ -291,10 +291,12 @@ const Dashboard = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-[#2C5530] rounded-full flex items-center justify-center">
-                <PiggyBank className="w-5 h-5 text-white" />
-              </div>
-              <span className="text-xl font-bold font-['Manrope'] text-[#1E231F]">Group Cash Hub</span>
+              <img 
+                src="https://customer-assets.emergentagent.com/job_group-cash-hub/artifacts/5vjnuyyi_Screenshot_20260408_004609_WhatsAppBusiness.jpg" 
+                alt="Class One Logo"
+                className="w-10 h-10 rounded-full object-cover"
+              />
+              <span className="text-xl font-bold font-['Manrope'] text-[#1E231F]">Class One Savings</span>
             </div>
 
             {/* Desktop Navigation */}

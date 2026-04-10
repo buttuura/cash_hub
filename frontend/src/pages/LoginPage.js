@@ -44,10 +44,12 @@ const LoginPage = () => {
         <div className="absolute inset-0 bg-[#2C5530]/80" />
         <div className="relative z-10 flex flex-col justify-center px-12 text-white">
           <div className="flex items-center gap-3 mb-6">
-            <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
-              <Users className="w-6 h-6" />
-            </div>
-            <h1 className="text-2xl font-bold font-['Manrope']">Group Cash Hub</h1>
+            <img 
+              src="https://customer-assets.emergentagent.com/job_group-cash-hub/artifacts/5vjnuyyi_Screenshot_20260408_004609_WhatsAppBusiness.jpg" 
+              alt="Class One Logo"
+              className="w-16 h-16 rounded-full object-cover border-2 border-white/30"
+            />
+            <h1 className="text-2xl font-bold font-['Manrope']">Class One Savings</h1>
           </div>
           <h2 className="text-4xl font-extrabold font-['Manrope'] mb-4 leading-tight">
             Manage Your Group<br />Savings Together
@@ -63,10 +65,12 @@ const LoginPage = () => {
         <Card className="w-full max-w-md border border-[#E8EBE8] shadow-sm">
           <CardHeader className="space-y-1">
             <div className="lg:hidden flex items-center gap-2 mb-4">
-              <div className="w-10 h-10 bg-[#2C5530] rounded-full flex items-center justify-center">
-                <Users className="w-5 h-5 text-white" />
-              </div>
-              <span className="text-xl font-bold font-['Manrope'] text-[#1E231F]">Group Cash Hub</span>
+              <img 
+                src="https://customer-assets.emergentagent.com/job_group-cash-hub/artifacts/5vjnuyyi_Screenshot_20260408_004609_WhatsAppBusiness.jpg" 
+                alt="Class One Logo"
+                className="w-10 h-10 rounded-full object-cover"
+              />
+              <span className="text-xl font-bold font-['Manrope'] text-[#1E231F]">Class One Savings</span>
             </div>
             <CardTitle className="text-2xl font-bold font-['Manrope'] text-[#1E231F]">
               Welcome back
