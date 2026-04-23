@@ -165,8 +165,9 @@ const Dashboard = () => {
       await axios.post(
         `${API_URL}/api/withdrawals/request`,
         { amount: parseFloat(withdrawalAmount), reason: withdrawalReason },
-        { headers: getAuthHeaders() }
-      );
+        //Deduct the withdrawal amout from the group balance
+        setGroupBalance(prevBalance => prevBalance - parseFloat(withdrawalAmount));
+      
       toast.success('Withdrawal request submitted');
       setWithdrawalDialogOpen(false);
       setWithdrawalAmount('');
