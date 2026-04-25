@@ -166,7 +166,7 @@ const Dashboard = () => {
         `${API_URL}/api/withdrawals/request`,
         { amount: parseFloat(withdrawalAmount), reason: withdrawalReason },
         //Deduct the withdrawal amout from the group balance
-        setGroupBalance(prevBalance => prevBalance - parseFloat(withdrawalAmount));
+        //setGroupBalance(prevBalance => prevBalance - parseFloat(withdrawalAmount));
       
       toast.success('Withdrawal request submitted');
       setWithdrawalDialogOpen(false);
