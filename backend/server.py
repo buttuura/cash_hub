@@ -839,20 +839,76 @@ async def get_leaving_status(user: dict = Depends(get_current_user)):
 
 # ==================== GROUP STATS ====================
 
+async def calculate_total_interest_earned() -> float:
+    """Calculate total interest earned from all repaid and active loans"""
+    total_interest = 0
+    
+    # Get all approved loans (both repaid and active)
+    loans = await db.loans.find({"status": {"$in": ["approved", "repaid"]}}).to_list(1000)
+    
+    for loan in loans:
+        if loan.get("repaid"):
+            # For repaid loans, calculate based on repayment
+            amount_repaid = loan.get("amount_repaid", 0)
+            principal = loan.get("amount", 0)
+            interest = max(0, amount_repaid - principal)
+            total_interest += interest
+        else:
+            # For active loans, calculate current interest
+            if loan.get("approved_at"):
+                approved_date = datetime.fromisoformat(loan["approved_at"].replace('Z', '+00:00'))
+                months_elapsed = max(1, (datetime.now(timezone.utc) - approved_date).days // 30)
+                if months_elapsed <= LOAN_NORMAL_PERIOD_MONTHS:
+                    interest = loan["amount"] * LOAN_INTEREST_NORMAL * months_elapsed
+                else:
+                    normal_interest = loan["amount"] * LOAN_INTEREST_NORMAL * LOAN_NORMAL_PERIOD_MONTHS
+                    extended_months = months_elapsed - LOAN_NORMAL_PERIOD_MONTHS
+                    extended_interest = loan["amount"] * LOAN_INTEREST_EXTENDED * extended_months
+                    interest = normal_interest + extended_interest
+                total_interest += interest
+    
+    return total_interest
+
+async def calculate_total_late_fees() -> float:
+    """Calculate total late fees collected"""
+    pipeline = [
+        {"$match": {"status": "approved", "late_fee": {"$gt": 0}}},
+        {"$group": {"_id": None, "total": {"$sum": "$late_fee"}}}
+    ]
+    result = await db.deposits.aggregate(pipeline).to_list(1)
+    return result[0]["total"] if result else 0
+
+async def get_total_petty_cash_used() -> float:
+    """Get total petty cash expenses"""
+    pipeline = [
+        {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
+    ]
+    result = await db.petty_cash.aggregate(pipeline).to_list(1)
+    return result[0]["total"] if result else 0
+
 @api_router.get("/stats/group")
 async def get_group_stats(user: dict = Depends(get_current_user)):
     total_members = await db.users.count_documents({})
     premium_members = await db.users.count_documents({"membership_type": "premium"})
     
-    # Total savings
+    # Total savings from all members
     pipeline = [{"$group": {"_id": None, "total": {"$sum": "$total_savings"}}}]
     result = await db.users.aggregate(pipeline).to_list(1)
     total_savings = result[0]["total"] if result else 0
     
-    # Total development fund
+    # Total development fund from all members
     pipeline = [{"$group": {"_id": None, "total": {"$sum": "$development_fund"}}}]
     result = await db.users.aggregate(pipeline).to_list(1)
     total_development = result[0]["total"] if result else 0
+    
+    # Total interest earned
+    total_interest = await calculate_total_interest_earned()
+    
+    # Total late fees
+    total_late_fees = await calculate_total_late_fees()
+    
+    # Total petty cash used
+    total_petty_cash = await get_total_petty_cash_used()
     
     # Active loans
     pipeline = [
@@ -863,9 +919,18 @@ async def get_group_stats(user: dict = Depends(get_current_user)):
     active_loans_amount = result[0]["total"] if result else 0
     active_loans_count = result[0]["count"] if result else 0
     
-    # Check for custom group balance
-    custom_balance = await db.settings.find_one({"key": "group_balance"})
-    group_balance = custom_balance["value"] if custom_balance else (total_savings + total_development)
+    # Total loans ever given
+    pipeline = [
+        {"$match": {"status": {"$in": ["approved", "repaid"]}}},
+        {"$group": {"_id": None, "total": {"$sum": "$amount"}, "count": {"$sum": 1}}}
+    ]
+    result = await db.loans.aggregate(pipeline).to_list(1)
+    total_loans_given = result[0]["total"] if result else 0
+    total_loans_count = result[0]["count"] if result else 0
+    
+    # AUTO-CALCULATE Total Group Balance
+    # = Total Savings + Development Fund + Interest Earned + Late Fees - Petty Cash
+    total_group_balance = total_savings + total_development + total_interest + total_late_fees - total_petty_cash
     
     # Pending counts
     pending_deposits = await db.deposits.count_documents({"status": "pending"})
@@ -878,9 +943,14 @@ async def get_group_stats(user: dict = Depends(get_current_user)):
         "ordinary_members": total_members - premium_members,
         "total_savings": total_savings,
         "total_development_fund": total_development,
-        "total_group_balance": group_balance,
+        "total_interest_earned": total_interest,
+        "total_late_fees": total_late_fees,
+        "total_petty_cash_used": total_petty_cash,
+        "total_group_balance": total_group_balance,
         "active_loans_amount": active_loans_amount,
         "active_loans_count": active_loans_count,
+        "total_loans_given": total_loans_given,
+        "total_loans_count": total_loans_count,
         "pending_deposits": pending_deposits,
         "pending_loans": pending_loans,
         "pending_withdrawals": pending_withdrawals,
@@ -889,6 +959,135 @@ async def get_group_stats(user: dict = Depends(get_current_user)):
         "max_loan_amount": MAX_LOAN_AMOUNT,
         "year_end_date": YEAR_END_DATE
     }
+
+# ==================== FINANCIAL STATS ====================
+
+@api_router.get("/stats/financial")
+async def get_financial_stats(user: dict = Depends(get_current_user)):
+    """Get detailed financial breakdown"""
+    
+    # Total savings
+    pipeline = [{"$group": {"_id": None, "total": {"$sum": "$total_savings"}}}]
+    result = await db.users.aggregate(pipeline).to_list(1)
+    total_savings = result[0]["total"] if result else 0
+    
+    # Total development fund
+    pipeline = [{"$group": {"_id": None, "total": {"$sum": "$development_fund"}}}]
+    result = await db.users.aggregate(pipeline).to_list(1)
+    total_development = result[0]["total"] if result else 0
+    
+    # Total interest earned
+    total_interest = await calculate_total_interest_earned()
+    
+    # Total late fees
+    total_late_fees = await calculate_total_late_fees()
+    
+    # Total petty cash
+    total_petty_cash = await get_total_petty_cash_used()
+    
+    # Get petty cash breakdown
+    petty_cash_items = await db.petty_cash.find({}).sort("created_at", -1).to_list(100)
+    for item in petty_cash_items:
+        item["id"] = str(item["_id"])
+        item.pop("_id", None)
+    
+    # Active loans details
+    pipeline = [
+        {"$match": {"status": "approved", "repaid": False}},
+        {"$group": {"_id": None, "total": {"$sum": "$amount"}, "count": {"$sum": 1}}}
+    ]
+    result = await db.loans.aggregate(pipeline).to_list(1)
+    active_loans_amount = result[0]["total"] if result else 0
+    active_loans_count = result[0]["count"] if result else 0
+    
+    # Repaid loans
+    pipeline = [
+        {"$match": {"status": "repaid"}},
+        {"$group": {"_id": None, "total": {"$sum": "$amount"}, "count": {"$sum": 1}}}
+    ]
+    result = await db.loans.aggregate(pipeline).to_list(1)
+    repaid_loans_amount = result[0]["total"] if result else 0
+    repaid_loans_count = result[0]["count"] if result else 0
+    
+    # Total approved withdrawals
+    pipeline = [
+        {"$match": {"status": "approved"}},
+        {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
+    ]
+    result = await db.withdrawals.aggregate(pipeline).to_list(1)
+    total_withdrawals = result[0]["total"] if result else 0
+    
+    # Total group balance
+    total_group_balance = total_savings + total_development + total_interest + total_late_fees - total_petty_cash
+    
+    return {
+        "total_savings": total_savings,
+        "total_development_fund": total_development,
+        "total_interest_earned": total_interest,
+        "total_late_fees": total_late_fees,
+        "total_petty_cash_used": total_petty_cash,
+        "total_group_balance": total_group_balance,
+        "active_loans_amount": active_loans_amount,
+        "active_loans_count": active_loans_count,
+        "repaid_loans_amount": repaid_loans_amount,
+        "repaid_loans_count": repaid_loans_count,
+        "total_withdrawals": total_withdrawals,
+        "petty_cash_items": petty_cash_items,
+        "breakdown": {
+            "savings": {"amount": total_savings, "label": "Member Savings"},
+            "development": {"amount": total_development, "label": "Development Fund"},
+            "interest": {"amount": total_interest, "label": "Loan Interest"},
+            "late_fees": {"amount": total_late_fees, "label": "Late Fees"},
+            "petty_cash": {"amount": -total_petty_cash, "label": "Petty Cash (Expenses)"}
+        }
+    }
+
+# ==================== PETTY CASH ENDPOINTS ====================
+
+class PettyCashEntry(BaseModel):
+    amount: float
+    description: str
+    category: Optional[str] = "general"
+
+@api_router.post("/petty-cash/add")
+async def add_petty_cash(entry: PettyCashEntry, user: dict = Depends(require_admin)):
+    """Add a petty cash expense (Admin only)"""
+    if entry.amount <= 0:
+        raise HTTPException(status_code=400, detail="Amount must be positive")
+    
+    petty_cash_doc = {
+        "amount": entry.amount,
+        "description": entry.description,
+        "category": entry.category,
+        "added_by": user["id"],
+        "added_by_name": user["name"],
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    result = await db.petty_cash.insert_one(petty_cash_doc)
+    petty_cash_doc["id"] = str(result.inserted_id)
+    petty_cash_doc.pop("_id", None)
+    
+    return petty_cash_doc
+
+@api_router.get("/petty-cash")
+async def get_petty_cash(user: dict = Depends(get_current_user)):
+    """Get all petty cash entries"""
+    items = await db.petty_cash.find({}).sort("created_at", -1).to_list(1000)
+    result = []
+    for item in items:
+        item["id"] = str(item["_id"])
+        item.pop("_id", None)
+        result.append(item)
+    return result
+
+@api_router.delete("/petty-cash/{entry_id}")
+async def delete_petty_cash(entry_id: str, user: dict = Depends(require_super_admin)):
+    """Delete a petty cash entry (Super Admin only)"""
+    result = await db.petty_cash.delete_one({"_id": ObjectId(entry_id)})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Entry not found")
+    return {"message": "Petty cash entry deleted"}
 
 @api_router.get("/stats/rules")
 async def get_group_rules():

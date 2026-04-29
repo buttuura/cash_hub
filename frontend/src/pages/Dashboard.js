@@ -39,6 +39,10 @@ import {
   Percent,
   UserCheck,
   DoorOpen,
+  DollarSign,
+  Receipt,
+  Trash2,
+  BarChart3,
 } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
 
@@ -52,6 +56,7 @@ const Dashboard = () => {
   const { user, logout, getAuthHeaders, isAdmin, isSuperAdmin, isPremium, refreshUser } = useAuth();
   const [stats, setStats] = useState(null);
   const [rules, setRules] = useState(null);
+  const [financials, setFinancials] = useState(null);
   const [deposits, setDeposits] = useState([]);
   const [loans, setLoans] = useState([]);
   const [withdrawals, setWithdrawals] = useState([]);
@@ -72,19 +77,24 @@ const Dashboard = () => {
   const [withdrawalReason, setWithdrawalReason] = useState('');
   const [newGroupBalance, setNewGroupBalance] = useState('');
   const [balanceReason, setBalanceReason] = useState('');
+  const [pettyCashAmount, setPettyCashAmount] = useState('');
+  const [pettyCashDescription, setPettyCashDescription] = useState('');
+  const [pettyCashCategory, setPettyCashCategory] = useState('general');
 
   // Dialog states
   const [depositDialogOpen, setDepositDialogOpen] = useState(false);
   const [loanDialogOpen, setLoanDialogOpen] = useState(false);
   const [withdrawalDialogOpen, setWithdrawalDialogOpen] = useState(false);
   const [balanceDialogOpen, setBalanceDialogOpen] = useState(false);
+  const [pettyCashDialogOpen, setPettyCashDialogOpen] = useState(false);
 
   const fetchData = async () => {
     try {
       const headers = getAuthHeaders();
-      const [statsRes, rulesRes, depositsRes, loansRes, withdrawalsRes, membersRes] = await Promise.all([
+      const [statsRes, rulesRes, financialsRes, depositsRes, loansRes, withdrawalsRes, membersRes] = await Promise.all([
         axios.get(`${API_URL}/api/stats/group`, { headers }),
         axios.get(`${API_URL}/api/stats/rules`, { headers }),
+        axios.get(`${API_URL}/api/stats/financial`, { headers }),
         axios.get(`${API_URL}/api/deposits`, { headers }),
         axios.get(`${API_URL}/api/loans`, { headers }),
         axios.get(`${API_URL}/api/withdrawals`, { headers }),
@@ -92,6 +102,7 @@ const Dashboard = () => {
       ]);
       setStats(statsRes.data);
       setRules(rulesRes.data);
+      setFinancials(financialsRes.data);
       setDeposits(depositsRes.data);
       setLoans(loansRes.data);
       setWithdrawals(withdrawalsRes.data);
@@ -197,6 +208,40 @@ const Dashboard = () => {
     }
   };
 
+  const handleAddPettyCash = async (e) => {
+    e.preventDefault();
+    try {
+      await axios.post(
+        `${API_URL}/api/petty-cash/add`,
+        { 
+          amount: parseFloat(pettyCashAmount), 
+          description: pettyCashDescription,
+          category: pettyCashCategory
+        },
+        { headers: getAuthHeaders() }
+      );
+      toast.success('Petty cash expense added');
+      setPettyCashDialogOpen(false);
+      setPettyCashAmount('');
+      setPettyCashDescription('');
+      setPettyCashCategory('general');
+      fetchData();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Failed to add petty cash');
+    }
+  };
+
+  const handleDeletePettyCash = async (entryId) => {
+    if (!window.confirm('Delete this petty cash entry?')) return;
+    try {
+      await axios.delete(`${API_URL}/api/petty-cash/${entryId}`, { headers: getAuthHeaders() });
+      toast.success('Petty cash entry deleted');
+      fetchData();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Failed to delete entry');
+    }
+  };
+
   const handleApproveTransaction = async (type, id, approved) => {
     try {
       await axios.post(
@@ -290,6 +335,7 @@ const Dashboard = () => {
 
   const navItems = [
     { id: 'overview', label: 'Overview', icon: Wallet },
+    { id: 'financials', label: 'Financials', icon: BarChart3 },
     { id: 'deposits', label: 'Deposits', icon: TrendingUp },
     { id: 'loans', label: 'Loans', icon: CreditCard },
     { id: 'withdrawals', label: 'Withdrawals', icon: TrendingDown },
@@ -996,6 +1042,270 @@ const Dashboard = () => {
                 </Card>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* Financials Tab */}
+        {activeTab === 'financials' && (
+          <div className="space-y-6 animate-fade-in" data-testid="financials-tab">
+            <div className="flex items-center justify-between">
+              <h2 className="text-2xl font-bold font-['Manrope'] text-[#1E231F]">Group Financials</h2>
+              {isAdmin && (
+                <Dialog open={pettyCashDialogOpen} onOpenChange={setPettyCashDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button className="bg-[#D48C70] hover:bg-[#BD7B60] rounded-full">
+                      <Plus className="w-4 h-4 mr-2" />
+                      Add Petty Cash
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                      <DialogTitle className="text-[#1E231F]">Add Petty Cash Expense</DialogTitle>
+                      <DialogDescription className="text-[#5C665D]">
+                        Record group expenses (stationary, transport, etc.)
+                      </DialogDescription>
+                    </DialogHeader>
+                    <form onSubmit={handleAddPettyCash} className="space-y-4 mt-4">
+                      <div className="space-y-2">
+                        <Label className="text-[#1E231F]">Amount (UGX)</Label>
+                        <Input
+                          type="number"
+                          value={pettyCashAmount}
+                          onChange={(e) => setPettyCashAmount(e.target.value)}
+                          placeholder="5000"
+                          required
+                          min="1"
+                          className="bg-white border-[#E8EBE8] text-[#1E231F]"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-[#1E231F]">Category</Label>
+                        <Select value={pettyCashCategory} onValueChange={setPettyCashCategory}>
+                          <SelectTrigger className="bg-white">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="general">General</SelectItem>
+                            <SelectItem value="transport">Transport</SelectItem>
+                            <SelectItem value="stationary">Stationary</SelectItem>
+                            <SelectItem value="refreshments">Refreshments</SelectItem>
+                            <SelectItem value="communication">Communication</SelectItem>
+                            <SelectItem value="other">Other</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-[#1E231F]">Description</Label>
+                        <Textarea
+                          value={pettyCashDescription}
+                          onChange={(e) => setPettyCashDescription(e.target.value)}
+                          placeholder="What was the expense for?"
+                          required
+                          className="bg-white border-[#E8EBE8] text-[#1E231F]"
+                        />
+                      </div>
+                      <Button type="submit" className="w-full bg-[#D48C70] hover:bg-[#BD7B60] rounded-full">
+                        Add Expense
+                      </Button>
+                    </form>
+                  </DialogContent>
+                </Dialog>
+              )}
+            </div>
+
+            {/* Total Group Balance Card */}
+            <Card className="bg-[#2C5530] border-none shadow-lg">
+              <CardContent className="p-6">
+                <div className="text-center">
+                  <p className="text-white/70 text-sm font-medium uppercase tracking-wide">Total Group Balance</p>
+                  <p className="text-5xl font-extrabold text-white font-numbers mt-2">
+                    {formatCurrency(financials?.total_group_balance)}
+                  </p>
+                  <p className="text-white/70 text-sm mt-2">
+                    Auto-calculated from all sources
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Financial Breakdown */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+              <Card className="bg-white border border-[#E8EBE8] shadow-sm">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-[#347242]/10 rounded-full flex items-center justify-center">
+                      <PiggyBank className="w-5 h-5 text-[#347242]" />
+                    </div>
+                    <div>
+                      <p className="text-xs text-[#5C665D]">Member Savings</p>
+                      <p className="text-lg font-bold text-[#347242] font-numbers">
+                        {formatCurrency(financials?.total_savings)}
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-white border border-[#E8EBE8] shadow-sm">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-[#2C5530]/10 rounded-full flex items-center justify-center">
+                      <TrendingUp className="w-5 h-5 text-[#2C5530]" />
+                    </div>
+                    <div>
+                      <p className="text-xs text-[#5C665D]">Development Fund</p>
+                      <p className="text-lg font-bold text-[#2C5530] font-numbers">
+                        {formatCurrency(financials?.total_development_fund)}
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-white border border-[#E8EBE8] shadow-sm">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-[#D48C70]/10 rounded-full flex items-center justify-center">
+                      <Percent className="w-5 h-5 text-[#D48C70]" />
+                    </div>
+                    <div>
+                      <p className="text-xs text-[#5C665D]">Loan Interest</p>
+                      <p className="text-lg font-bold text-[#D48C70] font-numbers">
+                        {formatCurrency(financials?.total_interest_earned)}
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-white border border-[#E8EBE8] shadow-sm">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-[#E8B25C]/10 rounded-full flex items-center justify-center">
+                      <Clock className="w-5 h-5 text-[#E8B25C]" />
+                    </div>
+                    <div>
+                      <p className="text-xs text-[#5C665D]">Late Fees</p>
+                      <p className="text-lg font-bold text-[#E8B25C] font-numbers">
+                        {formatCurrency(financials?.total_late_fees)}
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-white border border-[#E8EBE8] shadow-sm">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-[#D05A49]/10 rounded-full flex items-center justify-center">
+                      <Receipt className="w-5 h-5 text-[#D05A49]" />
+                    </div>
+                    <div>
+                      <p className="text-xs text-[#5C665D]">Petty Cash Used</p>
+                      <p className="text-lg font-bold text-[#D05A49] font-numbers">
+                        -{formatCurrency(financials?.total_petty_cash_used)}
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Loans Summary */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Card className="bg-white border border-[#E8EBE8] shadow-sm">
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-[#5C665D]">Active Loans</p>
+                      <p className="text-2xl font-bold text-[#D48C70] font-numbers">
+                        {formatCurrency(financials?.active_loans_amount)}
+                      </p>
+                      <p className="text-xs text-[#5C665D]">{financials?.active_loans_count || 0} loans</p>
+                    </div>
+                    <CreditCard className="w-10 h-10 text-[#D48C70]/30" />
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-white border border-[#E8EBE8] shadow-sm">
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-[#5C665D]">Repaid Loans</p>
+                      <p className="text-2xl font-bold text-[#347242] font-numbers">
+                        {formatCurrency(financials?.repaid_loans_amount)}
+                      </p>
+                      <p className="text-xs text-[#5C665D]">{financials?.repaid_loans_count || 0} loans</p>
+                    </div>
+                    <CheckCircle className="w-10 h-10 text-[#347242]/30" />
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-white border border-[#E8EBE8] shadow-sm">
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-[#5C665D]">Total Withdrawals</p>
+                      <p className="text-2xl font-bold text-[#5C665D] font-numbers">
+                        {formatCurrency(financials?.total_withdrawals)}
+                      </p>
+                      <p className="text-xs text-[#5C665D]">Approved</p>
+                    </div>
+                    <ArrowDownRight className="w-10 h-10 text-[#5C665D]/30" />
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Petty Cash History */}
+            <Card className="bg-white border border-[#E8EBE8] shadow-sm">
+              <CardHeader>
+                <CardTitle className="font-['Manrope'] text-[#1E231F] flex items-center gap-2">
+                  <Receipt className="w-5 h-5 text-[#D48C70]" />
+                  Petty Cash Expenses
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {financials?.petty_cash_items?.length > 0 ? (
+                  <div className="space-y-3">
+                    {financials.petty_cash_items.map((item) => (
+                      <div key={item.id} className="flex items-center justify-between p-3 bg-[#FAFAF8] rounded-xl">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 bg-[#D05A49]/10 rounded-full flex items-center justify-center">
+                            <Receipt className="w-5 h-5 text-[#D05A49]" />
+                          </div>
+                          <div>
+                            <p className="font-medium text-[#1E231F]">{item.description}</p>
+                            <p className="text-xs text-[#5C665D]">
+                              {item.category} • {item.added_by_name} • {new Date(item.created_at).toLocaleDateString()}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="font-semibold text-[#D05A49] font-numbers">
+                            -{formatCurrency(item.amount)}
+                          </span>
+                          {isSuperAdmin && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleDeletePettyCash(item.id)}
+                              className="text-[#D05A49] hover:bg-[#D05A49]/10"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-center text-[#5C665D] py-8">No petty cash expenses recorded</p>
+                )}
+              </CardContent>
+            </Card>
           </div>
         )}
 
