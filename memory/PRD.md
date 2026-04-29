@@ -1,198 +1,124 @@
-# Group Cash Hub - Product Requirements Document
+# Class One Savings - Group Cash Hub PRD
 
 ## Original Problem Statement
-Create a web app for group managing cash with a super admin who can add other admin and he is the only one who can delete other users. Users save money every month, UGX 55,000 for premium and anyone below 55,000 is ordinary member and is not eligible to take loan. User can see a list of all members. Show total balance collected throughout the year. When user deposits money they are approved by the admin. The web app uses Google Sheets for storage and database. User can request withdrawal and can take loan of UGX 600,000 maximum if you're a premium member.
+Web app for managing group cash with a Super Admin who can add other admins and delete users. Members save UGX 55,000/month (ordinary) and become eligible for loans up to UGX 600,000 (premium). System tracks total group balance, deposits, loans, withdrawals. Deployed as single service on Render with MongoDB Atlas.
 
 ## User Personas
 
 ### Super Admin
-- Can add/remove admins
-- Can delete any user (except themselves)
-- Can change user roles (member ↔ admin)
-- Can change membership types (ordinary ↔ premium)
-- Full access to all features
+- Add/remove admins, delete any user (except self)
+- Change user roles (member ↔ admin) and memberships (ordinary ↔ premium)
+- Edit total group balance (year-end reset)
+- Delete petty cash entries
 
 ### Admin
-- Can approve/reject deposits, loans, withdrawals
-- Can change membership types
-- Can view all members and transactions
-- Cannot delete users or manage admin roles
+- Approve/reject deposits, loans, withdrawals
+- Add petty cash expenses
+- View all members and transactions
 
-### Premium Member
-- Can request deposits
-- Can request loans (up to UGX 600,000)
-- Can request withdrawals
-- Can view own transactions and member list
+### Premium Member (savings ≥ UGX 55,000)
+- Request deposits, loans (max UGX 600,000), withdrawals
+- Serve as guarantor (max 2 active guarantees)
 
-### Ordinary Member
-- Can request deposits
-- Can request withdrawals
-- Cannot request loans
-- Can view own transactions and member list
+### Ordinary Member (savings < UGX 55,000)
+- Request deposits and withdrawals (no loans)
 
-## Core Requirements
+## Business Rules (Implemented Feb 2026)
 
-### Authentication
-- [x] Email/password registration
-- [x] JWT-based authentication
-- [x] Role-based access control
-- [x] Super Admin seeded on startup
+1. **Monthly Savings**: UGX 55,000 due 1st–10th of month
+2. **Late Fee**: UGX 3,000 × position after 10th (stops applying at 20th)
+3. **Development Fee**: UGX 3,000/month (non-withdrawable unless leaving group)
+4. **Loan Interest**:
+   - 3% per month for first 4 months
+   - 5% per month beyond 4 months
+5. **Loan Guarantors**: Each loan needs 1 guarantor; each member can guarantee max 2 active loans
+6. **Max Loan**: UGX 600,000 (premium members only)
+7. **Withdrawal to Leave Group**: Requires 2-month notice, no active loans, not guaranteeing any loan
+8. **Regular Withdrawal**: Only from savings; development fund cannot be withdrawn unless leaving
+9. **Committee Appreciation**: UGX 2,000/member (constant tracked)
+10. **Year-End Sharing**: 2026-12-20
 
-### Financial Transactions
-- [x] Deposit requests with admin approval
-- [x] Loan requests (premium only, max 600,000 UGX)
-- [x] Withdrawal requests with admin approval
-- [x] Currency display with commas (UGX format)
+## Implemented Features
 
-### Member Management
-- [x] View all members
-- [x] Premium/Ordinary status badges
-- [x] Super Admin: change roles
-- [x] Super Admin: change membership types
-- [x] Super Admin: delete members
+### Backend (FastAPI + MongoDB)
+- JWT auth with role-based access (super_admin / admin / member)
+- Super Admin seeded on startup from ADMIN_EMAIL/ADMIN_PASSWORD env
+- Endpoints: deposits, loans (with interest calculation), withdrawals, leaving requests, petty cash CRUD
+- Auto-calculated group balance: savings + dev fund + interest + late fees − petty cash
+- Auto-promotion to premium when savings ≥ UGX 55,000
 
-### Dashboard
-- [x] Total group balance
-- [x] Personal savings
-- [x] Active loans overview
-- [x] Recent activity
-- [x] Quick action buttons
+### Frontend (React + Tailwind + Shadcn)
+- Login / Register pages
+- Dashboard tabs: Overview, Financials, Deposits, Loans, Withdrawals, Members, Rules, Admin
+- Financials tab: total balance card + breakdown (savings, dev fund, interest, late fees, petty cash) + active/repaid loans + petty cash history with delete
+- Admin badges hidden from non-super-admin users in member list
+- Custom dialog/select popup styling for visibility
 
-### Data Storage
-- [x] MongoDB for primary storage
-- [x] Google Sheets sync for transparency
-
-## What's Been Implemented (Jan 2026)
-
-### Backend (FastAPI)
-- User authentication with JWT tokens
-- All CRUD endpoints for deposits, loans, withdrawals
-- Admin approval workflows
-- Google Sheets sync integration
-- Role-based middleware
-
-### Frontend (React)
-- Login/Registration pages
-- Dashboard with stats cards
-- Transaction management (deposits, loans, withdrawals)
-- Members list view
-- Admin panel with approval queues
-- Super Admin member management
-- Responsive design with Tailwind CSS
-
-## Technical Architecture
-
-### Backend Stack
-- FastAPI (Python)
-- MongoDB (Motor async driver)
-- JWT authentication (PyJWT)
-- bcrypt password hashing
-- gspread for Google Sheets
-
-### Frontend Stack
-- React 19
-- Tailwind CSS
-- Shadcn/UI components
-- React Router
-- Axios for API calls
-- Sonner for toasts
-
-## Prioritized Backlog
-
-### P0 - Critical (Done)
-- ✅ Authentication system
-- ✅ Deposit/Loan/Withdrawal flows
-- ✅ Admin approval system
-- ✅ Member management
-
-### P1 - Important (Future)
-- Monthly contribution tracking
-- Transaction history export
-- Email notifications for approvals
-- Dashboard analytics/charts
-
-### P2 - Nice to Have (Future)
-- Mobile app
-- SMS notifications
-- Interest calculation on loans
-- Scheduled auto-deposits
-
-## Test Credentials
-
-- **Super Admin**: superadmin@savingsgroup.com / SuperAdmin@123
+### Deployment
+- Single-service Render deployment (FastAPI serves built React static files)
+- `render.yaml`, `build.sh`, `RENDER_DEPLOYMENT.md`
+- MongoDB Atlas for production (local MongoDB for preview — port 27017 blocked outbound)
 
 ## API Endpoints
 
 ### Auth
-- POST /api/auth/register
-- POST /api/auth/login
+- POST /api/auth/register, /api/auth/login, /api/auth/logout
 - GET /api/auth/me
-- POST /api/auth/logout
 
 ### Members
-- GET /api/members
-- GET /api/members/{id}
-- DELETE /api/members/{id}
+- GET /api/members, /api/members/{id}
+- DELETE /api/members/{id} (super_admin)
+
+### Admin Management
+- POST /api/admin/set-role (super_admin)
+- POST /api/admin/set-membership (admin)
+- POST /api/admin/update-group-balance (super_admin)
 
 ### Transactions
-- POST /api/deposits/request
-- GET /api/deposits
-- POST /api/deposits/approve
-- POST /api/loans/request
-- GET /api/loans
-- POST /api/loans/approve
-- POST /api/loans/{id}/repay
-- POST /api/withdrawals/request
-- GET /api/withdrawals
-- POST /api/withdrawals/approve
+- POST /api/deposits/request, GET /api/deposits, POST /api/deposits/approve
+- POST /api/loans/request, GET /api/loans, POST /api/loans/approve, POST /api/loans/{id}/repay
+- POST /api/withdrawals/request, GET /api/withdrawals, POST /api/withdrawals/approve
 
-### Admin
-- POST /api/admin/set-role
-- POST /api/admin/set-membership
+### Leaving Group
+- POST /api/leaving/request, GET /api/leaving/status
 
-### Stats
-- GET /api/stats/group
+### Financials / Petty Cash
+- GET /api/stats/group, /api/stats/financial, /api/stats/rules
+- POST /api/petty-cash/add (admin), GET /api/petty-cash, DELETE /api/petty-cash/{id} (super_admin)
 
-## Next Steps
-1. Add monthly contribution tracking
-2. Implement email notifications
-3. Add transaction export to CSV
+## DB Schema (MongoDB)
+- users: email, password_hash, name, phone, role, membership_type, total_savings, development_fund, total_late_fees, guarantees_given, leaving_requested
+- deposits: user_id, amount, deposit_type (savings/development_fee), late_fee, status, month
+- loans: user_id, amount, interest_rate, guarantor_id, status, repaid, amount_repaid, due_date
+- withdrawals: user_id, amount, withdrawal_type (savings/leaving_group), status
+- leaving_requests: user_id, can_leave_after, status
+- petty_cash: amount, description, category, added_by
+- settings: key='group_balance', value
 
----
+## Test Credentials
+- Super Admin: superadmin@savingsgroup.com / SuperAdmin@123
 
-## Update: Enhanced Google Sheets Auto-Sync (Jan 2026)
+## Tech Stack
+- Backend: FastAPI, Motor (MongoDB async), PyJWT, bcrypt
+- Frontend: React 19, Tailwind, Shadcn/UI, React Router, Axios, Sonner
+- Deployment: Render single-service, MongoDB Atlas
 
-### New Features Added
+## Changelog
+- **Feb 2026**: Smoke-test verified Financials tab, petty cash flow, login, and stats endpoints (PRD synced; no bugs found).
+- **Feb 2026**: Added Financials tab + petty cash CRUD; full business rules overhaul (late fees, 3%/5% interest, guarantor limits, dev fee, 2-month leaving notice).
+- **Jan 2026**: Removed Google Sheets sync; migrated to single-service Render deployment.
+- **Jan 2026**: Initial MVP — auth, deposits, loans, withdrawals, member management.
 
-1. **Auto-Column Detection**: When new data fields are added to any collection, the system automatically adds new columns to the corresponding Google Sheet
+## Backlog
 
-2. **Sheet Registry**: Centralized configuration for all sheet types with predefined column orders and exclusion rules
+### P1
+- Monthly contribution tracking UI (which members have paid this month)
+- CSV export of transactions
+- Email notifications for approval events (Resend/SendGrid)
+- Year-end auto share-out calculation
 
-3. **Activity Logging**: All admin actions are logged to both MongoDB and a dedicated Activity_Log sheet
-
-4. **Group Stats Tracking**: Automatic snapshots of group statistics appended to Group_Stats sheet
-
-5. **Admin Sync Controls**:
-   - "Sync to Google Sheets" button in Admin Panel
-   - Google Sheets connection status display
-   - Setup instructions when permissions need configuration
-
-### Registered Sheets
-- Members (users collection)
-- Deposits
-- Loans
-- Withdrawals
-- Activity_Log
-- Group_Stats (computed snapshots)
-
-### API Endpoints Added
-- POST /api/admin/sync-sheets - Trigger full sync
-- GET /api/admin/sheets-status - Check connection status
-- POST /api/admin/create-sheet - Create new worksheet
-- POST /api/admin/sync-collection - Sync specific collection
-- POST /api/data/add-entry - Add custom data entry
-
-### Setup Required
-The Google Spreadsheet must be shared with the service account:
-`class-one-savings-group@awesome-habitat-374402.iam.gserviceaccount.com`
-as an Editor for sync to work.
+### P2
+- SMS notifications (Twilio)
+- Dashboard analytics charts (trends over months)
+- Scheduled auto-deposits
+- Refactor Dashboard.js (1610 lines) into per-tab components
