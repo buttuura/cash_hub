@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../co
 import { AlertCircle, Users, ArrowRight } from 'lucide-react';
 
 const LoginPage = () => {
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -21,7 +21,7 @@ const LoginPage = () => {
     setLoading(true);
 
     try {
-      await login(email, password);
+      await login(identifier, password);
       navigate('/dashboard');
     } catch (err) {
       setError(err.message || 'Login failed');
@@ -89,15 +89,15 @@ const LoginPage = () => {
               )}
 
               <div className="space-y-2">
-                <Label htmlFor="email" className="text-[#1E231F] font-medium">Email</Label>
+                <Label htmlFor="identifier" className="text-[#1E231F] font-medium">Phone Number <span className="text-[#5C665D] font-normal text-xs">(or email)</span></Label>
                 <Input
-                  id="email"
-                  type="email"
-                  placeholder="you@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  id="identifier"
+                  type="text"
+                  placeholder="0700000000"
+                  value={identifier}
+                  onChange={(e) => setIdentifier(e.target.value)}
                   required
-                  data-testid="login-email-input"
+                  data-testid="login-identifier-input"
                   className="h-11 border-[#E8EBE8] focus:ring-[#2C5530] focus:border-[#2C5530]"
                 />
               </div>

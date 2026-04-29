@@ -53,13 +53,13 @@ api_router = APIRouter(prefix="/api")
 # ==================== PYDANTIC MODELS ====================
 
 class UserCreate(BaseModel):
-    email: EmailStr
+    phone: str
     password: str
     name: str
-    phone: Optional[str] = None
+    email: Optional[EmailStr] = None
 
 class UserLogin(BaseModel):
-    email: EmailStr
+    identifier: str  # phone or email
     password: str
 
 class DepositRequest(BaseModel):
@@ -71,6 +71,11 @@ class LoanRequest(BaseModel):
     amount: float
     guarantor_id: str
     reason: Optional[str] = None
+
+class GuarantorApproval(BaseModel):
+    loan_id: str
+    approved: bool
+    notes: Optional[str] = None
 
 class WithdrawalRequest(BaseModel):
     amount: float
@@ -188,7 +193,7 @@ async def get_member_guarantee_count(member_id: str) -> int:
     """Count how many active loans this member is guaranteeing"""
     count = await db.loans.count_documents({
         "guarantor_id": member_id,
-        "status": {"$in": ["pending", "approved"]},
+        "status": {"$in": ["pending_guarantor", "pending_admin", "approved"]},
         "repaid": False
     })
     return count
@@ -207,7 +212,7 @@ async def check_can_leave_group(member_id: str) -> dict:
     # Check if guaranteeing anyone
     guaranteeing = await db.loans.find_one({
         "guarantor_id": member_id,
-        "status": {"$in": ["pending", "approved"]},
+        "status": {"$in": ["pending_guarantor", "pending_admin", "approved"]},
         "repaid": False
     })
     if guaranteeing:
@@ -233,17 +238,27 @@ async def check_can_leave_group(member_id: str) -> dict:
 
 @api_router.post("/auth/register")
 async def register(user_data: UserCreate):
-    email = user_data.email.lower()
+    phone = user_data.phone.strip()
+    if not phone:
+        raise HTTPException(status_code=400, detail="Phone number is required")
     
-    existing = await db.users.find_one({"email": email})
-    if existing:
-        raise HTTPException(status_code=400, detail="Email already registered")
+    email = user_data.email.lower() if user_data.email else None
+    
+    # Check phone uniqueness
+    existing_phone = await db.users.find_one({"phone": phone})
+    if existing_phone:
+        raise HTTPException(status_code=400, detail="Phone number already registered")
+    
+    # Check email uniqueness (if provided)
+    if email:
+        existing_email = await db.users.find_one({"email": email})
+        if existing_email:
+            raise HTTPException(status_code=400, detail="Email already registered")
     
     user_doc = {
-        "email": email,
+        "phone": phone,
         "password_hash": hash_password(user_data.password),
         "name": user_data.name,
-        "phone": user_data.phone,
         "role": "member",
         "membership_type": "ordinary",
         "total_savings": 0,
@@ -253,16 +268,19 @@ async def register(user_data: UserCreate):
         "leaving_requested": False,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
+    if email:
+        user_doc["email"] = email
     
     result = await db.users.insert_one(user_doc)
     user_id = str(result.inserted_id)
     
-    access_token = create_access_token(user_id, email)
+    access_token = create_access_token(user_id, email or phone)
     refresh_token = create_refresh_token(user_id)
     
     return {
         "id": user_id,
         "email": email,
+        "phone": phone,
         "name": user_data.name,
         "role": "member",
         "membership_type": "ordinary",
@@ -272,22 +290,27 @@ async def register(user_data: UserCreate):
 
 @api_router.post("/auth/login")
 async def login(credentials: UserLogin):
-    email = credentials.email.lower()
+    identifier = credentials.identifier.strip()
     
-    user = await db.users.find_one({"email": email})
+    # Try phone first, then email
+    user = await db.users.find_one({"phone": identifier})
     if not user:
-        raise HTTPException(status_code=401, detail="Invalid email or password")
+        user = await db.users.find_one({"email": identifier.lower()})
+    
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid phone/email or password")
     
     if not verify_password(credentials.password, user["password_hash"]):
-        raise HTTPException(status_code=401, detail="Invalid email or password")
+        raise HTTPException(status_code=401, detail="Invalid phone/email or password")
     
     user_id = str(user["_id"])
-    access_token = create_access_token(user_id, email)
+    access_token = create_access_token(user_id, user.get("email") or user.get("phone"))
     refresh_token = create_refresh_token(user_id)
     
     return {
         "id": user_id,
-        "email": user["email"],
+        "email": user.get("email"),
+        "phone": user.get("phone"),
         "name": user["name"],
         "role": user["role"],
         "membership_type": user.get("membership_type", "ordinary"),
@@ -523,11 +546,11 @@ async def request_loan(loan: LoanRequest, user: dict = Depends(get_current_user)
     # Check for existing active loan
     existing_loan = await db.loans.find_one({
         "user_id": user["id"],
-        "status": {"$in": ["pending", "approved"]},
+        "status": {"$in": ["pending_guarantor", "pending_admin", "approved"]},
         "repaid": False
     })
     if existing_loan:
-        raise HTTPException(status_code=400, detail="You already have an active loan")
+        raise HTTPException(status_code=400, detail="You already have an active or pending loan")
     
     # Validate guarantor
     if loan.guarantor_id == user["id"]:
@@ -542,16 +565,24 @@ async def request_loan(loan: LoanRequest, user: dict = Depends(get_current_user)
     if guarantee_count >= MAX_GUARANTEES_PER_MEMBER:
         raise HTTPException(status_code=400, detail=f"This member already guarantees {MAX_GUARANTEES_PER_MEMBER} loans")
     
+    # Auto-calculate interest and total due (first month 3%)
+    interest_amount = loan.amount * LOAN_INTEREST_NORMAL
+    total_due = loan.amount + interest_amount
+    
     loan_doc = {
         "user_id": user["id"],
         "user_name": user["name"],
-        "user_email": user["email"],
+        "user_email": user.get("email"),
         "amount": loan.amount,
         "interest_rate": LOAN_INTEREST_NORMAL,
+        "initial_interest": interest_amount,
+        "initial_total_due": total_due,
         "guarantor_id": loan.guarantor_id,
         "guarantor_name": guarantor["name"],
         "reason": loan.reason,
-        "status": "pending",
+        "status": "pending_guarantor",
+        "guarantor_approved": False,
+        "guarantor_approved_at": None,
         "repaid": False,
         "amount_repaid": 0,
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -565,6 +596,43 @@ async def request_loan(loan: LoanRequest, user: dict = Depends(get_current_user)
     loan_doc.pop("_id", None)
     
     return loan_doc
+
+@api_router.post("/loans/guarantor-approve")
+async def guarantor_approve_loan(approval: GuarantorApproval, user: dict = Depends(get_current_user)):
+    """Selected guarantor approves or rejects the loan request first, before admin"""
+    loan = await db.loans.find_one({"_id": ObjectId(approval.loan_id)})
+    if not loan:
+        raise HTTPException(status_code=404, detail="Loan not found")
+    
+    if loan.get("guarantor_id") != user["id"]:
+        raise HTTPException(status_code=403, detail="Only the selected guarantor can approve")
+    
+    if loan.get("status") != "pending_guarantor":
+        raise HTTPException(status_code=400, detail="Loan is not awaiting guarantor approval")
+    
+    if approval.approved:
+        new_status = "pending_admin"
+        update = {
+            "status": new_status,
+            "guarantor_approved": True,
+            "guarantor_approved_at": datetime.now(timezone.utc).isoformat(),
+            "guarantor_notes": approval.notes
+        }
+    else:
+        new_status = "rejected_by_guarantor"
+        update = {
+            "status": new_status,
+            "guarantor_approved": False,
+            "guarantor_approved_at": datetime.now(timezone.utc).isoformat(),
+            "guarantor_notes": approval.notes
+        }
+    
+    await db.loans.update_one(
+        {"_id": ObjectId(approval.loan_id)},
+        {"$set": update}
+    )
+    
+    return {"message": f"Loan {new_status.replace('_', ' ')}"}
 
 @api_router.get("/loans")
 async def get_loans(user: dict = Depends(get_current_user)):
@@ -584,7 +652,15 @@ async def get_loans(user: dict = Depends(get_current_user)):
         l["id"] = str(l["_id"])
         l.pop("_id", None)
         
-        # Calculate current interest
+        # For pending loans, surface initial interest/total if not present (backward-compat)
+        if l.get("status") in ["pending_guarantor", "pending_admin"]:
+            if not l.get("initial_interest"):
+                l["initial_interest"] = l["amount"] * LOAN_INTEREST_NORMAL
+                l["initial_total_due"] = l["amount"] + l["initial_interest"]
+            l["current_interest"] = l.get("initial_interest")
+            l["total_due"] = l.get("initial_total_due")
+        
+        # Calculate current interest for approved loans
         if l.get("status") == "approved" and not l.get("repaid"):
             approved_date = datetime.fromisoformat(l["approved_at"].replace('Z', '+00:00'))
             months_elapsed = max(1, (datetime.now(timezone.utc) - approved_date).days // 30)
@@ -601,7 +677,10 @@ async def approve_loan(approval: TransactionApproval, user: dict = Depends(requi
     if not loan:
         raise HTTPException(status_code=404, detail="Loan not found")
     
-    if loan["status"] != "pending":
+    # Admin can only act after guarantor approves
+    if loan["status"] != "pending_admin":
+        if loan["status"] == "pending_guarantor":
+            raise HTTPException(status_code=400, detail="Loan must be approved by guarantor first")
         raise HTTPException(status_code=400, detail="Loan already processed")
     
     new_status = "approved" if approval.approved else "rejected"
@@ -805,7 +884,7 @@ async def request_to_leave(data: LeavingRequest, user: dict = Depends(get_curren
     # Check if guaranteeing
     guaranteeing = await db.loans.find_one({
         "guarantor_id": user["id"],
-        "status": {"$in": ["pending", "approved"]},
+        "status": {"$in": ["pending_guarantor", "pending_admin", "approved"]},
         "repaid": False
     })
     if guaranteeing:
@@ -934,7 +1013,7 @@ async def get_group_stats(user: dict = Depends(get_current_user)):
     
     # Pending counts
     pending_deposits = await db.deposits.count_documents({"status": "pending"})
-    pending_loans = await db.loans.count_documents({"status": "pending"})
+    pending_loans = await db.loans.count_documents({"status": {"$in": ["pending_guarantor", "pending_admin"]}})
     pending_withdrawals = await db.withdrawals.count_documents({"status": "pending"})
     
     return {
@@ -1120,6 +1199,7 @@ async def get_group_rules():
 async def seed_super_admin():
     admin_email = os.environ.get("ADMIN_EMAIL", "superadmin@savingsgroup.com")
     admin_password = os.environ.get("ADMIN_PASSWORD", "SuperAdmin@123")
+    admin_phone = os.environ.get("ADMIN_PHONE", "0700000000")
     
     existing = await db.users.find_one({"email": admin_email})
     if existing is None:
@@ -1127,7 +1207,7 @@ async def seed_super_admin():
             "email": admin_email,
             "password_hash": hash_password(admin_password),
             "name": "Super Admin",
-            "phone": None,
+            "phone": admin_phone,
             "role": "super_admin",
             "membership_type": "premium",
             "total_savings": 0,
@@ -1137,11 +1217,14 @@ async def seed_super_admin():
             "leaving_requested": False,
             "created_at": datetime.now(timezone.utc).isoformat()
         })
-        logger.info(f"Super Admin created: {admin_email}")
+        logger.info(f"Super Admin created: {admin_email} / {admin_phone}")
     else:
+        update_fields = {"role": "super_admin", "membership_type": "premium"}
+        if not existing.get("phone"):
+            update_fields["phone"] = admin_phone
         await db.users.update_one(
             {"email": admin_email},
-            {"$set": {"role": "super_admin", "membership_type": "premium"}}
+            {"$set": update_fields}
         )
 
 # ==================== APP EVENTS ====================
@@ -1152,7 +1235,13 @@ async def startup_event():
         await client.admin.command('ping')
         logger.info("MongoDB connected successfully")
         
-        await db.users.create_index("email", unique=True)
+        # Drop old non-sparse email index if present, then recreate as sparse
+        try:
+            await db.users.drop_index("email_1")
+        except Exception:
+            pass
+        await db.users.create_index("email", unique=True, sparse=True)
+        await db.users.create_index("phone", unique=True, sparse=True)
         await db.deposits.create_index("user_id")
         await db.loans.create_index("user_id")
         await db.loans.create_index("guarantor_id")

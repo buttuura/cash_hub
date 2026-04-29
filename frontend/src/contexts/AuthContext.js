@@ -48,11 +48,11 @@ export const AuthProvider = ({ children }) => {
     checkAuth();
   }, [checkAuth]);
 
-  const login = async (email, password) => {
+  const login = async (identifier, password) => {
     setError(null);
     try {
       const response = await axios.post(`${API_URL}/api/auth/login`, {
-        email,
+        identifier,
         password,
       });
       const { access_token, refresh_token, ...userData } = response.data;
@@ -70,15 +70,12 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const register = async (name, email, password, phone) => {
+  const register = async (name, phone, password, email) => {
     setError(null);
     try {
-      const response = await axios.post(`${API_URL}/api/auth/register`, {
-        name,
-        email,
-        password,
-        phone: phone || null,
-      });
+      const payload = { name, phone, password };
+      if (email) payload.email = email;
+      const response = await axios.post(`${API_URL}/api/auth/register`, payload);
       const { access_token, refresh_token, ...userData } = response.data;
       localStorage.setItem('access_token', access_token);
       localStorage.setItem('refresh_token', refresh_token);

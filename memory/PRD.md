@@ -96,7 +96,7 @@ Web app for managing group cash with a Super Admin who can add other admins and 
 - settings: key='group_balance', value
 
 ## Test Credentials
-- Super Admin: superadmin@savingsgroup.com / SuperAdmin@123
+- Super Admin: superadmin@savingsgroup.com  **or phone** `0700000000` / SuperAdmin@123
 
 ## Tech Stack
 - Backend: FastAPI, Motor (MongoDB async), PyJWT, bcrypt

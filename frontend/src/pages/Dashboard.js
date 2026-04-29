@@ -312,23 +312,51 @@ const Dashboard = () => {
     }
   };
 
+  const handleGuarantorApproval = async (loanId, approved) => {
+    const action = approved ? 'approve' : 'reject';
+    if (!window.confirm(`Are you sure you want to ${action} this loan as guarantor?`)) return;
+    try {
+      await axios.post(
+        `${API_URL}/api/loans/guarantor-approve`,
+        { loan_id: loanId, approved },
+        { headers: getAuthHeaders() }
+      );
+      toast.success(approved ? 'Loan approved — sent to admin for final approval' : 'Loan rejected');
+      fetchData();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Failed to process guarantor approval');
+    }
+  };
+
   const getStatusBadge = (status) => {
     const styles = {
+      pending_guarantor: 'bg-[#E8B25C]/20 text-[#E8B25C] border-[#E8B25C]/30',
+      pending_admin: 'bg-[#D48C70]/20 text-[#D48C70] border-[#D48C70]/30',
       pending: 'bg-[#E8B25C]/20 text-[#E8B25C] border-[#E8B25C]/30',
       approved: 'bg-[#347242]/20 text-[#347242] border-[#347242]/30',
       rejected: 'bg-[#D05A49]/20 text-[#D05A49] border-[#D05A49]/30',
+      rejected_by_guarantor: 'bg-[#D05A49]/20 text-[#D05A49] border-[#D05A49]/30',
       repaid: 'bg-[#2C5530]/20 text-[#2C5530] border-[#2C5530]/30',
     };
     const icons = {
+      pending_guarantor: <Clock className="w-3 h-3" />,
+      pending_admin: <Clock className="w-3 h-3" />,
       pending: <Clock className="w-3 h-3" />,
       approved: <CheckCircle className="w-3 h-3" />,
       rejected: <XCircle className="w-3 h-3" />,
+      rejected_by_guarantor: <XCircle className="w-3 h-3" />,
       repaid: <CheckCircle className="w-3 h-3" />,
     };
+    const labels = {
+      pending_guarantor: 'Awaiting Guarantor',
+      pending_admin: 'Awaiting Admin',
+      rejected_by_guarantor: 'Rejected by Guarantor',
+    };
+    const label = labels[status] || (status ? status.charAt(0).toUpperCase() + status.slice(1) : '');
     return (
-      <Badge className={`${styles[status]} flex items-center gap-1 border`}>
-        {icons[status]}
-        {status.charAt(0).toUpperCase() + status.slice(1)}
+      <Badge className={`${styles[status] || styles.pending} flex items-center gap-1 border`}>
+        {icons[status] || icons.pending}
+        {label}
       </Badge>
     );
   };
@@ -347,11 +375,15 @@ const Dashboard = () => {
     navItems.push({ id: 'admin', label: 'Admin', icon: Shield });
   }
 
-  // Get eligible guarantors (members who can still guarantee)
+  // Get eligible guarantors: any member except self, under the guarantee limit
   const eligibleGuarantors = members.filter(m => 
     m.id !== user?.id && 
-    (m.guarantees_given || 0) < 2 &&
-    m.membership_type === 'premium'
+    (m.guarantees_given || 0) < 2
+  );
+
+  // Loans where current user is the selected guarantor and awaiting their approval
+  const pendingGuarantorLoans = loans.filter(l => 
+    l.guarantor_id === user?.id && l.status === 'pending_guarantor'
   );
 
   if (loading) {
@@ -665,8 +697,8 @@ const Dashboard = () => {
                     <div className="space-y-2">
                       <Label>Select Guarantor</Label>
                       <Select value={loanGuarantor} onValueChange={setLoanGuarantor}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Choose a guarantor" />
+                        <SelectTrigger data-testid="loan-guarantor-select">
+                          <SelectValue placeholder="Choose any group member" />
                         </SelectTrigger>
                         <SelectContent>
                           {eligibleGuarantors.map((m) => (
@@ -676,7 +708,7 @@ const Dashboard = () => {
                           ))}
                         </SelectContent>
                       </Select>
-                      <p className="text-xs text-[#5C665D]">Each member can guarantee max 2 loans</p>
+                      <p className="text-xs text-[#5C665D]">Any group member can guarantee. They must approve before admin.</p>
                     </div>
                     <div className="space-y-2">
                       <Label>Reason</Label>
@@ -686,9 +718,16 @@ const Dashboard = () => {
                         placeholder="Reason for loan..."
                       />
                     </div>
+                    {loanAmount && parseFloat(loanAmount) > 0 && (
+                      <div className="p-3 bg-[#2C5530]/10 rounded-lg text-sm text-[#1E231F] space-y-1">
+                        <div className="flex justify-between"><span>Loan Amount:</span><span className="font-semibold">{formatCurrency(parseFloat(loanAmount))}</span></div>
+                        <div className="flex justify-between"><span>Interest (3%):</span><span className="font-semibold">{formatCurrency(parseFloat(loanAmount) * 0.03)}</span></div>
+                        <div className="flex justify-between border-t border-[#2C5530]/20 pt-1 mt-1"><span className="font-bold">Total Due:</span><span className="font-bold text-[#2C5530]">{formatCurrency(parseFloat(loanAmount) * 1.03)}</span></div>
+                      </div>
+                    )}
                     <div className="p-3 bg-[#E8B25C]/10 rounded-lg text-sm text-[#5C665D]">
                       <Percent className="w-4 h-4 inline mr-2 text-[#E8B25C]" />
-                      Return within 4 months at 3% interest. Beyond 4 months: 5%
+                      Return within 4 months at 3% interest/month. Beyond 4 months: 5%/month.
                     </div>
                     <Button type="submit" className="w-full bg-[#D48C70] hover:bg-[#BD7B60] rounded-full">
                       Submit Request
@@ -872,6 +911,56 @@ const Dashboard = () => {
                 </Dialog>
               )}
             </div>
+
+            {/* Loans awaiting MY guarantor approval */}
+            {pendingGuarantorLoans.length > 0 && (
+              <Card className="bg-[#D48C70]/10 border border-[#D48C70]/30" data-testid="guarantor-pending-section">
+                <CardHeader>
+                  <CardTitle className="text-[#1E231F] flex items-center gap-2 text-lg">
+                    <UserCheck className="w-5 h-5 text-[#D48C70]" />
+                    Awaiting Your Guarantor Approval
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {pendingGuarantorLoans.map((l) => (
+                    <div key={l.id} className="bg-white p-4 rounded-xl border border-[#E8EBE8]">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <p className="font-semibold text-[#1E231F]">{l.user_name}</p>
+                          <p className="text-sm text-[#5C665D]">
+                            Amount: <span className="font-bold text-[#D48C70]">{formatCurrency(l.amount)}</span>
+                            {' • '}
+                            Total Due: <span className="font-bold">{formatCurrency(l.total_due || l.initial_total_due || l.amount * 1.03)}</span>
+                          </p>
+                          {l.reason && <p className="text-xs text-[#5C665D] mt-1 italic">"{l.reason}"</p>}
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            onClick={() => handleGuarantorApproval(l.id, true)}
+                            data-testid={`guarantor-approve-${l.id}`}
+                            className="bg-[#347242] hover:bg-[#2C5530] rounded-full"
+                          >
+                            <CheckCircle className="w-4 h-4 mr-1" />
+                            Approve
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={() => handleGuarantorApproval(l.id, false)}
+                            data-testid={`guarantor-reject-${l.id}`}
+                            variant="outline"
+                            className="border-[#D05A49] text-[#D05A49] hover:bg-[#D05A49]/10 rounded-full"
+                          >
+                            <XCircle className="w-4 h-4 mr-1" />
+                            Reject
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            )}
 
             {!isPremium && (
               <Card className="bg-[#E8B25C]/10 border border-[#E8B25C]/30">
@@ -1406,24 +1495,28 @@ const Dashboard = () => {
                 </CardContent>
               </Card>
 
-              {/* Pending Loans */}
+              {/* Pending Loans - awaiting admin (after guarantor approved) */}
               <Card className="bg-white border border-[#E8EBE8] shadow-sm">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-lg font-['Manrope'] text-[#1E231F] flex items-center gap-2">
                     <CreditCard className="w-5 h-5 text-[#D48C70]" />
-                    Pending Loans ({stats?.pending_loans || 0})
+                    Pending Loans ({loans.filter(l => l.status === 'pending_admin').length})
                   </CardTitle>
+                  <p className="text-xs text-[#5C665D]">Only loans already approved by guarantor appear here</p>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  {loans.filter(l => l.status === 'pending').map((l) => (
+                  {loans.filter(l => l.status === 'pending_admin').map((l) => (
                     <div key={l.id} className="p-3 bg-[#FAFAF8] rounded-xl">
                       <div className="flex items-center justify-between mb-2">
                         <span className="font-medium text-[#1E231F]">{l.user_name}</span>
                         <span className="font-semibold text-[#D48C70] font-numbers">{formatCurrency(l.amount)}</span>
                       </div>
-                      <p className="text-xs text-[#5C665D] mb-2">
+                      <p className="text-xs text-[#5C665D] mb-1">
                         <UserCheck className="w-3 h-3 inline mr-1" />
-                        Guarantor: {l.guarantor_name}
+                        Guarantor: {l.guarantor_name} <span className="text-[#347242]">(approved)</span>
+                      </p>
+                      <p className="text-xs text-[#5C665D] mb-2">
+                        Total Due: <span className="font-semibold text-[#1E231F]">{formatCurrency(l.total_due || l.initial_total_due || l.amount * 1.03)}</span>
                       </p>
                       <div className="flex gap-2">
                         <Button
@@ -1444,7 +1537,7 @@ const Dashboard = () => {
                       </div>
                     </div>
                   ))}
-                  {loans.filter(l => l.status === 'pending').length === 0 && (
+                  {loans.filter(l => l.status === 'pending_admin').length === 0 && (
                     <p className="text-center text-[#5C665D] py-4 text-sm">No pending loans</p>
                   )}
                 </CardContent>

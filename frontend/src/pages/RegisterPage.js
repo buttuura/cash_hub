@@ -27,6 +27,11 @@ const RegisterPage = () => {
       return;
     }
 
+    if (!phone || phone.trim().length < 7) {
+      setError('Phone number is required');
+      return;
+    }
+
     if (password.length < 6) {
       setError('Password must be at least 6 characters');
       return;
@@ -35,7 +40,7 @@ const RegisterPage = () => {
     setLoading(true);
 
     try {
-      await register(name, email, password, phone);
+      await register(name, phone.trim(), password, email.trim() || null);
       navigate('/dashboard');
     } catch (err) {
       setError(err.message || 'Registration failed');
@@ -117,28 +122,28 @@ const RegisterPage = () => {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="email" className="text-[#1E231F] font-medium">Email</Label>
+                <Label htmlFor="phone" className="text-[#1E231F] font-medium">Phone Number <span className="text-[#D05A49]">*</span></Label>
+                <Input
+                  id="phone"
+                  type="tel"
+                  placeholder="0700000000"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  required
+                  data-testid="register-phone-input"
+                  className="h-11 border-[#E8EBE8] focus:ring-[#2C5530] focus:border-[#2C5530]"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="email" className="text-[#1E231F] font-medium">Email <span className="text-[#5C665D] font-normal text-xs">(optional)</span></Label>
                 <Input
                   id="email"
                   type="email"
                   placeholder="you@example.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  required
                   data-testid="register-email-input"
-                  className="h-11 border-[#E8EBE8] focus:ring-[#2C5530] focus:border-[#2C5530]"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="phone" className="text-[#1E231F] font-medium">Phone (Optional)</Label>
-                <Input
-                  id="phone"
-                  type="tel"
-                  placeholder="+256 700 000 000"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  data-testid="register-phone-input"
                   className="h-11 border-[#E8EBE8] focus:ring-[#2C5530] focus:border-[#2C5530]"
                 />
               </div>
