@@ -6,6 +6,7 @@ import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Textarea } from '../components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import {
   Dialog,
   DialogContent,
@@ -33,9 +34,11 @@ import {
   X,
   Shield,
   Crown,
-  RefreshCw,
-  FileSpreadsheet,
-  Database,
+  AlertTriangle,
+  Calendar,
+  Percent,
+  UserCheck,
+  DoorOpen,
 } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
 
@@ -48,6 +51,7 @@ const formatCurrency = (amount) => {
 const Dashboard = () => {
   const { user, logout, getAuthHeaders, isAdmin, isSuperAdmin, isPremium, refreshUser } = useAuth();
   const [stats, setStats] = useState(null);
+  const [rules, setRules] = useState(null);
   const [deposits, setDeposits] = useState([]);
   const [loans, setLoans] = useState([]);
   const [withdrawals, setWithdrawals] = useState([]);
@@ -55,67 +59,48 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [syncingSheets, setSyncingSheets] = useState(false);
-  const [sheetsStatus, setSheetsStatus] = useState(null);
 
   // Form states
-  const [depositAmount, setDepositAmount] = useState('');
+  const [depositAmount, setDepositAmount] = useState('55000');
+  const [depositType, setDepositType] = useState('savings');
   const [depositDescription, setDepositDescription] = useState('');
   const [loanAmount, setLoanAmount] = useState('');
+  const [loanGuarantor, setLoanGuarantor] = useState('');
   const [loanReason, setLoanReason] = useState('');
   const [withdrawalAmount, setWithdrawalAmount] = useState('');
+  const [withdrawalType, setWithdrawalType] = useState('savings');
   const [withdrawalReason, setWithdrawalReason] = useState('');
+  const [newGroupBalance, setNewGroupBalance] = useState('');
+  const [balanceReason, setBalanceReason] = useState('');
 
   // Dialog states
   const [depositDialogOpen, setDepositDialogOpen] = useState(false);
   const [loanDialogOpen, setLoanDialogOpen] = useState(false);
   const [withdrawalDialogOpen, setWithdrawalDialogOpen] = useState(false);
+  const [balanceDialogOpen, setBalanceDialogOpen] = useState(false);
 
   const fetchData = async () => {
     try {
       const headers = getAuthHeaders();
-      const [statsRes, depositsRes, loansRes, withdrawalsRes, membersRes] = await Promise.all([
+      const [statsRes, rulesRes, depositsRes, loansRes, withdrawalsRes, membersRes] = await Promise.all([
         axios.get(`${API_URL}/api/stats/group`, { headers }),
+        axios.get(`${API_URL}/api/stats/rules`, { headers }),
         axios.get(`${API_URL}/api/deposits`, { headers }),
         axios.get(`${API_URL}/api/loans`, { headers }),
         axios.get(`${API_URL}/api/withdrawals`, { headers }),
         axios.get(`${API_URL}/api/members`, { headers }),
       ]);
       setStats(statsRes.data);
+      setRules(rulesRes.data);
       setDeposits(depositsRes.data);
       setLoans(loansRes.data);
       setWithdrawals(withdrawalsRes.data);
       setMembers(membersRes.data);
-      
-      // Fetch sheets status for admins
-      if (isAdmin) {
-        try {
-          const sheetsRes = await axios.get(`${API_URL}/api/admin/sheets-status`, { headers });
-          setSheetsStatus(sheetsRes.data);
-        } catch (err) {
-          console.error('Failed to fetch sheets status:', err);
-        }
-      }
     } catch (err) {
       console.error('Failed to fetch data:', err);
       toast.error('Failed to load data');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleSyncToSheets = async () => {
-    setSyncingSheets(true);
-    try {
-      await axios.post(`${API_URL}/api/admin/sync-sheets`, {}, { headers: getAuthHeaders() });
-      toast.success('Data synced to Google Sheets successfully!');
-      // Refresh sheets status
-      const sheetsRes = await axios.get(`${API_URL}/api/admin/sheets-status`, { headers: getAuthHeaders() });
-      setSheetsStatus(sheetsRes.data);
-    } catch (err) {
-      toast.error(err.response?.data?.detail || 'Failed to sync to sheets');
-    } finally {
-      setSyncingSheets(false);
     }
   };
 
@@ -128,12 +113,16 @@ const Dashboard = () => {
     try {
       await axios.post(
         `${API_URL}/api/deposits/request`,
-        { amount: parseFloat(depositAmount), description: depositDescription },
+        { 
+          amount: parseFloat(depositAmount), 
+          deposit_type: depositType,
+          description: depositDescription 
+        },
         { headers: getAuthHeaders() }
       );
-      toast.success('Deposit request submitted');
+      toast.success('Deposit request submitted for approval');
       setDepositDialogOpen(false);
-      setDepositAmount('');
+      setDepositAmount('55000');
       setDepositDescription('');
       fetchData();
     } catch (err) {
@@ -143,15 +132,24 @@ const Dashboard = () => {
 
   const handleLoan = async (e) => {
     e.preventDefault();
+    if (!loanGuarantor) {
+      toast.error('Please select a guarantor');
+      return;
+    }
     try {
       await axios.post(
         `${API_URL}/api/loans/request`,
-        { amount: parseFloat(loanAmount), reason: loanReason },
+        { 
+          amount: parseFloat(loanAmount), 
+          guarantor_id: loanGuarantor,
+          reason: loanReason 
+        },
         { headers: getAuthHeaders() }
       );
       toast.success('Loan request submitted');
       setLoanDialogOpen(false);
       setLoanAmount('');
+      setLoanGuarantor('');
       setLoanReason('');
       fetchData();
     } catch (err) {
@@ -164,7 +162,11 @@ const Dashboard = () => {
     try {
       await axios.post(
         `${API_URL}/api/withdrawals/request`,
-        { amount: parseFloat(withdrawalAmount), reason: withdrawalReason },
+        { 
+          amount: parseFloat(withdrawalAmount), 
+          withdrawal_type: withdrawalType,
+          reason: withdrawalReason 
+        },
         { headers: getAuthHeaders() }
       );
       toast.success('Withdrawal request submitted');
@@ -177,6 +179,24 @@ const Dashboard = () => {
     }
   };
 
+  const handleUpdateGroupBalance = async (e) => {
+    e.preventDefault();
+    try {
+      await axios.post(
+        `${API_URL}/api/admin/update-group-balance`,
+        { new_balance: parseFloat(newGroupBalance), reason: balanceReason },
+        { headers: getAuthHeaders() }
+      );
+      toast.success('Group balance updated');
+      setBalanceDialogOpen(false);
+      setNewGroupBalance('');
+      setBalanceReason('');
+      fetchData();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Failed to update balance');
+    }
+  };
+
   const handleApproveTransaction = async (type, id, approved) => {
     try {
       await axios.post(
@@ -184,7 +204,7 @@ const Dashboard = () => {
         { transaction_id: id, approved },
         { headers: getAuthHeaders() }
       );
-      toast.success(`${type.slice(0, -1)} ${approved ? 'approved' : 'rejected'}`);
+      toast.success(`${approved ? 'Approved' : 'Rejected'} successfully`);
       fetchData();
       refreshUser();
     } catch (err) {
@@ -231,13 +251,19 @@ const Dashboard = () => {
     }
   };
 
-  const handleMarkLoanRepaid = async (loanId) => {
+  const handleRepayLoan = async (loanId, amount) => {
+    const repayAmount = prompt('Enter repayment amount:');
+    if (!repayAmount) return;
     try {
-      await axios.post(`${API_URL}/api/loans/${loanId}/repay`, {}, { headers: getAuthHeaders() });
-      toast.success('Loan marked as repaid');
+      await axios.post(
+        `${API_URL}/api/loans/${loanId}/repay?amount=${parseFloat(repayAmount)}`,
+        {},
+        { headers: getAuthHeaders() }
+      );
+      toast.success('Payment recorded');
       fetchData();
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Failed to mark loan as repaid');
+      toast.error(err.response?.data?.detail || 'Failed to record payment');
     }
   };
 
@@ -268,11 +294,19 @@ const Dashboard = () => {
     { id: 'loans', label: 'Loans', icon: CreditCard },
     { id: 'withdrawals', label: 'Withdrawals', icon: TrendingDown },
     { id: 'members', label: 'Members', icon: Users },
+    { id: 'rules', label: 'Rules', icon: Shield },
   ];
 
   if (isAdmin) {
-    navItems.push({ id: 'admin', label: 'Admin Panel', icon: Shield });
+    navItems.push({ id: 'admin', label: 'Admin', icon: Shield });
   }
+
+  // Get eligible guarantors (members who can still guarantee)
+  const eligibleGuarantors = members.filter(m => 
+    m.id !== user?.id && 
+    (m.guarantees_given || 0) < 2 &&
+    m.membership_type === 'premium'
+  );
 
   if (loading) {
     return (
@@ -321,25 +355,16 @@ const Dashboard = () => {
               <div className="hidden sm:flex items-center gap-2">
                 <div className="text-right">
                   <p className="text-sm font-semibold text-[#1E231F]">{user?.name}</p>
-                  <div className="flex items-center gap-1">
-                    <Badge
-                      className={
-                        user?.membership_type === 'premium'
-                          ? 'bg-[#2C5530]/10 text-[#2C5530] text-xs'
-                          : 'bg-[#5C665D]/10 text-[#5C665D] text-xs'
-                      }
-                    >
-                      {user?.membership_type === 'premium' ? (
-                        <Crown className="w-3 h-3 mr-1" />
-                      ) : null}
-                      {user?.membership_type}
-                    </Badge>
-                    {(user?.role === 'admin' || user?.role === 'super_admin') && (
-                      <Badge className="bg-[#D48C70]/10 text-[#D48C70] text-xs">
-                        {user?.role === 'super_admin' ? 'Super Admin' : 'Admin'}
-                      </Badge>
-                    )}
-                  </div>
+                  <Badge
+                    className={
+                      user?.membership_type === 'premium'
+                        ? 'bg-[#2C5530]/10 text-[#2C5530] text-xs'
+                        : 'bg-[#5C665D]/10 text-[#5C665D] text-xs'
+                    }
+                  >
+                    {user?.membership_type === 'premium' && <Crown className="w-3 h-3 mr-1" />}
+                    {user?.membership_type}
+                  </Badge>
                 </div>
               </div>
               <Button
@@ -389,12 +414,13 @@ const Dashboard = () => {
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Overview Tab */}
         {activeTab === 'overview' && (
           <div className="space-y-6 animate-fade-in">
             {/* Stats Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-              {/* Total Group Balance */}
-              <Card className="md:col-span-2 bg-[#2C5530] border-none shadow-lg card-hover" data-testid="total-balance-card">
+              {/* Total Group Balance - Only super admin can edit */}
+              <Card className="md:col-span-2 bg-[#2C5530] border-none shadow-lg" data-testid="total-balance-card">
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">
                     <div>
@@ -403,18 +429,61 @@ const Dashboard = () => {
                         {formatCurrency(stats?.total_group_balance)}
                       </p>
                       <p className="text-white/70 text-sm mt-2">
-                        {stats?.total_members} members contributing
+                        {stats?.total_members} members • Year ends {stats?.year_end_date}
                       </p>
                     </div>
-                    <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center">
-                      <Wallet className="w-8 h-8 text-white" />
+                    <div className="flex flex-col items-end gap-2">
+                      <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center">
+                        <Wallet className="w-8 h-8 text-white" />
+                      </div>
+                      {isSuperAdmin && (
+                        <Dialog open={balanceDialogOpen} onOpenChange={setBalanceDialogOpen}>
+                          <DialogTrigger asChild>
+                            <Button size="sm" variant="secondary" className="text-xs">
+                              Edit Balance
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent>
+                            <DialogHeader>
+                              <DialogTitle>Update Group Balance</DialogTitle>
+                              <DialogDescription>
+                                Reset balance for new year or make corrections
+                              </DialogDescription>
+                            </DialogHeader>
+                            <form onSubmit={handleUpdateGroupBalance} className="space-y-4 mt-4">
+                              <div className="space-y-2">
+                                <Label>New Balance (UGX)</Label>
+                                <Input
+                                  type="number"
+                                  value={newGroupBalance}
+                                  onChange={(e) => setNewGroupBalance(e.target.value)}
+                                  placeholder="0"
+                                  required
+                                />
+                              </div>
+                              <div className="space-y-2">
+                                <Label>Reason</Label>
+                                <Input
+                                  value={balanceReason}
+                                  onChange={(e) => setBalanceReason(e.target.value)}
+                                  placeholder="Year end reset / Correction"
+                                  required
+                                />
+                              </div>
+                              <Button type="submit" className="w-full bg-[#2C5530]">
+                                Update Balance
+                              </Button>
+                            </form>
+                          </DialogContent>
+                        </Dialog>
+                      )}
                     </div>
                   </div>
                 </CardContent>
               </Card>
 
               {/* My Savings */}
-              <Card className="bg-white border border-[#E8EBE8] shadow-sm card-hover" data-testid="my-savings-card">
+              <Card className="bg-white border border-[#E8EBE8] shadow-sm">
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">
                     <div>
@@ -430,21 +499,19 @@ const Dashboard = () => {
                 </CardContent>
               </Card>
 
-              {/* Active Loans */}
-              <Card className="bg-white border border-[#E8EBE8] shadow-sm card-hover" data-testid="active-loans-card">
+              {/* Development Fund */}
+              <Card className="bg-white border border-[#E8EBE8] shadow-sm">
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-[#5C665D] text-sm font-medium uppercase tracking-wide">Active Loans</p>
+                      <p className="text-[#5C665D] text-sm font-medium uppercase tracking-wide">Development Fund</p>
                       <p className="text-2xl font-bold text-[#1E231F] font-numbers mt-2">
-                        {formatCurrency(stats?.active_loans_amount)}
+                        {formatCurrency(user?.development_fund)}
                       </p>
-                      <p className="text-[#5C665D] text-xs mt-1">
-                        {stats?.active_loans_count} active
-                      </p>
+                      <p className="text-xs text-[#5C665D] mt-1">Non-withdrawable</p>
                     </div>
                     <div className="w-12 h-12 bg-[#D48C70]/10 rounded-full flex items-center justify-center">
-                      <CreditCard className="w-6 h-6 text-[#D48C70]" />
+                      <TrendingUp className="w-6 h-6 text-[#D48C70]" />
                     </div>
                   </div>
                 </CardContent>
@@ -465,43 +532,49 @@ const Dashboard = () => {
                 </DialogTrigger>
                 <DialogContent className="sm:max-w-md">
                   <DialogHeader>
-                    <DialogTitle className="font-['Manrope'] text-[#1E231F]">Request Deposit</DialogTitle>
+                    <DialogTitle className="font-['Manrope'] text-[#1E231F]">Make Deposit</DialogTitle>
                     <DialogDescription className="text-[#5C665D]">
-                      Submit a deposit request for admin approval
+                      Monthly savings: UGX 55,000 | Development fee: UGX 3,000
                     </DialogDescription>
                   </DialogHeader>
                   <form onSubmit={handleDeposit} className="space-y-4 mt-4">
                     <div className="space-y-2">
-                      <Label htmlFor="depositAmount">Amount (UGX)</Label>
+                      <Label>Deposit Type</Label>
+                      <Select value={depositType} onValueChange={setDepositType}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="savings">Monthly Savings (UGX 55,000)</SelectItem>
+                          <SelectItem value="development_fee">Development Fee (UGX 3,000)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Amount (UGX)</Label>
                       <Input
-                        id="depositAmount"
                         type="number"
                         value={depositAmount}
                         onChange={(e) => setDepositAmount(e.target.value)}
-                        placeholder="55000"
+                        placeholder={depositType === 'savings' ? '55000' : '3000'}
                         required
-                        min="1"
-                        data-testid="deposit-amount-input"
-                        className="border-[#E8EBE8]"
+                        min={depositType === 'savings' ? 55000 : 3000}
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="depositDescription">Description (Optional)</Label>
+                      <Label>Description (Optional)</Label>
                       <Textarea
-                        id="depositDescription"
                         value={depositDescription}
                         onChange={(e) => setDepositDescription(e.target.value)}
                         placeholder="Monthly contribution..."
-                        data-testid="deposit-description-input"
-                        className="border-[#E8EBE8]"
                       />
                     </div>
-                    <Button
-                      type="submit"
-                      data-testid="deposit-submit"
-                      className="w-full bg-[#2C5530] hover:bg-[#214024] rounded-full"
-                    >
-                      Submit Request
+                    <div className="p-3 bg-[#E8B25C]/10 rounded-lg text-sm text-[#5C665D]">
+                      <AlertTriangle className="w-4 h-4 inline mr-2 text-[#E8B25C]" />
+                      Late fee: UGX 3,000 per position if paid after 10th
+                    </div>
+                    <Button type="submit" className="w-full bg-[#2C5530] hover:bg-[#214024] rounded-full">
+                      Submit Deposit
                     </Button>
                   </form>
                 </DialogContent>
@@ -527,14 +600,13 @@ const Dashboard = () => {
                   <DialogHeader>
                     <DialogTitle className="font-['Manrope'] text-[#1E231F]">Request Loan</DialogTitle>
                     <DialogDescription className="text-[#5C665D]">
-                      Maximum loan amount: UGX 600,000
+                      Max: UGX 600,000 • Interest: 3%/month (5% after 4 months)
                     </DialogDescription>
                   </DialogHeader>
                   <form onSubmit={handleLoan} className="space-y-4 mt-4">
                     <div className="space-y-2">
-                      <Label htmlFor="loanAmount">Amount (UGX)</Label>
+                      <Label>Amount (UGX)</Label>
                       <Input
-                        id="loanAmount"
                         type="number"
                         value={loanAmount}
                         onChange={(e) => setLoanAmount(e.target.value)}
@@ -542,26 +614,37 @@ const Dashboard = () => {
                         required
                         min="1"
                         max="600000"
-                        data-testid="loan-amount-input"
-                        className="border-[#E8EBE8]"
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="loanReason">Reason</Label>
+                      <Label>Select Guarantor</Label>
+                      <Select value={loanGuarantor} onValueChange={setLoanGuarantor}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Choose a guarantor" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {eligibleGuarantors.map((m) => (
+                            <SelectItem key={m.id} value={m.id}>
+                              {m.name} ({2 - (m.guarantees_given || 0)} slots left)
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-[#5C665D]">Each member can guarantee max 2 loans</p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Reason</Label>
                       <Textarea
-                        id="loanReason"
                         value={loanReason}
                         onChange={(e) => setLoanReason(e.target.value)}
                         placeholder="Reason for loan..."
-                        data-testid="loan-reason-input"
-                        className="border-[#E8EBE8]"
                       />
                     </div>
-                    <Button
-                      type="submit"
-                      data-testid="loan-submit"
-                      className="w-full bg-[#D48C70] hover:bg-[#BD7B60] rounded-full"
-                    >
+                    <div className="p-3 bg-[#E8B25C]/10 rounded-lg text-sm text-[#5C665D]">
+                      <Percent className="w-4 h-4 inline mr-2 text-[#E8B25C]" />
+                      Return within 4 months at 3% interest. Beyond 4 months: 5%
+                    </div>
+                    <Button type="submit" className="w-full bg-[#D48C70] hover:bg-[#BD7B60] rounded-full">
                       Submit Request
                     </Button>
                   </form>
@@ -583,41 +666,51 @@ const Dashboard = () => {
                   <DialogHeader>
                     <DialogTitle className="font-['Manrope'] text-[#1E231F]">Request Withdrawal</DialogTitle>
                     <DialogDescription className="text-[#5C665D]">
-                      Your available balance: {formatCurrency(user?.total_savings)}
+                      Available savings: {formatCurrency(user?.total_savings)}
                     </DialogDescription>
                   </DialogHeader>
                   <form onSubmit={handleWithdrawal} className="space-y-4 mt-4">
                     <div className="space-y-2">
-                      <Label htmlFor="withdrawalAmount">Amount (UGX)</Label>
+                      <Label>Withdrawal Type</Label>
+                      <Select value={withdrawalType} onValueChange={setWithdrawalType}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="savings">Regular Withdrawal (Savings only)</SelectItem>
+                          <SelectItem value="leaving_group">Leaving Group (All funds)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Amount (UGX)</Label>
                       <Input
-                        id="withdrawalAmount"
                         type="number"
                         value={withdrawalAmount}
                         onChange={(e) => setWithdrawalAmount(e.target.value)}
                         placeholder="50000"
                         required
                         min="1"
-                        max={user?.total_savings || 0}
-                        data-testid="withdrawal-amount-input"
-                        className="border-[#E8EBE8]"
+                        max={withdrawalType === 'leaving_group' 
+                          ? (user?.total_savings || 0) + (user?.development_fund || 0)
+                          : user?.total_savings || 0}
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="withdrawalReason">Reason</Label>
+                      <Label>Reason</Label>
                       <Textarea
-                        id="withdrawalReason"
                         value={withdrawalReason}
                         onChange={(e) => setWithdrawalReason(e.target.value)}
                         placeholder="Reason for withdrawal..."
-                        data-testid="withdrawal-reason-input"
-                        className="border-[#E8EBE8]"
                       />
                     </div>
-                    <Button
-                      type="submit"
-                      data-testid="withdrawal-submit"
-                      className="w-full bg-[#2C5530] hover:bg-[#214024] rounded-full"
-                    >
+                    {withdrawalType === 'leaving_group' && (
+                      <div className="p-3 bg-[#D05A49]/10 rounded-lg text-sm text-[#D05A49]">
+                        <DoorOpen className="w-4 h-4 inline mr-2" />
+                        Leaving requires 2 months notice, no active loans, and not being a guarantor
+                      </div>
+                    )}
+                    <Button type="submit" className="w-full bg-[#2C5530] hover:bg-[#214024] rounded-full">
                       Submit Request
                     </Button>
                   </form>
@@ -628,7 +721,7 @@ const Dashboard = () => {
             {/* Recent Activity */}
             <Card className="bg-white border border-[#E8EBE8] shadow-sm">
               <CardHeader>
-                <CardTitle className="font-['Manrope'] text-[#1E231F]">Recent Activity</CardTitle>
+                <CardTitle className="font-['Manrope'] text-[#1E231F]">My Recent Activity</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
@@ -639,8 +732,10 @@ const Dashboard = () => {
                           <ArrowUpRight className="w-5 h-5 text-[#347242]" />
                         </div>
                         <div>
-                          <p className="font-medium text-[#1E231F]">Deposit</p>
-                          <p className="text-sm text-[#5C665D]">{d.description || 'No description'}</p>
+                          <p className="font-medium text-[#1E231F]">
+                            {d.deposit_type === 'development_fee' ? 'Development Fee' : 'Savings Deposit'}
+                          </p>
+                          <p className="text-sm text-[#5C665D]">{d.description || d.month}</p>
                         </div>
                       </div>
                       <div className="text-right">
@@ -658,6 +753,7 @@ const Dashboard = () => {
           </div>
         )}
 
+        {/* Deposits Tab */}
         {activeTab === 'deposits' && (
           <div className="space-y-6 animate-fade-in" data-testid="deposits-tab">
             <div className="flex items-center justify-between">
@@ -679,8 +775,9 @@ const Dashboard = () => {
                     <thead>
                       <tr className="border-b border-[#E8EBE8] bg-[#FAFAF8]">
                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Date</th>
+                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Type</th>
                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Amount</th>
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Description</th>
+                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Late Fee</th>
                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Status</th>
                       </tr>
                     </thead>
@@ -690,10 +787,15 @@ const Dashboard = () => {
                           <td className="py-4 px-6 text-[#1E231F]">
                             {new Date(d.created_at).toLocaleDateString()}
                           </td>
+                          <td className="py-4 px-6 text-[#1E231F]">
+                            {d.deposit_type === 'development_fee' ? 'Development' : 'Savings'}
+                          </td>
                           <td className="py-4 px-6 font-semibold text-[#347242] font-numbers">
                             {formatCurrency(d.amount)}
                           </td>
-                          <td className="py-4 px-6 text-[#5C665D]">{d.description || '-'}</td>
+                          <td className="py-4 px-6 text-[#D05A49] font-numbers">
+                            {d.late_fee > 0 ? formatCurrency(d.late_fee) : '-'}
+                          </td>
                           <td className="py-4 px-6">{getStatusBadge(d.status)}</td>
                         </tr>
                       ))}
@@ -708,6 +810,7 @@ const Dashboard = () => {
           </div>
         )}
 
+        {/* Loans Tab */}
         {activeTab === 'loans' && (
           <div className="space-y-6 animate-fade-in" data-testid="loans-tab">
             <div className="flex items-center justify-between">
@@ -729,7 +832,7 @@ const Dashboard = () => {
                 <CardContent className="p-4 flex items-center gap-3">
                   <Crown className="w-5 h-5 text-[#E8B25C]" />
                   <p className="text-[#1E231F]">
-                    Only premium members can request loans. Contact an admin to upgrade your membership.
+                    Only premium members can request loans. Save UGX 55,000 to become premium.
                   </p>
                 </CardContent>
               </Card>
@@ -743,7 +846,9 @@ const Dashboard = () => {
                       <tr className="border-b border-[#E8EBE8] bg-[#FAFAF8]">
                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Date</th>
                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Amount</th>
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Reason</th>
+                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Guarantor</th>
+                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Interest</th>
+                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Total Due</th>
                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Status</th>
                       </tr>
                     </thead>
@@ -756,7 +861,21 @@ const Dashboard = () => {
                           <td className="py-4 px-6 font-semibold text-[#D48C70] font-numbers">
                             {formatCurrency(l.amount)}
                           </td>
-                          <td className="py-4 px-6 text-[#5C665D]">{l.reason || '-'}</td>
+                          <td className="py-4 px-6 text-[#1E231F]">
+                            <div className="flex items-center gap-1">
+                              <UserCheck className="w-4 h-4 text-[#5C665D]" />
+                              {l.guarantor_name}
+                            </div>
+                          </td>
+                          <td className="py-4 px-6 text-[#5C665D] font-numbers">
+                            {l.current_interest ? formatCurrency(l.current_interest) : '-'}
+                            {l.months_elapsed > 4 && (
+                              <span className="text-[#D05A49] text-xs ml-1">(5%)</span>
+                            )}
+                          </td>
+                          <td className="py-4 px-6 font-semibold text-[#1E231F] font-numbers">
+                            {l.total_due ? formatCurrency(l.total_due) : formatCurrency(l.amount)}
+                          </td>
                           <td className="py-4 px-6">{getStatusBadge(l.status)}</td>
                         </tr>
                       ))}
@@ -771,6 +890,7 @@ const Dashboard = () => {
           </div>
         )}
 
+        {/* Withdrawals Tab */}
         {activeTab === 'withdrawals' && (
           <div className="space-y-6 animate-fade-in" data-testid="withdrawals-tab">
             <div className="flex items-center justify-between">
@@ -793,6 +913,7 @@ const Dashboard = () => {
                       <tr className="border-b border-[#E8EBE8] bg-[#FAFAF8]">
                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Date</th>
                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Amount</th>
+                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Type</th>
                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Reason</th>
                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Status</th>
                       </tr>
@@ -805,6 +926,9 @@ const Dashboard = () => {
                           </td>
                           <td className="py-4 px-6 font-semibold text-[#D05A49] font-numbers">
                             {formatCurrency(w.amount)}
+                          </td>
+                          <td className="py-4 px-6 text-[#1E231F]">
+                            {w.withdrawal_type === 'leaving_group' ? 'Leaving Group' : 'Regular'}
                           </td>
                           <td className="py-4 px-6 text-[#5C665D]">{w.reason || '-'}</td>
                           <td className="py-4 px-6">{getStatusBadge(w.status)}</td>
@@ -821,6 +945,7 @@ const Dashboard = () => {
           </div>
         )}
 
+        {/* Members Tab */}
         {activeTab === 'members' && (
           <div className="space-y-6 animate-fade-in" data-testid="members-tab">
             <div className="flex items-center justify-between">
@@ -833,7 +958,7 @@ const Dashboard = () => {
             
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {members.map((m) => (
-                <Card key={m.id} className="bg-white border border-[#E8EBE8] shadow-sm card-hover">
+                <Card key={m.id} className="bg-white border border-[#E8EBE8] shadow-sm">
                   <CardContent className="p-6">
                     <div className="flex items-start justify-between mb-4">
                       <div className="w-12 h-12 bg-[#2C5530]/10 rounded-full flex items-center justify-center">
@@ -841,30 +966,31 @@ const Dashboard = () => {
                           {m.name?.charAt(0)?.toUpperCase() || '?'}
                         </span>
                       </div>
-                      <div className="flex flex-col items-end gap-1">
-                        <Badge
-                          className={
-                            m.membership_type === 'premium'
-                              ? 'bg-[#2C5530]/10 text-[#2C5530]'
-                              : 'bg-[#5C665D]/10 text-[#5C665D]'
-                          }
-                        >
-                          {m.membership_type}
-                        </Badge>
-                        {(m.role === 'admin' || m.role === 'super_admin') && (
-                          <Badge className="bg-[#D48C70]/10 text-[#D48C70]">
-                            {m.role === 'super_admin' ? 'Super Admin' : 'Admin'}
-                          </Badge>
-                        )}
-                      </div>
+                      <Badge
+                        className={
+                          m.membership_type === 'premium'
+                            ? 'bg-[#2C5530]/10 text-[#2C5530]'
+                            : 'bg-[#5C665D]/10 text-[#5C665D]'
+                        }
+                      >
+                        {m.membership_type}
+                      </Badge>
                     </div>
                     <h3 className="font-semibold text-[#1E231F] mb-1">{m.name}</h3>
-                    <p className="text-sm text-[#5C665D] mb-3">{m.email}</p>
-                    <div className="pt-3 border-t border-[#E8EBE8]">
-                      <p className="text-sm text-[#5C665D]">Total Savings</p>
-                      <p className="text-lg font-bold text-[#347242] font-numbers">
-                        {formatCurrency(m.total_savings)}
-                      </p>
+                    <p className="text-sm text-[#5C665D] mb-3">{m.phone || 'No phone'}</p>
+                    <div className="pt-3 border-t border-[#E8EBE8] grid grid-cols-2 gap-2">
+                      <div>
+                        <p className="text-xs text-[#5C665D]">Savings</p>
+                        <p className="text-sm font-bold text-[#347242] font-numbers">
+                          {formatCurrency(m.total_savings)}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-[#5C665D]">Dev Fund</p>
+                        <p className="text-sm font-bold text-[#D48C70] font-numbers">
+                          {formatCurrency(m.development_fund)}
+                        </p>
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
@@ -873,95 +999,56 @@ const Dashboard = () => {
           </div>
         )}
 
+        {/* Rules Tab */}
+        {activeTab === 'rules' && (
+          <div className="space-y-6 animate-fade-in" data-testid="rules-tab">
+            <h2 className="text-2xl font-bold font-['Manrope'] text-[#1E231F]">Group Rules</h2>
+            
+            <Card className="bg-white border border-[#E8EBE8] shadow-sm">
+              <CardContent className="p-6">
+                <div className="space-y-4">
+                  {rules?.rules?.map((rule, index) => (
+                    <div key={index} className="flex items-start gap-3 pb-4 border-b border-[#E8EBE8] last:border-0 last:pb-0">
+                      <div className="w-8 h-8 bg-[#2C5530]/10 rounded-full flex items-center justify-center flex-shrink-0">
+                        <span className="text-sm font-bold text-[#2C5530]">{index + 1}</span>
+                      </div>
+                      <p className="text-[#1E231F]">{rule}</p>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Card className="bg-[#2C5530]/5 border border-[#2C5530]/20">
+                <CardContent className="p-4 text-center">
+                  <Calendar className="w-8 h-8 text-[#2C5530] mx-auto mb-2" />
+                  <p className="text-sm text-[#5C665D]">Year End Date</p>
+                  <p className="font-bold text-[#1E231F]">{rules?.year_end_date}</p>
+                </CardContent>
+              </Card>
+              <Card className="bg-[#D48C70]/5 border border-[#D48C70]/20">
+                <CardContent className="p-4 text-center">
+                  <CreditCard className="w-8 h-8 text-[#D48C70] mx-auto mb-2" />
+                  <p className="text-sm text-[#5C665D]">Max Loan</p>
+                  <p className="font-bold text-[#1E231F]">{formatCurrency(rules?.max_loan_amount)}</p>
+                </CardContent>
+              </Card>
+              <Card className="bg-[#347242]/5 border border-[#347242]/20">
+                <CardContent className="p-4 text-center">
+                  <PiggyBank className="w-8 h-8 text-[#347242] mx-auto mb-2" />
+                  <p className="text-sm text-[#5C665D]">Monthly Savings</p>
+                  <p className="font-bold text-[#1E231F]">{formatCurrency(rules?.monthly_savings)}</p>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        )}
+
+        {/* Admin Tab */}
         {activeTab === 'admin' && isAdmin && (
           <div className="space-y-8 animate-fade-in" data-testid="admin-tab">
-            <div className="flex items-center justify-between">
-              <h2 className="text-2xl font-bold font-['Manrope'] text-[#1E231F]">Admin Panel</h2>
-              
-              {/* Google Sheets Sync Button */}
-              <Button
-                onClick={handleSyncToSheets}
-                disabled={syncingSheets}
-                className="bg-[#347242] hover:bg-[#2C5530] rounded-full flex items-center gap-2"
-                data-testid="sync-sheets-button"
-              >
-                <RefreshCw className={`w-4 h-4 ${syncingSheets ? 'animate-spin' : ''}`} />
-                {syncingSheets ? 'Syncing...' : 'Sync to Google Sheets'}
-              </Button>
-            </div>
-
-            {/* Google Sheets Status Card */}
-            {sheetsStatus && (
-              <Card className="bg-white border border-[#E8EBE8] shadow-sm">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-lg font-['Manrope'] text-[#1E231F] flex items-center gap-2">
-                    <FileSpreadsheet className="w-5 h-5 text-[#347242]" />
-                    Google Sheets Status
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center gap-4 mb-4">
-                    <Badge className={sheetsStatus.status === 'connected' 
-                      ? 'bg-[#347242]/10 text-[#347242]' 
-                      : 'bg-[#D05A49]/10 text-[#D05A49]'
-                    }>
-                      {sheetsStatus.status === 'connected' ? (
-                        <><CheckCircle className="w-3 h-3 mr-1" /> Connected</>
-                      ) : (
-                        <><XCircle className="w-3 h-3 mr-1" /> Disconnected</>
-                      )}
-                    </Badge>
-                    {sheetsStatus.spreadsheet_title && (
-                      <span className="text-sm text-[#5C665D]">
-                        Spreadsheet: <span className="font-medium text-[#1E231F]">{sheetsStatus.spreadsheet_title}</span>
-                      </span>
-                    )}
-                  </div>
-                  {sheetsStatus.worksheets && (
-                    <div>
-                      <p className="text-sm font-medium text-[#5C665D] mb-2">Active Worksheets:</p>
-                      <div className="flex flex-wrap gap-2">
-                        {sheetsStatus.worksheets.map((ws) => (
-                          <Badge key={ws} className="bg-[#2C5530]/10 text-[#2C5530]">
-                            <Database className="w-3 h-3 mr-1" />
-                            {ws}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Permission Setup Instructions */}
-            {sheetsStatus && (sheetsStatus.status === 'permission_denied' || sheetsStatus.status === 'error') && (
-              <Card className="bg-[#E8B25C]/10 border border-[#E8B25C]/30">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-lg font-['Manrope'] text-[#1E231F] flex items-center gap-2">
-                    <FileSpreadsheet className="w-5 h-5 text-[#E8B25C]" />
-                    Google Sheets Setup Required
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-[#5C665D] mb-4">{sheetsStatus.message || 'Please share your Google Spreadsheet with the service account'}</p>
-                  <div className="bg-white rounded-xl p-4 border border-[#E8EBE8]">
-                    <p className="font-medium text-[#1E231F] mb-2">Share your spreadsheet with:</p>
-                    <code className="block bg-[#FAFAF8] p-2 rounded text-sm text-[#2C5530] break-all mb-4">
-                      {sheetsStatus.service_account_email}
-                    </code>
-                    <ol className="list-decimal list-inside space-y-1 text-sm text-[#5C665D]">
-                      <li>Open your Google Spreadsheet</li>
-                      <li>Click the 'Share' button (top right)</li>
-                      <li>Paste the email above</li>
-                      <li>Set permission to 'Editor'</li>
-                      <li>Click 'Send' or 'Share'</li>
-                      <li>Then click "Sync to Google Sheets" above</li>
-                    </ol>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+            <h2 className="text-2xl font-bold font-['Manrope'] text-[#1E231F]">Admin Panel</h2>
 
             {/* Pending Approvals */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -980,13 +1067,15 @@ const Dashboard = () => {
                         <span className="font-medium text-[#1E231F]">{d.user_name}</span>
                         <span className="font-semibold text-[#347242] font-numbers">{formatCurrency(d.amount)}</span>
                       </div>
-                      <p className="text-xs text-[#5C665D] mb-2">{d.description || 'No description'}</p>
+                      <p className="text-xs text-[#5C665D] mb-1">{d.deposit_type}</p>
+                      {d.late_fee > 0 && (
+                        <p className="text-xs text-[#D05A49] mb-2">Late fee: {formatCurrency(d.late_fee)}</p>
+                      )}
                       <div className="flex gap-2">
                         <Button
                           size="sm"
                           onClick={() => handleApproveTransaction('deposits', d.id, true)}
                           className="flex-1 bg-[#347242] hover:bg-[#2C5530] text-xs"
-                          data-testid={`approve-deposit-${d.id}`}
                         >
                           Approve
                         </Button>
@@ -995,7 +1084,6 @@ const Dashboard = () => {
                           variant="outline"
                           onClick={() => handleApproveTransaction('deposits', d.id, false)}
                           className="flex-1 border-[#D05A49] text-[#D05A49] hover:bg-[#D05A49]/10 text-xs"
-                          data-testid={`reject-deposit-${d.id}`}
                         >
                           Reject
                         </Button>
@@ -1023,13 +1111,15 @@ const Dashboard = () => {
                         <span className="font-medium text-[#1E231F]">{l.user_name}</span>
                         <span className="font-semibold text-[#D48C70] font-numbers">{formatCurrency(l.amount)}</span>
                       </div>
-                      <p className="text-xs text-[#5C665D] mb-2">{l.reason || 'No reason'}</p>
+                      <p className="text-xs text-[#5C665D] mb-2">
+                        <UserCheck className="w-3 h-3 inline mr-1" />
+                        Guarantor: {l.guarantor_name}
+                      </p>
                       <div className="flex gap-2">
                         <Button
                           size="sm"
                           onClick={() => handleApproveTransaction('loans', l.id, true)}
                           className="flex-1 bg-[#347242] hover:bg-[#2C5530] text-xs"
-                          data-testid={`approve-loan-${l.id}`}
                         >
                           Approve
                         </Button>
@@ -1038,7 +1128,6 @@ const Dashboard = () => {
                           variant="outline"
                           onClick={() => handleApproveTransaction('loans', l.id, false)}
                           className="flex-1 border-[#D05A49] text-[#D05A49] hover:bg-[#D05A49]/10 text-xs"
-                          data-testid={`reject-loan-${l.id}`}
                         >
                           Reject
                         </Button>
@@ -1066,13 +1155,12 @@ const Dashboard = () => {
                         <span className="font-medium text-[#1E231F]">{w.user_name}</span>
                         <span className="font-semibold text-[#D05A49] font-numbers">{formatCurrency(w.amount)}</span>
                       </div>
-                      <p className="text-xs text-[#5C665D] mb-2">{w.reason || 'No reason'}</p>
+                      <p className="text-xs text-[#5C665D] mb-2">{w.withdrawal_type}</p>
                       <div className="flex gap-2">
                         <Button
                           size="sm"
                           onClick={() => handleApproveTransaction('withdrawals', w.id, true)}
                           className="flex-1 bg-[#347242] hover:bg-[#2C5530] text-xs"
-                          data-testid={`approve-withdrawal-${w.id}`}
                         >
                           Approve
                         </Button>
@@ -1081,7 +1169,6 @@ const Dashboard = () => {
                           variant="outline"
                           onClick={() => handleApproveTransaction('withdrawals', w.id, false)}
                           className="flex-1 border-[#D05A49] text-[#D05A49] hover:bg-[#D05A49]/10 text-xs"
-                          data-testid={`reject-withdrawal-${w.id}`}
                         >
                           Reject
                         </Button>
@@ -1095,10 +1182,10 @@ const Dashboard = () => {
               </Card>
             </div>
 
-            {/* Active Loans (for marking as repaid) */}
+            {/* Active Loans */}
             <Card className="bg-white border border-[#E8EBE8] shadow-sm">
               <CardHeader>
-                <CardTitle className="font-['Manrope'] text-[#1E231F]">Active Loans</CardTitle>
+                <CardTitle className="font-['Manrope'] text-[#1E231F]">Active Loans (Record Payments)</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
@@ -1106,17 +1193,21 @@ const Dashboard = () => {
                     <div key={l.id} className="flex items-center justify-between p-4 bg-[#FAFAF8] rounded-xl">
                       <div>
                         <p className="font-medium text-[#1E231F]">{l.user_name}</p>
-                        <p className="text-sm text-[#5C665D]">{l.user_email}</p>
+                        <p className="text-sm text-[#5C665D]">
+                          Guarantor: {l.guarantor_name} • {l.months_elapsed || 0} months
+                        </p>
                       </div>
                       <div className="text-right">
-                        <p className="font-semibold text-[#D48C70] font-numbers">{formatCurrency(l.amount)}</p>
+                        <p className="font-semibold text-[#D48C70] font-numbers">
+                          Due: {formatCurrency(l.total_due)}
+                        </p>
+                        <p className="text-xs text-[#5C665D]">Paid: {formatCurrency(l.amount_repaid || 0)}</p>
                         <Button
                           size="sm"
-                          onClick={() => handleMarkLoanRepaid(l.id)}
+                          onClick={() => handleRepayLoan(l.id)}
                           className="mt-2 bg-[#347242] hover:bg-[#2C5530]"
-                          data-testid={`repay-loan-${l.id}`}
                         >
-                          Mark as Repaid
+                          Record Payment
                         </Button>
                       </div>
                     </div>
@@ -1150,7 +1241,7 @@ const Dashboard = () => {
                         </tr>
                       </thead>
                       <tbody>
-                        {members.filter(m => m.role !== 'super_admin').map((m) => (
+                        {members.filter(m => m.id !== user?.id).map((m) => (
                           <tr key={m.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5]">
                             <td className="py-3 px-4">
                               <p className="font-medium text-[#1E231F]">{m.name}</p>
@@ -1158,10 +1249,10 @@ const Dashboard = () => {
                             </td>
                             <td className="py-3 px-4">
                               <select
-                                value={m.role}
+                                value={m.role === 'super_admin' ? 'super_admin' : m.role}
                                 onChange={(e) => handleSetRole(m.id, e.target.value)}
+                                disabled={m.role === 'super_admin'}
                                 className="text-sm border border-[#E8EBE8] rounded-lg px-2 py-1 bg-white"
-                                data-testid={`role-select-${m.id}`}
                               >
                                 <option value="member">Member</option>
                                 <option value="admin">Admin</option>
@@ -1172,7 +1263,6 @@ const Dashboard = () => {
                                 value={m.membership_type}
                                 onChange={(e) => handleSetMembership(m.id, e.target.value)}
                                 className="text-sm border border-[#E8EBE8] rounded-lg px-2 py-1 bg-white"
-                                data-testid={`membership-select-${m.id}`}
                               >
                                 <option value="ordinary">Ordinary</option>
                                 <option value="premium">Premium</option>
@@ -1187,7 +1277,6 @@ const Dashboard = () => {
                                 variant="outline"
                                 onClick={() => handleDeleteMember(m.id)}
                                 className="border-[#D05A49] text-[#D05A49] hover:bg-[#D05A49]/10"
-                                data-testid={`delete-member-${m.id}`}
                               >
                                 Delete
                               </Button>
