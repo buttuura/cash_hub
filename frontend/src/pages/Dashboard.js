@@ -43,6 +43,7 @@ import {
   Receipt,
   Trash2,
   BarChart3,
+  MessageCircle,
 } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
 
@@ -50,6 +51,15 @@ const API_URL = process.env.REACT_APP_BACKEND_URL || '';
 
 const formatCurrency = (amount) => {
   return `UGX ${Number(amount || 0).toLocaleString()}`;
+};
+
+// Build a wa.me link that opens WhatsApp (Messenger or Business) with pre-typed text.
+// Uganda numbers: replace leading 0 with 256. Strips spaces, dashes, +.
+const buildWhatsAppUrl = (phone, message) => {
+  if (!phone) return null;
+  let digits = String(phone).replace(/[^\d]/g, '');
+  if (digits.startsWith('0')) digits = '256' + digits.slice(1);
+  return `https://wa.me/${digits}?text=${encodeURIComponent(message)}`;
 };
 
 const Dashboard = () => {
@@ -985,10 +995,19 @@ const Dashboard = () => {
                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Interest</th>
                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Total Due</th>
                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Status</th>
+                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Action</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {loans.map((l) => (
+                      {loans.map((l) => {
+                        const guarantor = members.find(m => m.id === l.guarantor_id);
+                        const isMyLoan = l.user_id === user?.id;
+                        const showNotifyGuarantor = isMyLoan && l.status === 'pending_guarantor' && guarantor?.phone;
+                        const waUrl = showNotifyGuarantor ? buildWhatsAppUrl(
+                          guarantor.phone,
+                          `Hi ${l.guarantor_name}, I (${user?.name}) have requested a UGX ${Number(l.amount).toLocaleString()} loan on Class One Savings with you as my guarantor. Total due will be UGX ${Number(l.total_due || l.initial_total_due || l.amount * 1.03).toLocaleString()} (3% interest). Please log in at ${window.location.origin} to approve or reject. Thank you!`
+                        ) : null;
+                        return (
                         <tr key={l.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5] transition-colors">
                           <td className="py-4 px-6 text-[#1E231F]">
                             {new Date(l.created_at).toLocaleDateString()}
@@ -1012,8 +1031,24 @@ const Dashboard = () => {
                             {l.total_due ? formatCurrency(l.total_due) : formatCurrency(l.amount)}
                           </td>
                           <td className="py-4 px-6">{getStatusBadge(l.status)}</td>
+                          <td className="py-4 px-6">
+                            {showNotifyGuarantor ? (
+                              <a
+                                href={waUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                data-testid={`whatsapp-notify-${l.id}`}
+                                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-[#25D366] text-white text-xs font-medium hover:bg-[#1EA852] transition-colors"
+                              >
+                                <MessageCircle className="w-3.5 h-3.5" />
+                                Notify
+                              </a>
+                            ) : (
+                              <span className="text-[#5C665D] text-xs">-</span>
+                            )}
+                          </td>
                         </tr>
-                      ))}
+                      );})}
                     </tbody>
                   </table>
                   {loans.length === 0 && (
