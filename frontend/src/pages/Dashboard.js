@@ -46,6 +46,14 @@ import {
   MessageCircle,
 } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
+import {
+  exportDepositsPDF,
+  exportLoansPDF,
+  exportWithdrawalsPDF,
+  exportPettyCashPDF,
+  exportFullGroupReportPDF,
+} from '../utils/pdfExport';
+import { FileDown } from 'lucide-react';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL || '';
 
@@ -335,6 +343,18 @@ const Dashboard = () => {
       fetchData();
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Failed to process guarantor approval');
+    }
+  };
+
+  const handleDeleteRecord = async (kind, id) => {
+    const labels = { deposits: 'deposit', loans: 'loan', withdrawals: 'withdrawal', 'petty-cash': 'petty cash entry' };
+    if (!window.confirm(`Delete this ${labels[kind]}? This cannot be undone.`)) return;
+    try {
+      await axios.delete(`${API_URL}/api/${kind}/${id}`, { headers: getAuthHeaders() });
+      toast.success(`${labels[kind].charAt(0).toUpperCase() + labels[kind].slice(1)} deleted`);
+      fetchData();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || `Failed to delete ${labels[kind]}`);
     }
   };
 
@@ -815,12 +835,26 @@ const Dashboard = () => {
 
             {/* Recent Activity */}
             <Card className="bg-white border border-[#E8EBE8] shadow-sm">
-              <CardHeader>
+              <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle className="font-['Manrope'] text-[#1E231F]">My Recent Activity</CardTitle>
+                {deposits.length > 0 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => exportDepositsPDF(deposits, 'my-activity')}
+                    data-testid="export-activity-pdf"
+                    className="border-[#E8EBE8] rounded-full text-xs"
+                  >
+                    <FileDown className="w-3.5 h-3.5 mr-1" />
+                    PDF
+                  </Button>
+                )}
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {deposits.slice(0, 5).map((d) => (
+                  {deposits.slice(0, 5).map((d) => {
+                    const canDelete = d.user_id === user?.id || isSuperAdmin;
+                    return (
                     <div key={d.id} className="flex items-center justify-between py-3 border-b border-[#E8EBE8] last:border-0">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 bg-[#347242]/10 rounded-full flex items-center justify-center">
@@ -833,12 +867,24 @@ const Dashboard = () => {
                           <p className="text-sm text-[#5C665D]">{d.description || d.month}</p>
                         </div>
                       </div>
-                      <div className="text-right">
-                        <p className="font-semibold text-[#347242] font-numbers">{formatCurrency(d.amount)}</p>
-                        {getStatusBadge(d.status)}
+                      <div className="flex items-center gap-3">
+                        <div className="text-right">
+                          <p className="font-semibold text-[#347242] font-numbers">{formatCurrency(d.amount)}</p>
+                          {getStatusBadge(d.status)}
+                        </div>
+                        {canDelete && (
+                          <button
+                            onClick={() => handleDeleteRecord('deposits', d.id)}
+                            data-testid={`delete-activity-${d.id}`}
+                            title="Delete record"
+                            className="p-1.5 rounded-full text-[#D05A49] hover:bg-[#D05A49]/10 transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
                     </div>
-                  ))}
+                  );})}
                   {deposits.length === 0 && (
                     <p className="text-center text-[#5C665D] py-4">No recent activity</p>
                   )}
@@ -851,16 +897,29 @@ const Dashboard = () => {
         {/* Deposits Tab */}
         {activeTab === 'deposits' && (
           <div className="space-y-6 animate-fade-in" data-testid="deposits-tab">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between flex-wrap gap-2">
               <h2 className="text-2xl font-bold font-['Manrope'] text-[#1E231F]">Deposits</h2>
-              <Dialog open={depositDialogOpen} onOpenChange={setDepositDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button className="bg-[#2C5530] hover:bg-[#214024] rounded-full">
-                    <Plus className="w-4 h-4 mr-2" />
-                    New Deposit
+              <div className="flex items-center gap-2">
+                {deposits.length > 0 && (
+                  <Button
+                    variant="outline"
+                    onClick={() => exportDepositsPDF(deposits)}
+                    data-testid="export-deposits-pdf"
+                    className="border-[#E8EBE8] rounded-full"
+                  >
+                    <FileDown className="w-4 h-4 mr-2" />
+                    Export PDF
                   </Button>
-                </DialogTrigger>
-              </Dialog>
+                )}
+                <Dialog open={depositDialogOpen} onOpenChange={setDepositDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button className="bg-[#2C5530] hover:bg-[#214024] rounded-full">
+                      <Plus className="w-4 h-4 mr-2" />
+                      New Deposit
+                    </Button>
+                  </DialogTrigger>
+                </Dialog>
+              </div>
             </div>
             
             <Card className="bg-white border border-[#E8EBE8] shadow-sm">
@@ -874,10 +933,13 @@ const Dashboard = () => {
                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Amount</th>
                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Late Fee</th>
                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Status</th>
+                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Action</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {deposits.map((d) => (
+                      {deposits.map((d) => {
+                        const canDelete = d.user_id === user?.id || isSuperAdmin;
+                        return (
                         <tr key={d.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5] transition-colors">
                           <td className="py-4 px-6 text-[#1E231F]">
                             {new Date(d.created_at).toLocaleDateString()}
@@ -892,8 +954,22 @@ const Dashboard = () => {
                             {d.late_fee > 0 ? formatCurrency(d.late_fee) : '-'}
                           </td>
                           <td className="py-4 px-6">{getStatusBadge(d.status)}</td>
+                          <td className="py-4 px-6">
+                            {canDelete ? (
+                              <button
+                                onClick={() => handleDeleteRecord('deposits', d.id)}
+                                data-testid={`delete-deposit-${d.id}`}
+                                title="Delete record"
+                                className="p-1.5 rounded-full text-[#D05A49] hover:bg-[#D05A49]/10 transition-colors"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            ) : (
+                              <span className="text-[#5C665D] text-xs">-</span>
+                            )}
+                          </td>
                         </tr>
-                      ))}
+                      );})}
                     </tbody>
                   </table>
                   {deposits.length === 0 && (
@@ -908,18 +984,31 @@ const Dashboard = () => {
         {/* Loans Tab */}
         {activeTab === 'loans' && (
           <div className="space-y-6 animate-fade-in" data-testid="loans-tab">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between flex-wrap gap-2">
               <h2 className="text-2xl font-bold font-['Manrope'] text-[#1E231F]">Loans</h2>
-              {isPremium && (
-                <Dialog open={loanDialogOpen} onOpenChange={setLoanDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button className="bg-[#D48C70] hover:bg-[#BD7B60] rounded-full">
-                      <Plus className="w-4 h-4 mr-2" />
-                      Request Loan
-                    </Button>
-                  </DialogTrigger>
-                </Dialog>
-              )}
+              <div className="flex items-center gap-2">
+                {loans.length > 0 && (
+                  <Button
+                    variant="outline"
+                    onClick={() => exportLoansPDF(loans)}
+                    data-testid="export-loans-pdf"
+                    className="border-[#E8EBE8] rounded-full"
+                  >
+                    <FileDown className="w-4 h-4 mr-2" />
+                    Export PDF
+                  </Button>
+                )}
+                {isPremium && (
+                  <Dialog open={loanDialogOpen} onOpenChange={setLoanDialogOpen}>
+                    <DialogTrigger asChild>
+                      <Button className="bg-[#D48C70] hover:bg-[#BD7B60] rounded-full">
+                        <Plus className="w-4 h-4 mr-2" />
+                        Request Loan
+                      </Button>
+                    </DialogTrigger>
+                  </Dialog>
+                )}
+              </div>
             </div>
 
             {/* Loans awaiting MY guarantor approval */}
@@ -1032,20 +1121,33 @@ const Dashboard = () => {
                           </td>
                           <td className="py-4 px-6">{getStatusBadge(l.status)}</td>
                           <td className="py-4 px-6">
-                            {showNotifyGuarantor ? (
-                              <a
-                                href={waUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                data-testid={`whatsapp-notify-${l.id}`}
-                                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-[#25D366] text-white text-xs font-medium hover:bg-[#1EA852] transition-colors"
-                              >
-                                <MessageCircle className="w-3.5 h-3.5" />
-                                Notify
-                              </a>
-                            ) : (
-                              <span className="text-[#5C665D] text-xs">-</span>
-                            )}
+                            <div className="flex items-center gap-2">
+                              {showNotifyGuarantor ? (
+                                <a
+                                  href={waUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  data-testid={`whatsapp-notify-${l.id}`}
+                                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-[#25D366] text-white text-xs font-medium hover:bg-[#1EA852] transition-colors"
+                                >
+                                  <MessageCircle className="w-3.5 h-3.5" />
+                                  Notify
+                                </a>
+                              ) : null}
+                              {(l.user_id === user?.id || isSuperAdmin) && (
+                                <button
+                                  onClick={() => handleDeleteRecord('loans', l.id)}
+                                  data-testid={`delete-loan-${l.id}`}
+                                  title="Delete record"
+                                  className="p-1.5 rounded-full text-[#D05A49] hover:bg-[#D05A49]/10 transition-colors"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                              {!showNotifyGuarantor && !(l.user_id === user?.id || isSuperAdmin) && (
+                                <span className="text-[#5C665D] text-xs">-</span>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       );})}
@@ -1065,14 +1167,27 @@ const Dashboard = () => {
           <div className="space-y-6 animate-fade-in" data-testid="withdrawals-tab">
             <div className="flex items-center justify-between">
               <h2 className="text-2xl font-bold font-['Manrope'] text-[#1E231F]">Withdrawals</h2>
-              <Dialog open={withdrawalDialogOpen} onOpenChange={setWithdrawalDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button variant="outline" className="border-[#E8EBE8] rounded-full">
-                    <Plus className="w-4 h-4 mr-2" />
-                    Request Withdrawal
+              <div className="flex items-center gap-2">
+                {withdrawals.length > 0 && (
+                  <Button
+                    variant="outline"
+                    onClick={() => exportWithdrawalsPDF(withdrawals)}
+                    data-testid="export-withdrawals-pdf"
+                    className="border-[#E8EBE8] rounded-full"
+                  >
+                    <FileDown className="w-4 h-4 mr-2" />
+                    Export PDF
                   </Button>
-                </DialogTrigger>
-              </Dialog>
+                )}
+                <Dialog open={withdrawalDialogOpen} onOpenChange={setWithdrawalDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button variant="outline" className="border-[#E8EBE8] rounded-full">
+                      <Plus className="w-4 h-4 mr-2" />
+                      Request Withdrawal
+                    </Button>
+                  </DialogTrigger>
+                </Dialog>
+              </div>
             </div>
             
             <Card className="bg-white border border-[#E8EBE8] shadow-sm">
@@ -1086,10 +1201,13 @@ const Dashboard = () => {
                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Type</th>
                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Reason</th>
                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Status</th>
+                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Action</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {withdrawals.map((w) => (
+                      {withdrawals.map((w) => {
+                        const canDelete = w.user_id === user?.id || isSuperAdmin;
+                        return (
                         <tr key={w.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5] transition-colors">
                           <td className="py-4 px-6 text-[#1E231F]">
                             {new Date(w.created_at).toLocaleDateString()}
@@ -1102,8 +1220,22 @@ const Dashboard = () => {
                           </td>
                           <td className="py-4 px-6 text-[#5C665D]">{w.reason || '-'}</td>
                           <td className="py-4 px-6">{getStatusBadge(w.status)}</td>
+                          <td className="py-4 px-6">
+                            {canDelete ? (
+                              <button
+                                onClick={() => handleDeleteRecord('withdrawals', w.id)}
+                                data-testid={`delete-withdrawal-${w.id}`}
+                                title="Delete record"
+                                className="p-1.5 rounded-full text-[#D05A49] hover:bg-[#D05A49]/10 transition-colors"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            ) : (
+                              <span className="text-[#5C665D] text-xs">-</span>
+                            )}
+                          </td>
                         </tr>
-                      ))}
+                      );})}
                     </tbody>
                   </table>
                   {withdrawals.length === 0 && (
@@ -1172,21 +1304,44 @@ const Dashboard = () => {
         {/* Financials Tab */}
         {activeTab === 'financials' && (
           <div className="space-y-6 animate-fade-in" data-testid="financials-tab">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between flex-wrap gap-2">
               <h2 className="text-2xl font-bold font-['Manrope'] text-[#1E231F]">Group Financials</h2>
-              {isAdmin && (
-                <Dialog open={pettyCashDialogOpen} onOpenChange={setPettyCashDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button className="bg-[#D48C70] hover:bg-[#BD7B60] rounded-full">
-                      <Plus className="w-4 h-4 mr-2" />
-                      Add Petty Cash
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="sm:max-w-md">
-                    <DialogHeader>
-                      <DialogTitle className="text-[#1E231F]">Add Petty Cash Expense</DialogTitle>
-                      <DialogDescription className="text-[#5C665D]">
-                        Record group expenses (stationary, transport, etc.)
+              <div className="flex items-center gap-2 flex-wrap">
+                {isAdmin && (
+                  <Button
+                    variant="outline"
+                    onClick={() => exportFullGroupReportPDF({ financials, deposits, loans, withdrawals, pettyCash: financials?.petty_cash_items || [], members })}
+                    data-testid="export-full-report-pdf"
+                    className="border-[#2C5530] text-[#2C5530] rounded-full"
+                  >
+                    <FileDown className="w-4 h-4 mr-2" />
+                    Full Group Report
+                  </Button>
+                )}
+                {financials?.petty_cash_items?.length > 0 && (
+                  <Button
+                    variant="outline"
+                    onClick={() => exportPettyCashPDF(financials.petty_cash_items)}
+                    data-testid="export-petty-cash-pdf"
+                    className="border-[#E8EBE8] rounded-full"
+                  >
+                    <FileDown className="w-4 h-4 mr-2" />
+                    Export Petty Cash
+                  </Button>
+                )}
+                {isAdmin && (
+                  <Dialog open={pettyCashDialogOpen} onOpenChange={setPettyCashDialogOpen}>
+                    <DialogTrigger asChild>
+                      <Button className="bg-[#D48C70] hover:bg-[#BD7B60] rounded-full">
+                        <Plus className="w-4 h-4 mr-2" />
+                        Add Petty Cash
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="sm:max-w-md">
+                      <DialogHeader>
+                        <DialogTitle className="text-[#1E231F]">Add Petty Cash Expense</DialogTitle>
+                        <DialogDescription className="text-[#5C665D]">
+                          Record group expenses (stationary, transport, etc.)
                       </DialogDescription>
                     </DialogHeader>
                     <form onSubmit={handleAddPettyCash} className="space-y-4 mt-4">
@@ -1235,6 +1390,7 @@ const Dashboard = () => {
                   </DialogContent>
                 </Dialog>
               )}
+              </div>
             </div>
 
             {/* Total Group Balance Card */}

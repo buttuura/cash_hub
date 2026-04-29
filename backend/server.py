@@ -452,7 +452,7 @@ async def request_deposit(deposit: DepositRequest, user: dict = Depends(get_curr
     deposit_doc = {
         "user_id": user["id"],
         "user_name": user["name"],
-        "user_email": user["email"],
+        "user_email": user.get("email"),
         "amount": deposit.amount,
         "deposit_type": deposit.deposit_type,
         "late_fee": late_fee,
@@ -529,6 +529,41 @@ async def approve_deposit(approval: TransactionApproval, user: dict = Depends(re
             )
     
     return {"message": f"Deposit {new_status}"}
+
+@api_router.delete("/deposits/{deposit_id}")
+async def delete_deposit(deposit_id: str, user: dict = Depends(get_current_user)):
+    """Delete a deposit. Members can delete own pending/rejected; super_admin can delete any."""
+    deposit = await db.deposits.find_one({"_id": ObjectId(deposit_id)})
+    if not deposit:
+        raise HTTPException(status_code=404, detail="Deposit not found")
+    
+    is_super = user.get("role") == "super_admin"
+    is_owner = deposit.get("user_id") == user["id"]
+    
+    if not is_super:
+        if not is_owner:
+            raise HTTPException(status_code=403, detail="You can only delete your own records")
+        if deposit.get("status") == "approved":
+            raise HTTPException(status_code=403, detail="Approved deposits can only be deleted by Super Admin")
+    
+    # If approved, reverse the balance changes
+    if deposit.get("status") == "approved":
+        if deposit.get("deposit_type") == "development_fee":
+            await db.users.update_one(
+                {"_id": ObjectId(deposit["user_id"])},
+                {"$inc": {"development_fund": -deposit["amount"]}}
+            )
+        else:
+            await db.users.update_one(
+                {"_id": ObjectId(deposit["user_id"])},
+                {"$inc": {
+                    "total_savings": -deposit["amount"],
+                    "total_late_fees": -deposit.get("late_fee", 0)
+                }}
+            )
+    
+    await db.deposits.delete_one({"_id": ObjectId(deposit_id)})
+    return {"message": "Deposit deleted"}
 
 # ==================== LOAN ENDPOINTS ====================
 
@@ -758,6 +793,32 @@ async def repay_loan(loan_id: str, amount: float, user: dict = Depends(require_a
 
 # ==================== WITHDRAWAL ENDPOINTS ====================
 
+@api_router.delete("/loans/{loan_id}")
+async def delete_loan(loan_id: str, user: dict = Depends(get_current_user)):
+    """Delete a loan. Members can delete own pending/rejected; super_admin can delete any (including approved/repaid)."""
+    loan = await db.loans.find_one({"_id": ObjectId(loan_id)})
+    if not loan:
+        raise HTTPException(status_code=404, detail="Loan not found")
+    
+    is_super = user.get("role") == "super_admin"
+    is_owner = loan.get("user_id") == user["id"]
+    
+    if not is_super:
+        if not is_owner:
+            raise HTTPException(status_code=403, detail="You can only delete your own records")
+        if loan.get("status") in ["approved", "pending_admin"]:
+            raise HTTPException(status_code=403, detail="Approved/admin-pending loans can only be deleted by Super Admin")
+    
+    # If loan was approved and guarantor counter was incremented, decrement back
+    if loan.get("status") == "approved" and not loan.get("repaid") and loan.get("guarantor_id"):
+        await db.users.update_one(
+            {"_id": ObjectId(loan["guarantor_id"])},
+            {"$inc": {"guarantees_given": -1}}
+        )
+    
+    await db.loans.delete_one({"_id": ObjectId(loan_id)})
+    return {"message": "Loan deleted"}
+
 @api_router.post("/withdrawals/request")
 async def request_withdrawal(withdrawal: WithdrawalRequest, user: dict = Depends(get_current_user)):
     if withdrawal.amount <= 0:
@@ -783,7 +844,7 @@ async def request_withdrawal(withdrawal: WithdrawalRequest, user: dict = Depends
     withdrawal_doc = {
         "user_id": user["id"],
         "user_name": user["name"],
-        "user_email": user["email"],
+        "user_email": user.get("email"),
         "amount": withdrawal.amount,
         "withdrawal_type": withdrawal.withdrawal_type,
         "reason": withdrawal.reason,
@@ -859,6 +920,33 @@ async def approve_withdrawal(approval: TransactionApproval, user: dict = Depends
     return {"message": f"Withdrawal {new_status}"}
 
 # ==================== LEAVING GROUP ====================
+
+@api_router.delete("/withdrawals/{withdrawal_id}")
+async def delete_withdrawal(withdrawal_id: str, user: dict = Depends(get_current_user)):
+    """Delete a withdrawal. Members can delete own pending/rejected; super_admin can delete any."""
+    withdrawal = await db.withdrawals.find_one({"_id": ObjectId(withdrawal_id)})
+    if not withdrawal:
+        raise HTTPException(status_code=404, detail="Withdrawal not found")
+    
+    is_super = user.get("role") == "super_admin"
+    is_owner = withdrawal.get("user_id") == user["id"]
+    
+    if not is_super:
+        if not is_owner:
+            raise HTTPException(status_code=403, detail="You can only delete your own records")
+        if withdrawal.get("status") == "approved":
+            raise HTTPException(status_code=403, detail="Approved withdrawals can only be deleted by Super Admin")
+    
+    # Reverse balance changes if it was approved
+    if withdrawal.get("status") == "approved":
+        if withdrawal.get("withdrawal_type") != "leaving_group":
+            await db.users.update_one(
+                {"_id": ObjectId(withdrawal["user_id"])},
+                {"$inc": {"total_savings": withdrawal["amount"]}}
+            )
+    
+    await db.withdrawals.delete_one({"_id": ObjectId(withdrawal_id)})
+    return {"message": "Withdrawal deleted"}
 
 @api_router.post("/leaving/request")
 async def request_to_leave(data: LeavingRequest, user: dict = Depends(get_current_user)):
@@ -1161,8 +1249,8 @@ async def get_petty_cash(user: dict = Depends(get_current_user)):
     return result
 
 @api_router.delete("/petty-cash/{entry_id}")
-async def delete_petty_cash(entry_id: str, user: dict = Depends(require_super_admin)):
-    """Delete a petty cash entry (Super Admin only)"""
+async def delete_petty_cash(entry_id: str, user: dict = Depends(require_admin)):
+    """Delete a petty cash entry (Admin or Super Admin)"""
     result = await db.petty_cash.delete_one({"_id": ObjectId(entry_id)})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Entry not found")
