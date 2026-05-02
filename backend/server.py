@@ -511,7 +511,65 @@ async def approve_deposit(approval: TransactionApproval, user: dict = Depends(re
                 {"_id": ObjectId(deposit["user_id"])},
                 {"$inc": {"development_fund": deposit["amount"]}}
             )
-        else:
+        elif deposit.get("deposit_type") == "loan_payment":
+            # Handle loan principal payment - need to find user's active loans
+            user_loans = await db.loans.find({
+                "user_id": deposit["user_id"],
+                "status": "approved",
+                "repaid": False
+            }).to_list(100)
+            
+            remaining_payment = deposit["amount"]
+            for loan in user_loans:
+                if remaining_payment <= 0:
+                    break
+                
+                outstanding_principal = loan["amount"] - (loan.get("amount_repaid", 0) - loan.get("interest_repaid", 0))
+                if outstanding_principal > 0:
+                    payment_to_apply = min(remaining_payment, outstanding_principal)
+                    await db.loans.update_one(
+                        {"_id": ObjectId(loan["_id"])},
+                        {"$inc": {"amount_repaid": payment_to_apply}}
+                    )
+                    remaining_payment -= payment_to_apply
+            
+            # If payment exceeds loan amounts, add excess to savings
+            if remaining_payment > 0:
+                await db.users.update_one(
+                    {"_id": ObjectId(deposit["user_id"])},
+                    {"$inc": {"total_savings": remaining_payment}}
+                )
+        
+        elif deposit.get("deposit_type") == "interest_payment":
+            # Handle interest payment - need to find user's active loans
+            user_loans = await db.loans.find({
+                "user_id": deposit["user_id"],
+                "status": "approved",
+                "repaid": False
+            }).to_list(100)
+            
+            remaining_payment = deposit["amount"]
+            for loan in user_loans:
+                if remaining_payment <= 0:
+                    break
+                
+                outstanding_interest = loan.get("total_due", 0) - loan["amount"] - (loan.get("interest_repaid", 0))
+                if outstanding_interest > 0:
+                    payment_to_apply = min(remaining_payment, outstanding_interest)
+                    await db.loans.update_one(
+                        {"_id": ObjectId(loan["_id"])},
+                        {"$inc": {"interest_repaid": payment_to_apply}}
+                    )
+                    remaining_payment -= payment_to_apply
+            
+            # If payment exceeds interest amounts, add excess to savings
+            if remaining_payment > 0:
+                await db.users.update_one(
+                    {"_id": ObjectId(deposit["user_id"])},
+                    {"$inc": {"total_savings": remaining_payment}}
+                )
+        
+        else:  # savings
             await db.users.update_one(
                 {"_id": ObjectId(deposit["user_id"])},
                 {"$inc": {

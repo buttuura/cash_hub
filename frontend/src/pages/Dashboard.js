@@ -145,7 +145,8 @@ const Dashboard = () => {
       !loan.repaid
     )
     .reduce((total, loan) => {
-      const outstanding = (loan.total_due || 0) - (loan.amount_repaid || 0);
+      const total_repaid = (loan.amount_repaid || 0) + (loan.interest_repaid || 0);
+      const outstanding = (loan.total_due || 0) - total_repaid;
       return total + outstanding;
     }, 0);
 
@@ -687,7 +688,8 @@ const Dashboard = () => {
                         <SelectContent>
                           <SelectItem value="savings">Monthly Savings (UGX 52,000)</SelectItem>
                           <SelectItem value="development_fee">Development Fee (UGX 3,000)</SelectItem>
-                          <SelectItem value="loan_repayment">Pay Back Loan, Interest & Late Fees</SelectItem>
+                          <SelectItem value="loan_payment">Pay Back Loan</SelectItem>
+                          <SelectItem value="interest_payment">Pay Back Interest</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
