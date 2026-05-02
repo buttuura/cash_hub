@@ -137,6 +137,18 @@ const Dashboard = () => {
     fetchData();
   }, []);
 
+  // Calculate user's outstanding loan balance
+  const userLoanBalance = loans
+    .filter(loan => 
+      loan.user_id === user?.id && 
+      loan.status === 'approved' && 
+      !loan.repaid
+    )
+    .reduce((total, loan) => {
+      const outstanding = (loan.total_due || 0) - (loan.amount_repaid || 0);
+      return total + outstanding;
+    }, 0);
+
   const handleDeposit = async (e) => {
     e.preventDefault();
     try {
@@ -526,9 +538,9 @@ const Dashboard = () => {
         {activeTab === 'overview' && (
           <div className="space-y-6 animate-fade-in">
             {/* Stats Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
               {/* Total Group Balance - Only super admin can edit */}
-              <Card className="md:col-span-2 bg-[#2C5530] border-none shadow-lg" data-testid="total-balance-card">
+              <Card className="md:col-span-2 lg:col-span-2 bg-[#2C5530] border-none shadow-lg" data-testid="total-balance-card">
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">
                     <div>
@@ -620,6 +632,26 @@ const Dashboard = () => {
                     </div>
                     <div className="w-12 h-12 bg-[#D48C70]/10 rounded-full flex items-center justify-center">
                       <TrendingUp className="w-6 h-6 text-[#D48C70]" />
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Loan Balance */}
+              <Card className={`bg-white shadow-sm ${userLoanBalance > 0 ? 'border-[#D05A49]' : 'border-[#E8EBE8]'}`}>
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-[#5C665D] text-sm font-medium uppercase tracking-wide">Outstanding Loan</p>
+                      <p className={`text-2xl font-bold font-numbers mt-2 ${userLoanBalance > 0 ? 'text-[#D05A49]' : 'text-[#347242]'}`}>
+                        {formatCurrency(userLoanBalance)}
+                      </p>
+                      <p className="text-xs text-[#5C665D] mt-1">
+                        {userLoanBalance > 0 ? 'Due for repayment' : 'No active loans'}
+                      </p>
+                    </div>
+                    <div className={`w-12 h-12 rounded-full flex items-center justify-center ${userLoanBalance > 0 ? 'bg-[#D05A49]/10' : 'bg-[#347242]/10'}`}>
+                      <CreditCard className={`w-6 h-6 ${userLoanBalance > 0 ? 'text-[#D05A49]' : 'text-[#347242]'}`} />
                     </div>
                   </div>
                 </CardContent>
