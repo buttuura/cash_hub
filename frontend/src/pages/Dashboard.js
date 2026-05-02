@@ -689,7 +689,6 @@ const Dashboard = () => {
                           <SelectItem value="savings">Monthly Savings (UGX 52,000)</SelectItem>
                           <SelectItem value="development_fee">Development Fee (UGX 3,000)</SelectItem>
                           <SelectItem value="loan_payment">Pay Back Loan</SelectItem>
-                          <SelectItem value="interest_payment">Pay Back Interest</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>

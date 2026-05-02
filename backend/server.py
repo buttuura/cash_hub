@@ -553,7 +553,13 @@ async def approve_deposit(approval: TransactionApproval, user: dict = Depends(re
                 if remaining_payment <= 0:
                     break
                 
-                outstanding_interest = loan.get("total_due", 0) - loan["amount"] - (loan.get("interest_repaid", 0))
+                # Calculate current outstanding interest
+                approved_date = datetime.fromisoformat(loan["approved_at"].replace('Z', '+00:00'))
+                months_elapsed = max(1, (datetime.now(timezone.utc) - approved_date).days // 30)
+                outstanding_balance = loan["amount"] - loan.get("amount_repaid", 0)
+                current_interest = calculate_loan_interest(outstanding_balance, months_elapsed)
+                outstanding_interest = current_interest - loan.get("interest_repaid", 0)
+                
                 if outstanding_interest > 0:
                     payment_to_apply = min(remaining_payment, outstanding_interest)
                     await db.loans.update_one(
@@ -757,8 +763,9 @@ async def get_loans(user: dict = Depends(get_current_user)):
         if l.get("status") == "approved" and not l.get("repaid"):
             approved_date = datetime.fromisoformat(l["approved_at"].replace('Z', '+00:00'))
             months_elapsed = max(1, (datetime.now(timezone.utc) - approved_date).days // 30)
-            l["current_interest"] = calculate_loan_interest(l["amount"], months_elapsed)
-            l["total_due"] = l["amount"] + l["current_interest"]
+            outstanding_balance = l["amount"] - l.get("amount_repaid", 0)
+            l["current_interest"] = calculate_loan_interest(outstanding_balance, months_elapsed)
+            l["total_due"] = outstanding_balance + l["current_interest"]
             l["months_elapsed"] = months_elapsed
         
         result.append(l)
@@ -818,8 +825,9 @@ async def repay_loan(loan_id: str, amount: float, user: dict = Depends(require_a
     # Calculate total due
     approved_date = datetime.fromisoformat(loan["approved_at"].replace('Z', '+00:00'))
     months_elapsed = max(1, (datetime.now(timezone.utc) - approved_date).days // 30)
-    interest = calculate_loan_interest(loan["amount"], months_elapsed)
-    total_due = loan["amount"] + interest
+    outstanding_balance = loan["amount"] - loan.get("amount_repaid", 0)
+    interest = calculate_loan_interest(outstanding_balance, months_elapsed)
+    total_due = outstanding_balance + interest
     
     new_amount_repaid = loan.get("amount_repaid", 0) + amount
     fully_repaid = new_amount_repaid >= total_due
