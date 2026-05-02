@@ -66,6 +66,7 @@ class DepositRequest(BaseModel):
     amount: float
     deposit_type: str = "savings"  # savings, development_fee
     description: Optional[str] = None
+    target_user_id: Optional[str] = None
 
 class LoanRequest(BaseModel):
     amount: float
@@ -424,6 +425,14 @@ async def update_group_balance(data: GroupBalanceUpdate, user: dict = Depends(re
 async def request_deposit(deposit: DepositRequest, user: dict = Depends(get_current_user)):
     if deposit.amount <= 0:
         raise HTTPException(status_code=400, detail="Amount must be positive")
+
+    target_user = user
+    if deposit.target_user_id:
+        if user.get("role") != "super_admin":
+            raise HTTPException(status_code=403, detail="Only Treasurer can deposit for other members")
+        target_user = await db.users.find_one({"_id": ObjectId(deposit.target_user_id)})
+        if not target_user:
+            raise HTTPException(status_code=404, detail="Target member not found")
     
     # Calculate late fee if applicable
     today = datetime.now(timezone.utc)
@@ -450,9 +459,9 @@ async def request_deposit(deposit: DepositRequest, user: dict = Depends(get_curr
             raise HTTPException(status_code=400, detail=f"Development fee is UGX {DEVELOPMENT_FEE:,}")
     
     deposit_doc = {
-        "user_id": user["id"],
-        "user_name": user["name"],
-        "user_email": user.get("email"),
+        "user_id": target_user["id"],
+        "user_name": target_user["name"],
+        "user_email": target_user.get("email"),
         "amount": deposit.amount,
         "deposit_type": deposit.deposit_type,
         "late_fee": late_fee,

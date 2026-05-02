@@ -87,6 +87,7 @@ const Dashboard = () => {
   const [depositAmount, setDepositAmount] = useState('52000');
   const [depositType, setDepositType] = useState('savings');
   const [depositDescription, setDepositDescription] = useState('');
+  const [depositTargetUserId, setDepositTargetUserId] = useState(null);
   const [loanAmount, setLoanAmount] = useState('');
   const [loanGuarantor, setLoanGuarantor] = useState('');
   const [loanReason, setLoanReason] = useState('');
@@ -153,23 +154,36 @@ const Dashboard = () => {
   const handleDeposit = async (e) => {
     e.preventDefault();
     try {
+      const payload = {
+        amount: parseFloat(depositAmount),
+        deposit_type: depositType,
+        description: depositDescription,
+      };
+      if (depositTargetUserId) {
+        payload.target_user_id = depositTargetUserId;
+      }
       await axios.post(
         `${API_URL}/api/deposits/request`,
-        { 
-          amount: parseFloat(depositAmount), 
-          deposit_type: depositType,
-          description: depositDescription 
-        },
+        payload,
         { headers: getAuthHeaders() }
       );
       toast.success('Deposit request submitted for approval');
       setDepositDialogOpen(false);
+      setDepositTargetUserId(null);
       setDepositAmount('55000');
       setDepositDescription('');
       fetchData();
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Failed to submit deposit');
     }
+  };
+
+  const handleOpenDepositForMember = (memberId) => {
+    setDepositTargetUserId(memberId);
+    setDepositType('savings');
+    setDepositAmount('52000');
+    setDepositDescription('');
+    setDepositDialogOpen(true);
   };
 
   const handleLoan = async (e) => {
@@ -540,7 +554,7 @@ const Dashboard = () => {
           <div className="space-y-6 animate-fade-in">
             {/* Stats Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
-              {/* Total Group Balance - Only super admin can edit */}
+              {/* Total Group Balance - Only Treasurer can edit */}
               <Card className="md:col-span-2 lg:col-span-2 bg-[#2C5530] border-none shadow-lg" data-testid="total-balance-card">
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">
@@ -661,7 +675,10 @@ const Dashboard = () => {
 
             {/* Quick Actions */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Dialog open={depositDialogOpen} onOpenChange={setDepositDialogOpen}>
+              <Dialog open={depositDialogOpen} onOpenChange={(open) => {
+                  setDepositDialogOpen(open);
+                  if (!open) setDepositTargetUserId(null);
+                }}>
                 <DialogTrigger asChild>
                   <Button
                     data-testid="deposit-button"
@@ -673,9 +690,13 @@ const Dashboard = () => {
                 </DialogTrigger>
                 <DialogContent className="sm:max-w-md">
                   <DialogHeader>
-                    <DialogTitle className="font-['Manrope'] text-[#1E231F]">Make Deposit</DialogTitle>
+                    <DialogTitle className="font-['Manrope'] text-[#1E231F]">
+                      {depositTargetUserId ? `Deposit for ${members.find((m) => m.id === depositTargetUserId)?.name || 'Member'}` : 'Make Deposit'}
+                    </DialogTitle>
                     <DialogDescription className="text-[#5C665D]">
-                      Monthly savings: UGX 52,000 | Development fee: UGX 3,000
+                      {depositTargetUserId
+                        ? 'Submitting a deposit request to the selected member account.'
+                        : 'Monthly savings: UGX 52,000 | Development fee: UGX 3,000'}
                     </DialogDescription>
                   </DialogHeader>
                   <form onSubmit={handleDeposit} className="space-y-4 mt-4">
@@ -1328,6 +1349,16 @@ const Dashboard = () => {
                         </p>
                       </div>
                     </div>
+                    {isSuperAdmin && m.id !== user?.id && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="mt-4 w-full"
+                        onClick={() => handleOpenDepositForMember(m.id)}
+                      >
+                        Deposit for Member
+                      </Button>
+                    )}
                   </CardContent>
                 </Card>
               ))}
@@ -1847,13 +1878,13 @@ const Dashboard = () => {
               </CardContent>
             </Card>
 
-            {/* Member Management (Super Admin only) */}
+            {/* Member Management (Treasurer only) */}
             {isSuperAdmin && (
               <Card className="bg-white border border-[#E8EBE8] shadow-sm">
                 <CardHeader>
                   <CardTitle className="font-['Manrope'] text-[#1E231F] flex items-center gap-2">
                     <Shield className="w-5 h-5 text-[#D48C70]" />
-                    Member Management (Super Admin)
+                    Member Management (Treasurer)
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -1884,6 +1915,7 @@ const Dashboard = () => {
                               >
                                 <option value="member">Member</option>
                                 <option value="admin">Admin</option>
+                                <option value="super_admin" disabled>Treasurer</option>
                               </select>
                             </td>
                             <td className="py-3 px-4">
@@ -1899,7 +1931,15 @@ const Dashboard = () => {
                             <td className="py-3 px-4 font-numbers text-[#347242]">
                               {formatCurrency(m.total_savings)}
                             </td>
-                            <td className="py-3 px-4 text-right">
+                            <td className="py-3 px-4 text-right space-x-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleOpenDepositForMember(m.id)}
+                                className="border-[#2C5530] text-[#2C5530] hover:bg-[#2C5530]/10"
+                              >
+                                Deposit
+                              </Button>
                               <Button
                                 size="sm"
                                 variant="outline"
