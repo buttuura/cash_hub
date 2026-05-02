@@ -160,14 +160,14 @@ async def get_current_user(request: Request) -> dict:
 
 async def require_admin(request: Request) -> dict:
     user = await get_current_user(request)
-    if user.get("role") not in ["admin", "super_admin"]:
+    if user.get("role") not in ["admin", "super_admin", "treasurer"]:
         raise HTTPException(status_code=403, detail="Admin access required")
     return user
 
 async def require_super_admin(request: Request) -> dict:
     user = await get_current_user(request)
-    if user.get("role") != "super_admin":
-        raise HTTPException(status_code=403, detail="Super Admin access required")
+    if user.get("role") not in ["super_admin", "treasurer"]:
+        raise HTTPException(status_code=403, detail="Treasurer access required")
     return user
 
 # ==================== HELPER FUNCTIONS ====================
@@ -428,7 +428,7 @@ async def request_deposit(deposit: DepositRequest, user: dict = Depends(get_curr
 
     target_user = user
     if deposit.target_user_id:
-        if user.get("role") != "super_admin":
+        if user.get("role") not in ["super_admin", "treasurer"]:
             raise HTTPException(status_code=403, detail="Only Treasurer can deposit for other members")
         target_user = await db.users.find_one({"_id": ObjectId(deposit.target_user_id)})
         if not target_user:

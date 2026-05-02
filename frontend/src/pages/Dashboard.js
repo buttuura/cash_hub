@@ -61,6 +61,12 @@ const formatCurrency = (amount) => {
   return `UGX ${Number(amount || 0).toLocaleString()}`;
 };
 
+const getRoleLabel = (role) => {
+  if (role === 'super_admin' || role === 'treasurer') return 'Treasurer';
+  if (role === 'admin') return 'Admin';
+  return 'Member';
+};
+
 // Build a wa.me link that opens WhatsApp (Messenger or Business) with pre-typed text.
 // Uganda numbers: replace leading 0 with 256. Strips spaces, dashes, +.
 const buildWhatsAppUrl = (phone, message) => {
@@ -1334,7 +1340,9 @@ const Dashboard = () => {
                       </Badge>
                     </div>
                     <h3 className="font-semibold text-[#1E231F] mb-1">{m.name}</h3>
-                    <p className="text-sm text-[#5C665D] mb-3">{m.phone || 'No phone'}</p>
+                    <p className="text-sm text-[#5C665D] mb-1">
+                      {getRoleLabel(m.role)} • {m.phone || 'No phone'}
+                    </p>
                     <div className="pt-3 border-t border-[#E8EBE8] grid grid-cols-2 gap-2">
                       <div>
                         <p className="text-xs text-[#5C665D]">Savings</p>
@@ -1908,14 +1916,15 @@ const Dashboard = () => {
                             </td>
                             <td className="py-3 px-4">
                               <select
-                                value={m.role === 'super_admin' ? 'super_admin' : m.role}
+                                value={m.role}
                                 onChange={(e) => handleSetRole(m.id, e.target.value)}
-                                disabled={m.role === 'super_admin'}
+                                disabled={m.role === 'super_admin' || m.role === 'treasurer'}
                                 className="text-sm border border-[#E8EBE8] rounded-lg px-2 py-1 bg-white"
                               >
                                 <option value="member">Member</option>
                                 <option value="admin">Admin</option>
                                 <option value="super_admin" disabled>Treasurer</option>
+                                <option value="treasurer" disabled>Treasurer</option>
                               </select>
                             </td>
                             <td className="py-3 px-4">
