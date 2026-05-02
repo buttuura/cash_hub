@@ -61,10 +61,10 @@
   "instructions_to_main_agent": [
     "Install and import 'Manrope' for headings and 'IBM Plex Sans' for body text from Google Fonts.",
     "The UI is a community savings platform. Avoid generic fintech blue. Use the provided Earthy/Organic Light theme (Deep Greens, Terracottas, Off-whites).",
-    "Format currency using 'UGX 55,000' with commas to denote thousands. Always use IBM Plex Sans for numbers so they align cleanly.",
+    "Format currency using 'UGX 52,000' with commas to denote thousands. Always use IBM Plex Sans for numbers so they align cleanly.",
     "For the login/signup screens, use the `auth_background` image with a soft gradient overlay (bg-white/80 or bg-[#FAFAF8]/90) so form is perfectly readable.",
     "In the dashboard, create a high-impact 'Total Group Balance' card using the primary green background (#2C5530) and white text to make it stand out.",
-    "For Member List, visually distinguish 'Premium' (UGX 55000/month) and 'Ordinary' members using colored badges.",
+    "For Member List, visually distinguish 'Premium' (UGX 52000/month) and 'Ordinary' members using colored badges.",
     "Ensure the Super Admin view clearly highlights the destructive/sensitive actions (Delete User, Change Role) using the danger color (#D05A49) cautiously.",
     "Ensure Shadcn/UI components (like Dialogs, Tables, Dropdowns) are styled to match the 'Clay & Crisp' 1px border aesthetic with soft rounded corners."
   ]

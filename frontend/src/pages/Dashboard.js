@@ -84,7 +84,7 @@ const Dashboard = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Form states
-  const [depositAmount, setDepositAmount] = useState('55000');
+  const [depositAmount, setDepositAmount] = useState('52000');
   const [depositType, setDepositType] = useState('savings');
   const [depositDescription, setDepositDescription] = useState('');
   const [loanAmount, setLoanAmount] = useState('');
@@ -642,7 +642,7 @@ const Dashboard = () => {
                   <DialogHeader>
                     <DialogTitle className="font-['Manrope'] text-[#1E231F]">Make Deposit</DialogTitle>
                     <DialogDescription className="text-[#5C665D]">
-                      Monthly savings: UGX 55,000 | Development fee: UGX 3,000
+                      Monthly savings: UGX 52,000 | Development fee: UGX 3,000
                     </DialogDescription>
                   </DialogHeader>
                   <form onSubmit={handleDeposit} className="space-y-4 mt-4">
@@ -653,8 +653,9 @@ const Dashboard = () => {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="savings">Monthly Savings (UGX 55,000)</SelectItem>
+                          <SelectItem value="savings">Monthly Savings (UGX 52,000)</SelectItem>
                           <SelectItem value="development_fee">Development Fee (UGX 3,000)</SelectItem>
+                          <SelectItem value="loan_repayment">Pay Back Loan, Interest & Late Fees</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -664,9 +665,9 @@ const Dashboard = () => {
                         type="number"
                         value={depositAmount}
                         onChange={(e) => setDepositAmount(e.target.value)}
-                        placeholder={depositType === 'savings' ? '55000' : '3000'}
+                        placeholder={depositType === 'savings' ? '52000' : depositType === 'development_fee' ? '3000' : '0'}
                         required
-                        min={depositType === 'savings' ? 55000 : 3000}
+                        min={depositType === 'savings' ? 52000 : 1}
                       />
                     </div>
                     <div className="space-y-2">

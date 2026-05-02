@@ -35,7 +35,7 @@ JWT_SECRET = os.environ.get('JWT_SECRET', 'default-secret-change-in-production')
 JWT_ALGORITHM = "HS256"
 
 # Group Rules Constants
-MONTHLY_SAVINGS = 55000  # UGX
+MONTHLY_SAVINGS = 52000  # UGX
 DEVELOPMENT_FEE = 3000  # UGX per month
 LATE_FEE_PER_POSITION = 3000  # UGX
 MAX_LOAN_AMOUNT = 600000  # UGX
@@ -520,7 +520,7 @@ async def approve_deposit(approval: TransactionApproval, user: dict = Depends(re
                 }}
             )
         
-        # Update user to premium if savings >= 55000
+        # Update user to premium if savings >= 52000
         member = await db.users.find_one({"_id": ObjectId(deposit["user_id"])})
         if member and member.get("total_savings", 0) >= MONTHLY_SAVINGS:
             await db.users.update_one(

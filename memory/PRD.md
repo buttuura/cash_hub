@@ -1,7 +1,7 @@
 # Class One Savings - Group Cash Hub PRD
 
 ## Original Problem Statement
-Web app for managing group cash with a Super Admin who can add other admins and delete users. Members save UGX 55,000/month (ordinary) and become eligible for loans up to UGX 600,000 (premium). System tracks total group balance, deposits, loans, withdrawals. Deployed as single service on Render with MongoDB Atlas.
+Web app for managing group cash with a Super Admin who can add other admins and delete users. Members save UGX 52,000/month (ordinary) and become eligible for loans up to UGX 600,000 (premium). System tracks total group balance, deposits, loans, withdrawals. Deployed as single service on Render with MongoDB Atlas.
 
 ## User Personas
 
@@ -16,16 +16,16 @@ Web app for managing group cash with a Super Admin who can add other admins and 
 - Add petty cash expenses
 - View all members and transactions
 
-### Premium Member (savings ≥ UGX 55,000)
+### Premium Member (savings ≥ UGX 52,000)
 - Request deposits, loans (max UGX 600,000), withdrawals
 - Serve as guarantor (max 2 active guarantees)
 
-### Ordinary Member (savings < UGX 55,000)
+### Ordinary Member (savings < UGX 52,000)
 - Request deposits and withdrawals (no loans)
 
 ## Business Rules (Implemented Feb 2026)
 
-1. **Monthly Savings**: UGX 55,000 due 1st–10th of month
+1. **Monthly Savings**: UGX 52,000 due 1st–10th of month
 2. **Late Fee**: UGX 3,000 × position after 10th (stops applying at 20th)
 3. **Development Fee**: UGX 3,000/month (non-withdrawable unless leaving group)
 4. **Loan Interest**:
@@ -45,7 +45,7 @@ Web app for managing group cash with a Super Admin who can add other admins and 
 - Super Admin seeded on startup from ADMIN_EMAIL/ADMIN_PASSWORD env
 - Endpoints: deposits, loans (with interest calculation), withdrawals, leaving requests, petty cash CRUD
 - Auto-calculated group balance: savings + dev fund + interest + late fees − petty cash
-- Auto-promotion to premium when savings ≥ UGX 55,000
+- Auto-promotion to premium when savings ≥ UGX 52,000
 
 ### Frontend (React + Tailwind + Shadcn)
 - Login / Register pages
