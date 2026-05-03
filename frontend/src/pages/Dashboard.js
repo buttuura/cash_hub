@@ -153,7 +153,7 @@ const Dashboard = () => {
     )
     .reduce((total, loan) => {
       const total_repaid = (loan.amount_repaid || 0) + (loan.interest_repaid || 0);
-      const outstanding = Math.max(0, (loan.total_due || 0) - total_repaid);
+      const outstanding = Math.max(0, (loan.total_due || loan.outstanding_balance || 0) - total_repaid);
       return total + outstanding;
     }, 0);
 
@@ -1090,7 +1090,7 @@ const Dashboard = () => {
                           <p className="text-sm text-[#5C665D]">
                             Amount: <span className="font-bold text-[#D48C70]">{formatCurrency(l.amount)}</span>
                             {' • '}
-                            Total Due: <span className="font-bold">{formatCurrency(l.total_due || l.initial_total_due || l.amount * 1.03)}</span>
+                            Total Due: <span className="font-bold">{formatCurrency(l.total_due || l.outstanding_balance || l.initial_total_due || l.amount * 1.03)}</span>
                           </p>
                           {l.reason && <p className="text-xs text-[#5C665D] mt-1 italic">"{l.reason}"</p>}
                         </div>
@@ -1155,7 +1155,7 @@ const Dashboard = () => {
                         const showNotifyGuarantor = isMyLoan && l.status === 'pending_guarantor' && guarantor?.phone;
                         const waUrl = showNotifyGuarantor ? buildWhatsAppUrl(
                           guarantor.phone,
-                          `Hi ${l.guarantor_name}, I (${user?.name}) have requested a UGX ${Number(l.amount).toLocaleString()} loan on Class One Savings with you as my guarantor. Total due will be UGX ${Number(l.total_due || l.initial_total_due || l.amount * 1.03).toLocaleString()} (3% interest). Please log in at ${window.location.origin} to approve or reject. Thank you!`
+                          `Hi ${l.guarantor_name}, I (${user?.name}) have requested a UGX ${Number(l.amount).toLocaleString()} loan on Class One Savings with you as my guarantor. Total due will be UGX ${Number(l.total_due || l.outstanding_balance || l.initial_total_due || l.amount * 1.03).toLocaleString()} (3% interest). Please log in at ${window.location.origin} to approve or reject. Thank you!`
                         ) : null;
                         return (
                         <tr key={l.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5] transition-colors">
@@ -1178,7 +1178,7 @@ const Dashboard = () => {
                             )}
                           </td>
                           <td className="py-4 px-6 font-semibold text-[#1E231F] font-numbers">
-                            {l.total_due ? formatCurrency(l.total_due) : formatCurrency(l.amount)}
+                            {formatCurrency(l.total_due || l.outstanding_balance || l.initial_total_due || l.amount * 1.03)}
                           </td>
                           <td className="py-4 px-6">{getStatusBadge(l.status)}</td>
                           <td className="py-4 px-6">
@@ -1780,7 +1780,7 @@ const Dashboard = () => {
                         Guarantor: {l.guarantor_name} <span className="text-[#347242]">(approved)</span>
                       </p>
                       <p className="text-xs text-[#5C665D] mb-2">
-                        Total Due: <span className="font-semibold text-[#1E231F]">{formatCurrency(l.total_due || l.initial_total_due || l.amount * 1.03)}</span>
+                        Total Due: <span className="font-semibold text-[#1E231F]">{formatCurrency(l.total_due || l.outstanding_balance || l.initial_total_due || l.amount * 1.03)}</span>
                       </p>
                       <div className="flex gap-2">
                         <Button

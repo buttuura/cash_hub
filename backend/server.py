@@ -869,6 +869,7 @@ async def approve_loan(approval: TransactionApproval, user: dict = Depends(requi
         due_date = datetime.now(timezone.utc) + timedelta(days=120)
         update_data["due_date"] = due_date.isoformat()
         update_data["last_interest_accrual_at"] = datetime.now(timezone.utc).isoformat()
+        update_data["outstanding_balance"] = loan["amount"] * (1 + LOAN_INTEREST_NORMAL)
         
         # Increment guarantor's guarantee count
         await db.users.update_one(

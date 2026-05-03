@@ -52,7 +52,7 @@ export const exportLoansPDF = (loans, filenamePrefix = 'loans') => {
       fmtUGX(l.amount),
       l.guarantor_name || '-',
       fmtUGX(l.current_interest || l.initial_interest || 0),
-      fmtUGX(l.total_due || l.initial_total_due || l.amount),
+      fmtUGX(l.total_due || l.outstanding_balance || l.initial_total_due || l.amount),
       (l.status || '').replace(/_/g, ' '),
     ]),
     styles: { fontSize: 9 },
