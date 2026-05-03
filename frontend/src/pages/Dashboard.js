@@ -452,11 +452,17 @@ const Dashboard = () => {
     navItems.push({ id: 'admin', label: 'Admin', icon: Shield });
   }
 
-  // Get eligible guarantors: any member except self, under the guarantee limit
-  const eligibleGuarantors = members.filter(m => 
-    m.id !== user?.id && 
-    (m.guarantees_given || 0) < 2
-  );
+  // Get eligible guarantors: any member except self, with available guarantee slots
+  const eligibleGuarantors = members.filter(m => {
+    if (m.id === user?.id) return false;
+    const currentGuarantees = loans.filter(l => 
+      l.guarantor_id === m.id && 
+      ['pending_guarantor', 'pending_admin', 'approved'].includes(l.status) && 
+      !l.repaid
+    ).length;
+    const maxGuarantees = m.max_guarantees || 2;
+    return currentGuarantees < maxGuarantees;
+  });
 
   // Loans where current user is the selected guarantor and awaiting their approval
   const pendingGuarantorLoans = loans.filter(l => 
@@ -806,11 +812,20 @@ const Dashboard = () => {
                           <SelectValue placeholder="Choose any group member" />
                         </SelectTrigger>
                         <SelectContent>
-                          {eligibleGuarantors.map((m) => (
-                            <SelectItem key={m.id} value={m.id}>
-                              {m.name} ({2 - (m.guarantees_given || 0)} slots left)
-                            </SelectItem>
-                          ))}
+                          {eligibleGuarantors.map((m) => {
+                            const currentGuarantees = loans.filter(l => 
+                              l.guarantor_id === m.id && 
+                              ['pending_guarantor', 'pending_admin', 'approved'].includes(l.status) && 
+                              !l.repaid
+                            ).length;
+                            const maxGuarantees = m.max_guarantees || 2;
+                            const slotsLeft = maxGuarantees - currentGuarantees;
+                            return (
+                              <SelectItem key={m.id} value={m.id}>
+                                {m.name} ({slotsLeft} slots left)
+                              </SelectItem>
+                            );
+                          })}
                         </SelectContent>
                       </Select>
                       <p className="text-xs text-[#5C665D]">Any group member can guarantee. They must approve before admin.</p>
