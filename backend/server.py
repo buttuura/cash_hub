@@ -186,8 +186,16 @@ def calculate_months_elapsed(start_date: datetime, end_date: Optional[datetime] 
 
 
 def calculate_loan_interest(loan_amount: float, months_elapsed: int) -> float:
-    """Calculate compound loan interest based on duration"""
-    return loan_amount * ((1 + LOAN_INTEREST_NORMAL) ** months_elapsed - 1)
+    """Calculate compound loan interest based on duration with tiered monthly rates."""
+    if months_elapsed <= 0:
+        return 0.0
+
+    balance = loan_amount
+    for month_index in range(1, months_elapsed + 1):
+        rate = LOAN_INTEREST_NORMAL if month_index <= LOAN_NORMAL_PERIOD_MONTHS else LOAN_INTEREST_EXTENDED
+        balance *= 1 + rate
+
+    return balance - loan_amount
 
 
 def get_loan_last_interest_date(loan: dict) -> datetime:
@@ -207,12 +215,19 @@ async def accrue_loan_interest_on_db(loan: dict) -> dict:
         return loan
 
     last_accrual_date = get_loan_last_interest_date(loan)
-    months_elapsed = calculate_months_elapsed(last_accrual_date)
-    if months_elapsed <= 0:
+    months_to_accrue = calculate_months_elapsed(last_accrual_date)
+    if months_to_accrue <= 0:
         return loan
 
+    approved_date = datetime.fromisoformat(loan["approved_at"].replace('Z', '+00:00'))
+    months_already_accrued = calculate_months_elapsed(approved_date, last_accrual_date)
+
     current_balance = get_loan_outstanding_balance(loan)
-    new_balance = current_balance * ((1 + LOAN_INTEREST_NORMAL) ** months_elapsed)
+    new_balance = current_balance
+    for month_offset in range(1, months_to_accrue + 1):
+        month_number = months_already_accrued + month_offset
+        rate = LOAN_INTEREST_NORMAL if month_number <= LOAN_NORMAL_PERIOD_MONTHS else LOAN_INTEREST_EXTENDED
+        new_balance *= 1 + rate
 
     update_fields = {
         "outstanding_balance": new_balance,
