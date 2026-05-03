@@ -190,6 +190,12 @@ def calculate_loan_interest(loan_amount: float, months_elapsed: int) -> float:
         extended_interest = loan_amount * LOAN_INTEREST_EXTENDED * extended_months
         return normal_interest + extended_interest
 
+
+def is_valid_object_id(value: Optional[str]) -> bool:
+    if not value:
+        return False
+    return ObjectId.is_valid(value)
+
 async def get_member_guarantee_count(member_id: str) -> int:
     """Count how many active loans this member is guaranteeing"""
     count = await db.loans.count_documents({
@@ -426,10 +432,16 @@ async def request_deposit(deposit: DepositRequest, user: dict = Depends(get_curr
     if deposit.amount <= 0:
         raise HTTPException(status_code=400, detail="Amount must be positive")
 
+    allowed_deposit_types = ["savings", "development_fee", "loan_payment", "interest_payment"]
+    if deposit.deposit_type not in allowed_deposit_types:
+        raise HTTPException(status_code=400, detail="Invalid deposit type")
+
     target_user = user
     if deposit.target_user_id:
         if user.get("role") not in ["super_admin", "treasurer"]:
             raise HTTPException(status_code=403, detail="Only Treasurer can deposit for other members")
+        if not is_valid_object_id(deposit.target_user_id):
+            raise HTTPException(status_code=400, detail="Invalid target user id")
         target_user = await db.users.find_one({"_id": ObjectId(deposit.target_user_id)})
         if not target_user:
             raise HTTPException(status_code=404, detail="Target member not found")
@@ -453,10 +465,12 @@ async def request_deposit(deposit: DepositRequest, user: dict = Depends(get_curr
                 "created_at": {"$gte": month_start.isoformat()}
             })
             late_fee = calculate_late_fee(day_of_month, paid_count + 1)
-    
     elif deposit.deposit_type == "development_fee":
         if deposit.amount < DEVELOPMENT_FEE:
             raise HTTPException(status_code=400, detail=f"Development fee is UGX {DEVELOPMENT_FEE:,}")
+    else:
+        # loan_payment and interest_payment requests are allowed without savings minimum
+        late_fee = 0
     
     deposit_doc = {
         "user_id": target_user["id"],
