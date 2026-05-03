@@ -1917,14 +1917,24 @@ const Dashboard = () => {
                           <th className="text-left py-3 px-4 text-sm font-semibold text-[#5C665D]">Member</th>
                           <th className="text-left py-3 px-4 text-sm font-semibold text-[#5C665D]">Role</th>
                           <th className="text-left py-3 px-4 text-sm font-semibold text-[#5C665D]">Membership</th>
-                          <th className="text-left py-3 px-4 text-sm font-semibold text-[#5C665D]">Max Guarantees</th>
+                          <th className="text-left py-3 px-4 text-sm font-semibold text-[#5C665D]">Guarantee Slots</th>
                           <th className="text-left py-3 px-4 text-sm font-semibold text-[#5C665D]">Savings</th>
                           <th className="text-right py-3 px-4 text-sm font-semibold text-[#5C665D]">Actions</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {members.filter(m => m.id !== user?.id).map((m) => (
-                          <tr key={m.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5]">
+                        {members.filter(m => m.id !== user?.id).map((m) => {
+                          // Calculate current guarantee count
+                          const currentGuarantees = loans.filter(l => 
+                            l.guarantor_id === m.id && 
+                            ['pending_guarantor', 'pending_admin', 'approved'].includes(l.status) && 
+                            !l.repaid
+                          ).length;
+                          const maxGuarantees = m.max_guarantees || 2;
+                          const slotsText = `${currentGuarantees}/${maxGuarantees} slots`;
+                          
+                          return (
+                        <tr key={m.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5]">
                             <td className="py-3 px-4">
                               <p className="font-medium text-[#1E231F]">{m.name}</p>
                               <p className="text-xs text-[#5C665D]">{m.email}</p>
@@ -1953,13 +1963,20 @@ const Dashboard = () => {
                               </select>
                             </td>
                             <td className="py-3 px-4">
-                              <input
-                                type="number"
-                                value={m.max_guarantees || 2}
-                                onChange={(e) => handleSetMaxGuarantees(m.id, parseInt(e.target.value) || 0)}
-                                min="0"
-                                className="text-sm border border-[#E8EBE8] rounded-lg px-2 py-1 bg-white w-16 text-center"
-                              />
+                              <div className="flex items-center gap-2">
+                                <span className={`text-sm font-medium ${
+                                  currentGuarantees >= maxGuarantees ? 'text-[#D05A49]' : 'text-[#347242]'
+                                }`}>
+                                  {slotsText}
+                                </span>
+                                <input
+                                  type="number"
+                                  value={maxGuarantees}
+                                  onChange={(e) => handleSetMaxGuarantees(m.id, parseInt(e.target.value) || 0)}
+                                  min="0"
+                                  className="text-sm border border-[#E8EBE8] rounded-lg px-2 py-1 bg-white w-16 text-center"
+                                />
+                              </div>
                             </td>
                             <td className="py-3 px-4 font-numbers text-[#347242]">
                               {formatCurrency(m.total_savings)}
@@ -1983,7 +2000,8 @@ const Dashboard = () => {
                               </Button>
                             </td>
                           </tr>
-                        ))}
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
