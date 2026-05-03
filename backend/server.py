@@ -445,6 +445,8 @@ async def request_deposit(deposit: DepositRequest, user: dict = Depends(get_curr
         target_user = await db.users.find_one({"_id": ObjectId(deposit.target_user_id)})
         if not target_user:
             raise HTTPException(status_code=404, detail="Target member not found")
+        target_user["id"] = str(target_user["_id"])
+        target_user.pop("_id", None)
     
     # Calculate late fee if applicable
     today = datetime.now(timezone.utc)
