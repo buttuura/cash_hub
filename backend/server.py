@@ -481,6 +481,7 @@ async def set_max_guarantees(data: MaxGuaranteesUpdate, user: dict = Depends(req
     if not target_user:
         raise HTTPException(status_code=404, detail="User not found")
     
+    logger.info(f"Updating max_guarantees for user {target_user.get('name')} from {target_user.get('max_guarantees')} to {data.max_guarantees}")
     await db.users.update_one(
         {"_id": ObjectId(data.user_id)},
         {"$set": {"max_guarantees": data.max_guarantees}}
@@ -753,8 +754,8 @@ async def request_loan(loan: LoanRequest, user: dict = Depends(get_current_user)
     
     # Check guarantor hasn't exceeded limit
     guarantee_count = await get_member_guarantee_count(loan.guarantor_id)
-    guarantor = await db.users.find_one({"_id": ObjectId(loan.guarantor_id)})
     max_guarantees = guarantor.get("max_guarantees", MAX_GUARANTEES_PER_MEMBER)
+    logger.info(f"Loan request: Guarantor {guarantor.get('name')} has {guarantee_count} guarantees, max allowed: {max_guarantees}")
     if guarantee_count >= max_guarantees:
         raise HTTPException(status_code=400, detail=f"This member already guarantees {max_guarantees} loans")
     
@@ -1497,6 +1498,13 @@ async def startup_event():
         await db.loans.create_index("guarantor_id")
         await db.withdrawals.create_index("user_id")
         await db.leaving_requests.create_index("user_id")
+        
+        # Migration: Add max_guarantees field to existing users
+        await db.users.update_many(
+            {"max_guarantees": {"$exists": False}},
+            {"$set": {"max_guarantees": 2}}
+        )
+        logger.info("Migration completed: Added max_guarantees field to existing users")
         
         await seed_super_admin()
     except Exception as e:
