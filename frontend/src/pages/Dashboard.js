@@ -153,7 +153,7 @@ const Dashboard = () => {
     )
     .reduce((total, loan) => {
       const total_repaid = (loan.amount_repaid || 0) + (loan.interest_repaid || 0);
-      const outstanding = (loan.total_due || 0) - total_repaid;
+      const outstanding = Math.max(0, (loan.total_due || 0) - total_repaid);
       return total + outstanding;
     }, 0);
 

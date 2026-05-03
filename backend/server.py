@@ -532,14 +532,39 @@ async def approve_deposit(approval: TransactionApproval, user: dict = Depends(re
             for loan in user_loans:
                 if remaining_payment <= 0:
                     break
-                
-                outstanding_principal = loan["amount"] - (loan.get("amount_repaid", 0) - loan.get("interest_repaid", 0))
-                if outstanding_principal > 0:
-                    payment_to_apply = min(remaining_payment, outstanding_principal)
+
+                current_amount_repaid = loan.get("amount_repaid", 0)
+                if current_amount_repaid >= loan["amount"] and not loan.get("repaid"):
                     await db.loans.update_one(
                         {"_id": ObjectId(loan["_id"])},
-                        {"$inc": {"amount_repaid": payment_to_apply}}
+                        {"$set": {"repaid": True, "repaid_at": datetime.now(timezone.utc).isoformat(), "status": "repaid"}}
                     )
+                    await db.users.update_one(
+                        {"_id": ObjectId(loan["guarantor_id"])},
+                        {"$inc": {"guarantees_given": -1}}
+                    )
+                    continue
+
+                outstanding_principal = max(0, loan["amount"] - current_amount_repaid)
+                if outstanding_principal > 0:
+                    payment_to_apply = min(remaining_payment, outstanding_principal)
+                    new_amount_repaid = current_amount_repaid + payment_to_apply
+                    update_obj = {"$inc": {"amount_repaid": payment_to_apply}}
+                    if new_amount_repaid >= loan["amount"]:
+                        update_obj["$set"] = {
+                            "repaid": True,
+                            "repaid_at": datetime.now(timezone.utc).isoformat(),
+                            "status": "repaid"
+                        }
+                    await db.loans.update_one(
+                        {"_id": ObjectId(loan["_id"])},
+                        update_obj
+                    )
+                    if new_amount_repaid >= loan["amount"]:
+                        await db.users.update_one(
+                            {"_id": ObjectId(loan["guarantor_id"])},
+                            {"$inc": {"guarantees_given": -1}}
+                        )
                     remaining_payment -= payment_to_apply
             
             # If payment exceeds loan amounts, add excess to savings
@@ -772,7 +797,7 @@ async def get_loans(user: dict = Depends(get_current_user)):
         if l.get("status") == "approved" and not l.get("repaid"):
             approved_date = datetime.fromisoformat(l["approved_at"].replace('Z', '+00:00'))
             months_elapsed = max(1, (datetime.now(timezone.utc) - approved_date).days // 30)
-            outstanding_balance = l["amount"] - l.get("amount_repaid", 0)
+            outstanding_balance = max(0, l["amount"] - l.get("amount_repaid", 0))
             l["current_interest"] = calculate_loan_interest(outstanding_balance, months_elapsed)
             l["total_due"] = outstanding_balance + l["current_interest"]
             l["months_elapsed"] = months_elapsed
@@ -834,12 +859,13 @@ async def repay_loan(loan_id: str, amount: float, user: dict = Depends(require_a
     # Calculate total due
     approved_date = datetime.fromisoformat(loan["approved_at"].replace('Z', '+00:00'))
     months_elapsed = max(1, (datetime.now(timezone.utc) - approved_date).days // 30)
-    outstanding_balance = loan["amount"] - loan.get("amount_repaid", 0)
+    outstanding_balance = max(0, loan["amount"] - loan.get("amount_repaid", 0))
     interest = calculate_loan_interest(outstanding_balance, months_elapsed)
     total_due = outstanding_balance + interest
     
-    new_amount_repaid = loan.get("amount_repaid", 0) + amount
-    fully_repaid = new_amount_repaid >= total_due
+    current_amount_repaid = loan.get("amount_repaid", 0)
+    new_amount_repaid = min(loan["amount"], current_amount_repaid + amount)
+    fully_repaid = new_amount_repaid >= loan["amount"]
     
     await db.loans.update_one(
         {"_id": ObjectId(loan_id)},
