@@ -91,6 +91,10 @@ class MembershipUpdate(BaseModel):
     user_id: str
     membership_type: str
 
+class MaxGuaranteesUpdate(BaseModel):
+    user_id: str
+    max_guarantees: int
+
 class TransactionApproval(BaseModel):
     transaction_id: str
     approved: bool
@@ -324,6 +328,7 @@ async def register(user_data: UserCreate):
         "development_fund": 0,
         "total_late_fees": 0,
         "guarantees_given": 0,
+        "max_guarantees": 2,
         "leaving_requested": False,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
@@ -466,6 +471,21 @@ async def set_membership_type(data: MembershipUpdate, user: dict = Depends(requi
         {"$set": {"membership_type": data.membership_type}}
     )
     return {"message": f"Membership updated to {data.membership_type}"}
+
+@api_router.post("/admin/set-max-guarantees")
+async def set_max_guarantees(data: MaxGuaranteesUpdate, user: dict = Depends(require_super_admin)):
+    if data.max_guarantees < 0:
+        raise HTTPException(status_code=400, detail="Max guarantees cannot be negative")
+    
+    target_user = await db.users.find_one({"_id": ObjectId(data.user_id)})
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    await db.users.update_one(
+        {"_id": ObjectId(data.user_id)},
+        {"$set": {"max_guarantees": data.max_guarantees}}
+    )
+    return {"message": f"Max guarantees updated to {data.max_guarantees}"}
 
 @api_router.post("/admin/update-group-balance")
 async def update_group_balance(data: GroupBalanceUpdate, user: dict = Depends(require_super_admin)):
@@ -733,8 +753,10 @@ async def request_loan(loan: LoanRequest, user: dict = Depends(get_current_user)
     
     # Check guarantor hasn't exceeded limit
     guarantee_count = await get_member_guarantee_count(loan.guarantor_id)
-    if guarantee_count >= MAX_GUARANTEES_PER_MEMBER:
-        raise HTTPException(status_code=400, detail=f"This member already guarantees {MAX_GUARANTEES_PER_MEMBER} loans")
+    guarantor = await db.users.find_one({"_id": ObjectId(loan.guarantor_id)})
+    max_guarantees = guarantor.get("max_guarantees", MAX_GUARANTEES_PER_MEMBER)
+    if guarantee_count >= max_guarantees:
+        raise HTTPException(status_code=400, detail=f"This member already guarantees {max_guarantees} loans")
     
     # Auto-calculate interest and total due (first month 3%)
     interest_amount = loan.amount * LOAN_INTEREST_NORMAL

@@ -336,6 +336,20 @@ const Dashboard = () => {
     }
   };
 
+  const handleSetMaxGuarantees = async (userId, maxGuarantees) => {
+    try {
+      await axios.post(
+        `${API_URL}/api/admin/set-max-guarantees`,
+        { user_id: userId, max_guarantees: maxGuarantees },
+        { headers: getAuthHeaders() }
+      );
+      toast.success(`Max guarantees updated to ${maxGuarantees}`);
+      fetchData();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Failed to update max guarantees');
+    }
+  };
+
   const handleDeleteMember = async (userId) => {
     if (!window.confirm('Are you sure you want to delete this member?')) return;
     try {
@@ -1903,6 +1917,7 @@ const Dashboard = () => {
                           <th className="text-left py-3 px-4 text-sm font-semibold text-[#5C665D]">Member</th>
                           <th className="text-left py-3 px-4 text-sm font-semibold text-[#5C665D]">Role</th>
                           <th className="text-left py-3 px-4 text-sm font-semibold text-[#5C665D]">Membership</th>
+                          <th className="text-left py-3 px-4 text-sm font-semibold text-[#5C665D]">Max Guarantees</th>
                           <th className="text-left py-3 px-4 text-sm font-semibold text-[#5C665D]">Savings</th>
                           <th className="text-right py-3 px-4 text-sm font-semibold text-[#5C665D]">Actions</th>
                         </tr>
@@ -1936,6 +1951,15 @@ const Dashboard = () => {
                                 <option value="ordinary">Ordinary</option>
                                 <option value="premium">Premium</option>
                               </select>
+                            </td>
+                            <td className="py-3 px-4">
+                              <input
+                                type="number"
+                                value={m.max_guarantees || 2}
+                                onChange={(e) => handleSetMaxGuarantees(m.id, parseInt(e.target.value) || 0)}
+                                min="0"
+                                className="text-sm border border-[#E8EBE8] rounded-lg px-2 py-1 bg-white w-16 text-center"
+                              />
                             </td>
                             <td className="py-3 px-4 font-numbers text-[#347242]">
                               {formatCurrency(m.total_savings)}
