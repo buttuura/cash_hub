@@ -180,15 +180,52 @@ def calculate_late_fee(day_of_month: int, position: int) -> float:
         return position * LATE_FEE_PER_POSITION
     return position * LATE_FEE_PER_POSITION  # Stops at 20th
 
+def calculate_months_elapsed(start_date: datetime, end_date: Optional[datetime] = None) -> int:
+    end_date = end_date or datetime.now(timezone.utc)
+    return max(0, (end_date - start_date).days // 30)
+
+
 def calculate_loan_interest(loan_amount: float, months_elapsed: int) -> float:
-    """Calculate loan interest based on duration"""
-    if months_elapsed <= LOAN_NORMAL_PERIOD_MONTHS:
-        return loan_amount * LOAN_INTEREST_NORMAL * months_elapsed
-    else:
-        normal_interest = loan_amount * LOAN_INTEREST_NORMAL * LOAN_NORMAL_PERIOD_MONTHS
-        extended_months = months_elapsed - LOAN_NORMAL_PERIOD_MONTHS
-        extended_interest = loan_amount * LOAN_INTEREST_EXTENDED * extended_months
-        return normal_interest + extended_interest
+    """Calculate compound loan interest based on duration"""
+    return loan_amount * ((1 + LOAN_INTEREST_NORMAL) ** months_elapsed - 1)
+
+
+def get_loan_last_interest_date(loan: dict) -> datetime:
+    last_accrual = loan.get("last_interest_accrual_at") or loan.get("approved_at")
+    if last_accrual:
+        return datetime.fromisoformat(last_accrual.replace('Z', '+00:00'))
+    return datetime.now(timezone.utc)
+
+
+def get_loan_outstanding_balance(loan: dict) -> float:
+    return loan.get("outstanding_balance", max(0, loan["amount"] - loan.get("amount_repaid", 0)))
+
+
+async def accrue_loan_interest_on_db(loan: dict) -> dict:
+    """Accrue monthly interest on an approved outstanding loan balance."""
+    if loan.get("status") != "approved" or loan.get("repaid"):
+        return loan
+
+    last_accrual_date = get_loan_last_interest_date(loan)
+    months_elapsed = calculate_months_elapsed(last_accrual_date)
+    if months_elapsed <= 0:
+        return loan
+
+    current_balance = get_loan_outstanding_balance(loan)
+    new_balance = current_balance * ((1 + LOAN_INTEREST_NORMAL) ** months_elapsed)
+
+    update_fields = {
+        "outstanding_balance": new_balance,
+        "last_interest_accrual_at": datetime.now(timezone.utc).isoformat()
+    }
+
+    await db.loans.update_one(
+        {"_id": ObjectId(loan["_id"])},
+        {"$set": update_fields}
+    )
+
+    loan.update(update_fields)
+    return loan
 
 
 def is_valid_object_id(value: Optional[str]) -> bool:
@@ -536,21 +573,22 @@ async def approve_deposit(approval: TransactionApproval, user: dict = Depends(re
                 {"_id": ObjectId(deposit["user_id"])},
                 {"$inc": {"development_fund": deposit["amount"]}}
             )
-        elif deposit.get("deposit_type") == "loan_payment":
-            # Handle loan principal payment - need to find user's active loans
+        elif deposit.get("deposit_type") in ["loan_payment", "interest_payment"]:
             user_loans = await db.loans.find({
                 "user_id": deposit["user_id"],
                 "status": "approved",
                 "repaid": False
             }).to_list(100)
-            
+
             remaining_payment = deposit["amount"]
             for loan in user_loans:
                 if remaining_payment <= 0:
                     break
 
-                current_amount_repaid = loan.get("amount_repaid", 0)
-                if current_amount_repaid >= loan["amount"] and not loan.get("repaid"):
+                loan = await accrue_loan_interest_on_db(loan)
+                outstanding_balance = get_loan_outstanding_balance(loan)
+
+                if outstanding_balance <= 0:
                     await db.loans.update_one(
                         {"_id": ObjectId(loan["_id"])},
                         {"$set": {"repaid": True, "repaid_at": datetime.now(timezone.utc).isoformat(), "status": "repaid"}}
@@ -561,70 +599,39 @@ async def approve_deposit(approval: TransactionApproval, user: dict = Depends(re
                     )
                     continue
 
-                outstanding_principal = max(0, loan["amount"] - current_amount_repaid)
-                if outstanding_principal > 0:
-                    payment_to_apply = min(remaining_payment, outstanding_principal)
-                    new_amount_repaid = current_amount_repaid + payment_to_apply
-                    update_obj = {"$inc": {"amount_repaid": payment_to_apply}}
-                    if new_amount_repaid >= loan["amount"]:
-                        update_obj["$set"] = {
-                            "repaid": True,
-                            "repaid_at": datetime.now(timezone.utc).isoformat(),
-                            "status": "repaid"
-                        }
-                    await db.loans.update_one(
-                        {"_id": ObjectId(loan["_id"])},
-                        update_obj
+                payment_to_apply = min(remaining_payment, outstanding_balance)
+                new_balance = max(0, outstanding_balance - payment_to_apply)
+
+                update_obj = {
+                    "$set": {"outstanding_balance": new_balance},
+                    "$inc": {"amount_repaid": payment_to_apply}
+                }
+                if new_balance <= 0:
+                    update_obj["$set"].update({
+                        "repaid": True,
+                        "repaid_at": datetime.now(timezone.utc).isoformat(),
+                        "status": "repaid"
+                    })
+
+                await db.loans.update_one(
+                    {"_id": ObjectId(loan["_id"])},
+                    update_obj
+                )
+
+                if new_balance <= 0:
+                    await db.users.update_one(
+                        {"_id": ObjectId(loan["guarantor_id"])},
+                        {"$inc": {"guarantees_given": -1}}
                     )
-                    if new_amount_repaid >= loan["amount"]:
-                        await db.users.update_one(
-                            {"_id": ObjectId(loan["guarantor_id"])},
-                            {"$inc": {"guarantees_given": -1}}
-                        )
-                    remaining_payment -= payment_to_apply
-            
+
+                remaining_payment -= payment_to_apply
+
             # If payment exceeds loan amounts, add excess to savings
             if remaining_payment > 0:
                 await db.users.update_one(
                     {"_id": ObjectId(deposit["user_id"])},
                     {"$inc": {"total_savings": remaining_payment}}
                 )
-        
-        elif deposit.get("deposit_type") == "interest_payment":
-            # Handle interest payment - need to find user's active loans
-            user_loans = await db.loans.find({
-                "user_id": deposit["user_id"],
-                "status": "approved",
-                "repaid": False
-            }).to_list(100)
-            
-            remaining_payment = deposit["amount"]
-            for loan in user_loans:
-                if remaining_payment <= 0:
-                    break
-                
-                # Calculate current outstanding interest
-                approved_date = datetime.fromisoformat(loan["approved_at"].replace('Z', '+00:00'))
-                months_elapsed = max(1, (datetime.now(timezone.utc) - approved_date).days // 30)
-                outstanding_balance = loan["amount"] - loan.get("amount_repaid", 0)
-                current_interest = calculate_loan_interest(outstanding_balance, months_elapsed)
-                outstanding_interest = current_interest - loan.get("interest_repaid", 0)
-                
-                if outstanding_interest > 0:
-                    payment_to_apply = min(remaining_payment, outstanding_interest)
-                    await db.loans.update_one(
-                        {"_id": ObjectId(loan["_id"])},
-                        {"$inc": {"interest_repaid": payment_to_apply}}
-                    )
-                    remaining_payment -= payment_to_apply
-            
-            # If payment exceeds interest amounts, add excess to savings
-            if remaining_payment > 0:
-                await db.users.update_one(
-                    {"_id": ObjectId(deposit["user_id"])},
-                    {"$inc": {"total_savings": remaining_payment}}
-                )
-        
         else:  # savings
             await db.users.update_one(
                 {"_id": ObjectId(deposit["user_id"])},
@@ -723,6 +730,7 @@ async def request_loan(loan: LoanRequest, user: dict = Depends(get_current_user)
         "user_name": user["name"],
         "user_email": user.get("email"),
         "amount": loan.amount,
+        "outstanding_balance": loan.amount,
         "interest_rate": LOAN_INTEREST_NORMAL,
         "initial_interest": interest_amount,
         "initial_total_due": total_due,
@@ -736,6 +744,7 @@ async def request_loan(loan: LoanRequest, user: dict = Depends(get_current_user)
         "amount_repaid": 0,
         "created_at": datetime.now(timezone.utc).isoformat(),
         "approved_at": None,
+        "last_interest_accrual_at": None,
         "due_date": None,
         "approved_by": None
     }
@@ -811,12 +820,10 @@ async def get_loans(user: dict = Depends(get_current_user)):
         
         # Calculate current interest for approved loans
         if l.get("status") == "approved" and not l.get("repaid"):
+            l = await accrue_loan_interest_on_db(l)
+            l["total_due"] = get_loan_outstanding_balance(l)
             approved_date = datetime.fromisoformat(l["approved_at"].replace('Z', '+00:00'))
-            months_elapsed = max(1, (datetime.now(timezone.utc) - approved_date).days // 30)
-            outstanding_balance = max(0, l["amount"] - l.get("amount_repaid", 0))
-            l["current_interest"] = calculate_loan_interest(outstanding_balance, months_elapsed)
-            l["total_due"] = outstanding_balance + l["current_interest"]
-            l["months_elapsed"] = months_elapsed
+            l["months_elapsed"] = calculate_months_elapsed(approved_date)
         
         result.append(l)
     return result
@@ -846,6 +853,7 @@ async def approve_loan(approval: TransactionApproval, user: dict = Depends(requi
         # Set due date (4 months from approval)
         due_date = datetime.now(timezone.utc) + timedelta(days=120)
         update_data["due_date"] = due_date.isoformat()
+        update_data["last_interest_accrual_at"] = datetime.now(timezone.utc).isoformat()
         
         # Increment guarantor's guarantee count
         await db.users.update_one(
@@ -872,40 +880,39 @@ async def repay_loan(loan_id: str, amount: float, user: dict = Depends(require_a
     if loan.get("repaid"):
         raise HTTPException(status_code=400, detail="Loan already repaid")
     
-    # Calculate total due
-    approved_date = datetime.fromisoformat(loan["approved_at"].replace('Z', '+00:00'))
-    months_elapsed = max(1, (datetime.now(timezone.utc) - approved_date).days // 30)
-    outstanding_balance = max(0, loan["amount"] - loan.get("amount_repaid", 0))
-    interest = calculate_loan_interest(outstanding_balance, months_elapsed)
-    total_due = outstanding_balance + interest
-    
-    current_amount_repaid = loan.get("amount_repaid", 0)
-    new_amount_repaid = min(loan["amount"], current_amount_repaid + amount)
-    fully_repaid = new_amount_repaid >= loan["amount"]
-    
-    await db.loans.update_one(
-        {"_id": ObjectId(loan_id)},
-        {"$set": {
-            "amount_repaid": new_amount_repaid,
-            "repaid": fully_repaid,
-            "repaid_at": datetime.now(timezone.utc).isoformat() if fully_repaid else None,
-            "status": "repaid" if fully_repaid else "approved"
-        }}
-    )
+    loan = await accrue_loan_interest_on_db(loan)
+    outstanding_balance = get_loan_outstanding_balance(loan)
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="Payment amount must be positive")
+
+    payment_to_apply = min(amount, outstanding_balance)
+    new_balance = max(0, outstanding_balance - payment_to_apply)
+
+    update_data = {
+        "$set": {
+            "outstanding_balance": new_balance,
+            "repaid": new_balance <= 0,
+            "repaid_at": datetime.now(timezone.utc).isoformat() if new_balance <= 0 else None,
+            "status": "repaid" if new_balance <= 0 else "approved"
+        },
+        "$inc": {"amount_repaid": payment_to_apply}
+    }
+
+    await db.loans.update_one({"_id": ObjectId(loan_id)}, update_data)
     
     # Decrement guarantor's guarantee count if fully repaid
-    if fully_repaid:
+    if new_balance <= 0:
         await db.users.update_one(
             {"_id": ObjectId(loan["guarantor_id"])},
             {"$inc": {"guarantees_given": -1}}
         )
-    
+
     return {
         "message": "Payment recorded",
-        "amount_paid": amount,
-        "total_repaid": new_amount_repaid,
-        "total_due": total_due,
-        "fully_repaid": fully_repaid
+        "amount_paid": payment_to_apply,
+        "total_repaid": loan.get("amount_repaid", 0) + payment_to_apply,
+        "total_due": new_balance,
+        "fully_repaid": new_balance <= 0
     }
 
 # ==================== WITHDRAWAL ENDPOINTS ====================
