@@ -650,7 +650,10 @@ const Dashboard = () => {
                     <div>
                       <p className="text-[#5C665D] text-sm font-medium uppercase tracking-wide">My Savings</p>
                       <p className="text-2xl font-bold text-[#1E231F] font-numbers mt-2">
-                        {formatCurrency(user?.total_savings)}
+                        {formatCurrency(Math.max(0, (user?.total_savings || 0) - userLoanBalance))}
+                      </p>
+                      <p className="text-xs text-[#5C665D] mt-1">
+                        After active loans
                       </p>
                     </div>
                     <div className="w-12 h-12 bg-[#347242]/10 rounded-full flex items-center justify-center">
