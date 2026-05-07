@@ -888,11 +888,22 @@ async def approve_loan(approval: TransactionApproval, user: dict = Depends(requi
     }
     
     if approval.approved:
+        # Check if user has sufficient savings
+        loan_user = await db.users.find_one({"_id": ObjectId(loan["user_id"])})
+        if not loan_user or loan_user.get("total_savings", 0) < loan["amount"]:
+            raise HTTPException(status_code=400, detail="User does not have sufficient savings for this loan")
+        
         # Set due date (4 months from approval)
         due_date = datetime.now(timezone.utc) + timedelta(days=120)
         update_data["due_date"] = due_date.isoformat()
         update_data["last_interest_accrual_at"] = datetime.now(timezone.utc).isoformat()
         update_data["outstanding_balance"] = loan["amount"] * (1 + LOAN_INTEREST_NORMAL)
+        
+        # Deduct loan amount from member's savings
+        await db.users.update_one(
+            {"_id": ObjectId(loan["user_id"])},
+            {"$inc": {"total_savings": -loan["amount"]}}
+        )
         
         # Increment guarantor's guarantee count
         await db.users.update_one(
@@ -941,6 +952,12 @@ async def repay_loan(loan_id: str, amount: float, user: dict = Depends(require_a
     
     # Decrement guarantor's guarantee count if fully repaid
     if new_balance <= 0:
+        # Return the original loan amount to user's savings
+        await db.users.update_one(
+            {"_id": ObjectId(loan["user_id"])},
+            {"$inc": {"total_savings": loan["amount"]}}
+        )
+        
         await db.users.update_one(
             {"_id": ObjectId(loan["guarantor_id"])},
             {"$inc": {"guarantees_given": -1}}
@@ -974,6 +991,12 @@ async def delete_loan(loan_id: str, user: dict = Depends(get_current_user)):
     
     # If loan was approved and guarantor counter was incremented, decrement back
     if loan.get("status") == "approved" and not loan.get("repaid") and loan.get("guarantor_id"):
+        # Return the loan amount to user's savings since loan is being deleted
+        await db.users.update_one(
+            {"_id": ObjectId(loan["user_id"])},
+            {"$inc": {"total_savings": loan["amount"]}}
+        )
+        
         await db.users.update_one(
             {"_id": ObjectId(loan["guarantor_id"])},
             {"$inc": {"guarantees_given": -1}}
