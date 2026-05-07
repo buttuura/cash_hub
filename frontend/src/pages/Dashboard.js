@@ -650,10 +650,7 @@ const Dashboard = () => {
                     <div>
                       <p className="text-[#5C665D] text-sm font-medium uppercase tracking-wide">My Savings</p>
                       <p className="text-2xl font-bold text-[#1E231F] font-numbers mt-2">
-                        {formatCurrency(Math.max(0, (user?.total_savings || 0) - userLoanBalance))}
-                      </p>
-                      <p className="text-xs text-[#5C665D] mt-1">
-                        After active loans
+                        {formatCurrency(user?.total_savings)}
                       </p>
                     </div>
                     <div className="w-12 h-12 bg-[#347242]/10 rounded-full flex items-center justify-center">
@@ -1534,6 +1531,23 @@ const Dashboard = () => {
               <Card className="bg-white border border-[#E8EBE8] shadow-sm">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-[#347242]/10 rounded-full flex items-center justify-center">
+                      <PiggyBank className="w-5 h-5 text-[#347242]" />
+                    </div>
+                    <div>
+                      <p className="text-xs text-[#5C665D]">Net Member Savings</p>
+                      <p className="text-lg font-bold text-[#347242] font-numbers">
+                        {formatCurrency(Math.max(0, (financials?.total_savings || 0) - (financials?.active_loans_amount || 0)))}
+                      </p>
+                      <p className="text-xs text-[#5C665D]">Member savings after active loans</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-white border border-[#E8EBE8] shadow-sm">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3">
                     <div className="w-10 h-10 bg-[#2C5530]/10 rounded-full flex items-center justify-center">
                       <TrendingUp className="w-5 h-5 text-[#2C5530]" />
                     </div>
@@ -1607,6 +1621,7 @@ const Dashboard = () => {
                         {formatCurrency(financials?.active_loans_amount)}
                       </p>
                       <p className="text-xs text-[#5C665D]">{financials?.active_loans_count || 0} loans</p>
+                      <p className="text-xs text-[#5C665D] mt-1">Deducted from Member Savings only</p>
                     </div>
                     <CreditCard className="w-10 h-10 text-[#D48C70]/30" />
                   </div>
