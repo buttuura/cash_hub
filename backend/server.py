@@ -1340,6 +1340,76 @@ async def get_total_petty_cash_used() -> float:
     result = await db.petty_cash.aggregate(pipeline).to_list(1)
     return result[0]["total"] if result else 0
 
+async def get_total_group_slots() -> int:
+    """Count the total number of slots held by members in the group."""
+    pipeline = [
+        {"$match": {"role": {"$ne": "super_admin"}}},
+        {"$group": {"_id": None, "total_slots": {"$sum": "$max_guarantees"}}}
+    ]
+    result = await db.users.aggregate(pipeline).to_list(1)
+    return int(result[0]["total_slots"]) if result else 0
+
+async def get_total_distributed_interest_shares() -> float:
+    setting = await db.settings.find_one({"key": "interest_share_distributed_total"})
+    if setting and isinstance(setting.get("value"), (int, float)):
+        return float(setting["value"])
+    return 0.0
+
+async def calculate_pending_interest_share_pool() -> float:
+    """Calculate interest share pool pending distribution."""
+    total_interest = await calculate_total_interest_earned()
+    total_late_fees = await calculate_total_late_fees()
+    total_petty_cash = await get_total_petty_cash_used()
+    distributed_amount = await get_total_distributed_interest_shares()
+    current_pool = total_interest + total_late_fees - total_petty_cash
+    pending_amount = max(0.0, current_pool - distributed_amount)
+    return float(round(pending_amount, 2))
+
+async def record_interest_share_distribution(amount: float) -> None:
+    await db.settings.update_one(
+        {"key": "interest_share_distributed_total"},
+        {"$inc": {"value": amount}},
+        upsert=True
+    )
+
+@api_router.post("/stats/distribute-interest")
+async def distribute_interest_shares(user: dict = Depends(require_admin)):
+    pending_amount = await calculate_pending_interest_share_pool()
+    if pending_amount <= 0:
+        return {
+            "message": "No distributable interest available",
+            "pending_amount": pending_amount
+        }
+
+    total_slots = await get_total_group_slots()
+    if total_slots <= 0:
+        raise HTTPException(status_code=400, detail="Total group slots must be greater than zero")
+
+    per_slot_share = pending_amount / total_slots
+    members = await db.users.find({"role": {"$ne": "super_admin"}}).to_list(1000)
+    total_distributed = 0
+
+    for member in members:
+        num_slots = member.get("max_guarantees", MAX_GUARANTEES_PER_MEMBER)
+        share = int(round(per_slot_share * num_slots))
+        if share <= 0:
+            continue
+        await db.users.update_one(
+            {"_id": member["_id"]},
+            {"$inc": {"total_savings": share}}
+        )
+        total_distributed += share
+
+    if total_distributed > 0:
+        await record_interest_share_distribution(total_distributed)
+
+    return {
+        "message": "Interest shared to members",
+        "distributed_amount": total_distributed,
+        "per_slot_share": float(round(per_slot_share, 2)),
+        "total_slots": total_slots
+    }
+
 @api_router.get("/stats/group")
 async def get_group_stats(user: dict = Depends(get_current_user)):
     total_members = await db.users.count_documents({"role": {"$ne": "super_admin"}})
@@ -1369,6 +1439,11 @@ async def get_group_stats(user: dict = Depends(get_current_user)):
     
     # Total petty cash used
     total_petty_cash = await get_total_petty_cash_used()
+
+    # Pending interest share pool available for distribution
+    pending_interest_share = await calculate_pending_interest_share_pool()
+    total_slots = await get_total_group_slots()
+    per_slot_interest_share = float(round(pending_interest_share / total_slots, 2)) if total_slots > 0 else 0.0
     
     # Active loans
     pipeline = [
@@ -1406,6 +1481,9 @@ async def get_group_stats(user: dict = Depends(get_current_user)):
         "total_interest_earned": total_interest,
         "total_late_fees": total_late_fees,
         "total_petty_cash_used": total_petty_cash,
+        "pending_interest_share": pending_interest_share,
+        "total_slots": total_slots,
+        "per_slot_interest_share": per_slot_interest_share,
         "total_group_balance": total_group_balance,
         "active_loans_amount": active_loans_amount,
         "active_loans_count": active_loans_count,
