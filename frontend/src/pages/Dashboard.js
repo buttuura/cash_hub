@@ -504,7 +504,7 @@ const Dashboard = () => {
       ['pending_guarantor', 'pending_admin', 'approved'].includes(l.status) && 
       !l.repaid
     ).length;
-    const maxGuarantees = m.max_guarantees || 2;
+    const maxGuarantees = m.max_guarantees ?? 2;
     if (currentGuarantees >= maxGuarantees) return false;
     if (((m.membership_type || '').toLowerCase()) === 'premium') return true;
     if (loanAmountValue <= 0) return true;
@@ -885,7 +885,7 @@ const Dashboard = () => {
                               ['pending_guarantor', 'pending_admin', 'approved'].includes(l.status) && 
                               !l.repaid
                             ).length;
-                            const maxGuarantees = m.max_guarantees || 2;
+                            const maxGuarantees = m.max_guarantees ?? 2;
                             const slotsLeft = maxGuarantees - currentGuarantees;
                             return (
                               <SelectItem key={m.id} value={m.id}>
@@ -2032,7 +2032,7 @@ const Dashboard = () => {
                             ['pending_guarantor', 'pending_admin', 'approved'].includes(l.status) && 
                             !l.repaid
                           ).length;
-                          const maxGuarantees = m.max_guarantees || 2;
+                          const maxGuarantees = m.max_guarantees ?? 2;
                           const slotsText = `${currentGuarantees}/${maxGuarantees} slots`;
                           
                           return (
