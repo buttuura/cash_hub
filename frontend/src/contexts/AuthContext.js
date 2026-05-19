@@ -70,11 +70,12 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const register = async (name, phone, password, email) => {
+  const register = async (name, phone, password, email, nextOfKinName, nationalId) => {
     setError(null);
     try {
-      const payload = { name, phone, password };
+      const payload = { name, phone, password, next_of_kin_name: nextOfKinName };
       if (email) payload.email = email;
+      if (nationalId) payload.national_id = nationalId;
       const response = await axios.post(`${API_URL}/api/auth/register`, payload);
       const { access_token, refresh_token, ...userData } = response.data;
       localStorage.setItem('access_token', access_token);
