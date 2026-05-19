@@ -506,7 +506,7 @@ const Dashboard = () => {
     ).length;
     const maxGuarantees = m.max_guarantees || 2;
     if (currentGuarantees >= maxGuarantees) return false;
-    if (m.membership_type === 'premium') return true;
+    if (((m.membership_type || '').toLowerCase()) === 'premium') return true;
     if (loanAmountValue <= 0) return true;
     return (m.total_savings || 0) >= loanAmountValue / 2;
   });
