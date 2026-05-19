@@ -11,6 +11,7 @@ from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from bson import ObjectId
 import os
+import re
 import logging
 import bcrypt
 import jwt
@@ -57,6 +58,8 @@ class UserCreate(BaseModel):
     password: str
     name: str
     email: Optional[EmailStr] = None
+    next_of_kin_name: Optional[str] = None
+    national_id: Optional[str] = None
 
 class UserLogin(BaseModel):
     identifier: str  # phone or email
@@ -182,6 +185,28 @@ def calculate_late_fee(day_of_month: int, num_slots: int) -> float:
         return 0
     # Late fee applies after day 10: num_slots × 3,000
     return num_slots * LATE_FEE_PER_POSITION
+
+
+def normalize_phone(phone: str) -> Optional[str]:
+    digits = re.sub(r"\D", "", (phone or ""))
+    if digits.startswith("256"):
+        digits = digits[3:]
+    if digits.startswith("0"):
+        digits = digits[1:]
+    if len(digits) > 9:
+        digits = digits[-9:]
+    return digits if len(digits) == 9 else None
+
+
+async def migrate_normalized_phone() -> None:
+    async for user in db.users.find({"normalized_phone": {"$exists": False}, "phone": {"$exists": True}}):
+        normalized_phone = normalize_phone(user["phone"])
+        if normalized_phone:
+            await db.users.update_one(
+                {"_id": user["_id"]},
+                {"$set": {"normalized_phone": normalized_phone}}
+            )
+
 
 def calculate_months_elapsed(start_date: datetime, end_date: Optional[datetime] = None) -> int:
     end_date = end_date or datetime.now(timezone.utc)
@@ -369,11 +394,22 @@ async def register(user_data: UserCreate):
     phone = user_data.phone.strip()
     if not phone:
         raise HTTPException(status_code=400, detail="Phone number is required")
+
+    normalized_phone = normalize_phone(phone)
+    if not normalized_phone:
+        raise HTTPException(status_code=400, detail="Invalid phone number format")
     
     email = user_data.email.lower() if user_data.email else None
+    next_of_kin_name = user_data.next_of_kin_name.strip() if user_data.next_of_kin_name else None
+    national_id = user_data.national_id.strip() if user_data.national_id else None
+
+    if not next_of_kin_name:
+        raise HTTPException(status_code=400, detail="Next of kin name is required")
+    if national_id and len(national_id) != 14:
+        raise HTTPException(status_code=400, detail="National ID must be exactly 14 characters")
     
     # Check phone uniqueness
-    existing_phone = await db.users.find_one({"phone": phone})
+    existing_phone = await db.users.find_one({"normalized_phone": normalized_phone})
     if existing_phone:
         raise HTTPException(status_code=400, detail="Phone number already registered")
     
@@ -385,6 +421,7 @@ async def register(user_data: UserCreate):
     
     user_doc = {
         "phone": phone,
+        "normalized_phone": normalized_phone,
         "password_hash": hash_password(user_data.password),
         "name": user_data.name,
         "role": "member",
@@ -399,6 +436,9 @@ async def register(user_data: UserCreate):
     }
     if email:
         user_doc["email"] = email
+    user_doc["next_of_kin_name"] = next_of_kin_name
+    if national_id:
+        user_doc["national_id"] = national_id
     
     result = await db.users.insert_one(user_doc)
     user_id = str(result.inserted_id)
@@ -411,6 +451,8 @@ async def register(user_data: UserCreate):
         "email": email,
         "phone": phone,
         "name": user_data.name,
+        "next_of_kin_name": next_of_kin_name,
+        "national_id": national_id,
         "role": "member",
         "membership_type": "ordinary",
         "access_token": access_token,
@@ -421,8 +463,10 @@ async def register(user_data: UserCreate):
 async def login(credentials: UserLogin):
     identifier = credentials.identifier.strip()
     
-    # Try phone first, then email
-    user = await db.users.find_one({"phone": identifier})
+    normalized_identifier = normalize_phone(identifier)
+    user = None
+    if normalized_identifier:
+        user = await db.users.find_one({"normalized_phone": normalized_identifier})
     if not user:
         user = await db.users.find_one({"email": identifier.lower()})
     
@@ -1573,6 +1617,8 @@ async def startup_event():
             pass
         await db.users.create_index("email", unique=True, sparse=True)
         await db.users.create_index("phone", unique=True, sparse=True)
+        await migrate_normalized_phone()
+        await db.users.create_index("normalized_phone", unique=True, sparse=True)
         await db.deposits.create_index("user_id")
         await db.loans.create_index("user_id")
         await db.loans.create_index("guarantor_id")
