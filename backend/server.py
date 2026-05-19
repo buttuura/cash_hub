@@ -897,11 +897,12 @@ async def request_loan(loan: LoanRequest, user: dict = Depends(get_current_user)
     if guarantee_count >= max_guarantees:
         raise HTTPException(status_code=400, detail=f"This member already guarantees {max_guarantees} loans")
 
-    if guarantor_savings * 2 < loan.amount:
-        raise HTTPException(
-            status_code=400,
-            detail="Guarantor must have savings equal to at least 50% of the requested loan amount"
-        )
+    if ((guarantor.get("membership_type", "") or "").lower() != "premium"):
+        if guarantor_savings * 2 < loan.amount:
+            raise HTTPException(
+                status_code=400,
+                detail="Guarantor must have savings equal to at least 50% of the requested loan amount"
+            )
     
     # Auto-calculate interest and total due (first month 3%)
     interest_amount = loan.amount * LOAN_INTEREST_NORMAL
