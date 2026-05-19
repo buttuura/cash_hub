@@ -102,6 +102,7 @@ const Dashboard = () => {
   const [withdrawalReason, setWithdrawalReason] = useState('');
   const [newGroupBalance, setNewGroupBalance] = useState('');
   const [balanceReason, setBalanceReason] = useState('');
+  const [distributingInterest, setDistributingInterest] = useState(false);
   const [pettyCashAmount, setPettyCashAmount] = useState('');
   const [pettyCashDescription, setPettyCashDescription] = useState('');
   const [pettyCashCategory, setPettyCashCategory] = useState('general');
@@ -214,7 +215,7 @@ const Dashboard = () => {
       toast.error('Selected guarantor not found');
       return;
     }
-    if (selectedGuarantor.membership_type !== 'premium' && loanAmountValue > 0) {
+      if (((selectedGuarantor.membership_type || '').toLowerCase() !== 'premium') && loanAmountValue > 0) {
       const requiredSavings = loanAmountValue / 2;
       if ((selectedGuarantor.total_savings || 0) < requiredSavings) {
         toast.error('Selected ordinary guarantor must have savings equal to at least 50% of the requested loan');
@@ -279,6 +280,23 @@ const Dashboard = () => {
       fetchData();
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Failed to update balance');
+    }
+  };
+
+  const handleDistributeInterest = async () => {
+    try {
+      setDistributingInterest(true);
+      const headers = getAuthHeaders();
+      const res = await axios.post(`${API_URL}/api/stats/distribute-interest`, null, { headers });
+      toast.success(res.data?.message || 'Interest distributed successfully');
+      await fetchData();
+      if (refreshUser) {
+        await refreshUser();
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Failed to distribute interest');
+    } finally {
+      setDistributingInterest(false);
     }
   };
 
@@ -626,46 +644,59 @@ const Dashboard = () => {
                       <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center">
                         <Wallet className="w-8 h-8 text-white" />
                       </div>
-                      {isSuperAdmin && (
-                        <Dialog open={balanceDialogOpen} onOpenChange={setBalanceDialogOpen}>
-                          <DialogTrigger asChild>
-                            <Button size="sm" variant="secondary" className="text-xs">
-                              Edit Balance
-                            </Button>
-                          </DialogTrigger>
-                          <DialogContent>
-                            <DialogHeader>
-                              <DialogTitle>Update Group Balance</DialogTitle>
-                              <DialogDescription>
-                                Reset balance for new year or make corrections
-                              </DialogDescription>
-                            </DialogHeader>
-                            <form onSubmit={handleUpdateGroupBalance} className="space-y-4 mt-4">
-                              <div className="space-y-2">
-                                <Label>New Balance (UGX)</Label>
-                                <Input
-                                  type="number"
-                                  value={newGroupBalance}
-                                  onChange={(e) => setNewGroupBalance(e.target.value)}
-                                  placeholder="0"
-                                  required
-                                />
-                              </div>
-                              <div className="space-y-2">
-                                <Label>Reason</Label>
-                                <Input
-                                  value={balanceReason}
-                                  onChange={(e) => setBalanceReason(e.target.value)}
-                                  placeholder="Year end reset / Correction"
-                                  required
-                                />
-                              </div>
-                              <Button type="submit" className="w-full bg-[#2C5530]">
-                                Update Balance
-                              </Button>
-                            </form>
-                          </DialogContent>
-                        </Dialog>
+                      {isAdmin && (
+                        <div className="flex flex-col gap-2 items-end">
+                          {isSuperAdmin && (
+                            <Dialog open={balanceDialogOpen} onOpenChange={setBalanceDialogOpen}>
+                              <DialogTrigger asChild>
+                                <Button size="sm" variant="secondary" className="text-xs">
+                                  Edit Balance
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent>
+                                <DialogHeader>
+                                  <DialogTitle>Update Group Balance</DialogTitle>
+                                  <DialogDescription>
+                                    Reset balance for new year or make corrections
+                                  </DialogDescription>
+                                </DialogHeader>
+                                <form onSubmit={handleUpdateGroupBalance} className="space-y-4 mt-4">
+                                  <div className="space-y-2">
+                                    <Label>New Balance (UGX)</Label>
+                                    <Input
+                                      type="number"
+                                      value={newGroupBalance}
+                                      onChange={(e) => setNewGroupBalance(e.target.value)}
+                                      placeholder="0"
+                                      required
+                                    />
+                                  </div>
+                                  <div className="space-y-2">
+                                    <Label>Reason</Label>
+                                    <Input
+                                      value={balanceReason}
+                                      onChange={(e) => setBalanceReason(e.target.value)}
+                                      placeholder="Year end reset / Correction"
+                                      required
+                                    />
+                                  </div>
+                                  <Button type="submit" className="w-full bg-[#2C5530]">
+                                    Update Balance
+                                  </Button>
+                                </form>
+                              </DialogContent>
+                            </Dialog>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            className="text-xs"
+                            onClick={handleDistributeInterest}
+                            disabled={distributingInterest}
+                          >
+                            {distributingInterest ? 'Distributing...' : 'Distribute Interest'}
+                          </Button>
+                        </div>
                       )}
                     </div>
                   </div>
