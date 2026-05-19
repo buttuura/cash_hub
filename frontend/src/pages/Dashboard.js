@@ -208,11 +208,24 @@ const Dashboard = () => {
       toast.error('Please select a guarantor');
       return;
     }
+    const loanAmountValue = parseFloat(loanAmount) || 0;
+    const selectedGuarantor = members.find((m) => m.id === loanGuarantor);
+    if (!selectedGuarantor) {
+      toast.error('Selected guarantor not found');
+      return;
+    }
+    if (selectedGuarantor.membership_type !== 'premium' && loanAmountValue > 0) {
+      const requiredSavings = loanAmountValue / 2;
+      if ((selectedGuarantor.total_savings || 0) < requiredSavings) {
+        toast.error('Selected ordinary guarantor must have savings equal to at least 50% of the requested loan');
+        return;
+      }
+    }
     try {
       await axios.post(
         `${API_URL}/api/loans/request`,
         { 
-          amount: parseFloat(loanAmount), 
+          amount: loanAmountValue, 
           guarantor_id: loanGuarantor,
           reason: loanReason 
         },
@@ -462,7 +475,10 @@ const Dashboard = () => {
     navItems.push({ id: 'admin', label: 'Admin', icon: Shield });
   }
 
-  // Get eligible guarantors: any member except self, with available guarantee slots
+  const loanAmountValue = parseFloat(loanAmount) || 0;
+
+  // Get eligible guarantors: any member except self, with available guarantee slots.
+  // Ordinary guarantors must have at least 50% of the requested loan amount in savings.
   const eligibleGuarantors = members.filter(m => {
     if (m.id === user?.id) return false;
     const currentGuarantees = loans.filter(l => 
@@ -471,7 +487,10 @@ const Dashboard = () => {
       !l.repaid
     ).length;
     const maxGuarantees = m.max_guarantees || 2;
-    return currentGuarantees < maxGuarantees;
+    if (currentGuarantees >= maxGuarantees) return false;
+    if (m.membership_type === 'premium') return true;
+    if (loanAmountValue <= 0) return true;
+    return (m.total_savings || 0) >= loanAmountValue / 2;
   });
 
   // Loans where current user is the selected guarantor and awaiting their approval
@@ -845,7 +864,9 @@ const Dashboard = () => {
                           })}
                         </SelectContent>
                       </Select>
-                      <p className="text-xs text-[#5C665D]">Any group member can guarantee. They must approve before admin.</p>
+                      <p className="text-xs text-[#5C665D]">
+                        Ordinary guarantors must have savings equal to at least 50% of the requested loan amount. Premium guarantors are exempt from this rule.
+                      </p>
                     </div>
                     <div className="space-y-2">
                       <Label>Reason</Label>
