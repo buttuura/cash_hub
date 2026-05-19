@@ -11,6 +11,8 @@ const RegisterPage = () => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [nextOfKinName, setNextOfKinName] = useState('');
+  const [nationalId, setNationalId] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -32,6 +34,16 @@ const RegisterPage = () => {
       return;
     }
 
+    if (!nextOfKinName.trim()) {
+      setError('Next of kin name is required');
+      return;
+    }
+
+    if (nationalId.trim() && nationalId.trim().length !== 14) {
+      setError('National ID must be exactly 14 characters if provided');
+      return;
+    }
+
     if (password.length < 6) {
       setError('Password must be at least 6 characters');
       return;
@@ -40,7 +52,14 @@ const RegisterPage = () => {
     setLoading(true);
 
     try {
-      await register(name, phone.trim(), password, email.trim() || null);
+      await register(
+        name,
+        phone.trim(),
+        password,
+        email.trim() || null,
+        nextOfKinName.trim(),
+        nationalId.trim() || null
+      );
       navigate('/dashboard');
     } catch (err) {
       setError(err.message || 'Registration failed');
@@ -133,6 +152,34 @@ const RegisterPage = () => {
                   data-testid="register-phone-input"
                   className="h-11 border-[#E8EBE8] focus:ring-[#2C5530] focus:border-[#2C5530]"
                 />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="nextOfKinName" className="text-[#1E231F] font-medium">Next of kin's name <span className="text-[#D05A49]">*</span></Label>
+                <Input
+                  id="nextOfKinName"
+                  type="text"
+                  placeholder="Jane Doe"
+                  value={nextOfKinName}
+                  onChange={(e) => setNextOfKinName(e.target.value)}
+                  required
+                  data-testid="register-next-of-kin-input"
+                  className="h-11 border-[#E8EBE8] focus:ring-[#2C5530] focus:border-[#2C5530]"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="nationalId" className="text-[#1E231F] font-medium">National ID <span className="text-[#5C665D] font-normal text-xs">(optional)</span></Label>
+                <Input
+                  id="nationalId"
+                  type="text"
+                  placeholder="14 characters"
+                  value={nationalId}
+                  onChange={(e) => setNationalId(e.target.value)}
+                  data-testid="register-national-id-input"
+                  className="h-11 border-[#E8EBE8] focus:ring-[#2C5530] focus:border-[#2C5530]"
+                />
+                <p className="text-xs text-[#5C665D]">If provided, National ID must be exactly 14 characters.</p>
               </div>
 
               <div className="space-y-2">
