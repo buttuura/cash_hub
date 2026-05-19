@@ -207,6 +207,14 @@ async def migrate_normalized_phone() -> None:
                 {"$set": {"normalized_phone": normalized_phone}}
             )
 
+async def get_duplicate_normalized_phones() -> List[dict]:
+    pipeline = [
+        {"$match": {"normalized_phone": {"$exists": True}}},
+        {"$group": {"_id": "$normalized_phone", "count": {"$sum": 1}, "ids": {"$push": "$_id"}}},
+        {"$match": {"count": {"$gt": 1}}}
+    ]
+    return await db.users.aggregate(pipeline).to_list(100)
+
 
 def calculate_months_elapsed(start_date: datetime, end_date: Optional[datetime] = None) -> int:
     end_date = end_date or datetime.now(timezone.utc)
@@ -1384,18 +1392,24 @@ async def record_interest_share_distribution(amount: float) -> None:
         upsert=True
     )
 
-@api_router.post("/stats/distribute-interest")
-async def distribute_interest_shares(user: dict = Depends(require_admin)):
+async def distribute_interest_shares_internal() -> dict:
     pending_amount = await calculate_pending_interest_share_pool()
     if pending_amount <= 0:
         return {
             "message": "No distributable interest available",
-            "pending_amount": pending_amount
+            "distributed_amount": 0,
+            "pending_amount": 0,
+            "total_slots": await get_total_group_slots(),
         }
 
     total_slots = await get_total_group_slots()
     if total_slots <= 0:
-        raise HTTPException(status_code=400, detail="Total group slots must be greater than zero")
+        return {
+            "message": "No group slots available for distribution",
+            "distributed_amount": 0,
+            "pending_amount": pending_amount,
+            "total_slots": 0,
+        }
 
     per_slot_share = pending_amount / total_slots
     members = await db.users.find({"role": {"$ne": "super_admin"}}).to_list(1000)
@@ -1419,11 +1433,17 @@ async def distribute_interest_shares(user: dict = Depends(require_admin)):
         "message": "Interest shared to members",
         "distributed_amount": total_distributed,
         "per_slot_share": float(round(per_slot_share, 2)),
-        "total_slots": total_slots
+        "total_slots": total_slots,
     }
+
+@api_router.post("/stats/distribute-interest")
+async def distribute_interest_shares(user: dict = Depends(require_admin)):
+    return await distribute_interest_shares_internal()
 
 @api_router.get("/stats/group")
 async def get_group_stats(user: dict = Depends(get_current_user)):
+    await distribute_interest_shares_internal()
+
     total_members = await db.users.count_documents({"role": {"$ne": "super_admin"}})
     premium_members = await db.users.count_documents({"membership_type": "premium", "role": {"$ne": "super_admin"}})
     
@@ -1714,7 +1734,14 @@ async def startup_event():
         await db.users.create_index("email", unique=True, sparse=True)
         await db.users.create_index("phone", unique=True, sparse=True)
         await migrate_normalized_phone()
-        await db.users.create_index("normalized_phone", unique=True, sparse=True)
+        duplicates = await get_duplicate_normalized_phones()
+        if duplicates:
+            logger.error(
+                "Found duplicate normalized_phone values while creating unique index, please clean the following duplicates first: %s",
+                [{"normalized_phone": dup["_id"], "count": dup["count"], "ids": [str(i) for i in dup["ids"]]} for dup in duplicates]
+            )
+        else:
+            await db.users.create_index("normalized_phone", unique=True, sparse=True)
         await db.deposits.create_index("user_id")
         await db.loans.create_index("user_id")
         await db.loans.create_index("guarantor_id")
