@@ -90,7 +90,7 @@ const Dashboard = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Form states
-  const [depositAmount, setDepositAmount] = useState('52000');
+  const [depositAmount, setDepositAmount] = useState('500');
   const [depositType, setDepositType] = useState('savings');
   const [depositDescription, setDepositDescription] = useState('');
   const [depositTargetUserId, setDepositTargetUserId] = useState(null);
@@ -157,6 +157,14 @@ const Dashboard = () => {
       return total + outstanding;
     }, 0);
 
+  const targetDepositMember = depositTargetUserId
+    ? members.find((m) => m.id === depositTargetUserId)
+    : null;
+  const targetMembershipType = targetDepositMember?.membership_type || user?.membership_type || 'ordinary';
+  const targetDepositSlots = targetDepositMember?.max_guarantees ?? user?.max_guarantees ?? 1;
+  const savingsMinAmount = targetMembershipType === 'premium' ? 52000 * targetDepositSlots : 500;
+  const savingsPlaceholder = targetMembershipType === 'premium' ? String(savingsMinAmount) : '500';
+
   const handleDeposit = async (e) => {
     e.preventDefault();
     try {
@@ -176,7 +184,7 @@ const Dashboard = () => {
       toast.success('Deposit request submitted for approval');
       setDepositDialogOpen(false);
       setDepositTargetUserId(null);
-      setDepositAmount('55000');
+      setDepositAmount(depositType === 'savings' ? String(savingsMinAmount) : depositType === 'development_fee' ? '3000' : '0');
       setDepositDescription('');
       fetchData();
     } catch (err) {
@@ -185,9 +193,11 @@ const Dashboard = () => {
   };
 
   const handleOpenDepositForMember = (memberId) => {
+    const member = members.find((m) => m.id === memberId);
+    const minAmount = member?.membership_type === 'premium' ? 52000 * (member?.max_guarantees ?? 1) : 500;
     setDepositTargetUserId(memberId);
     setDepositType('savings');
-    setDepositAmount('52000');
+    setDepositAmount(String(minAmount));
     setDepositDescription('');
     setDepositDialogOpen(true);
   };
@@ -702,6 +712,9 @@ const Dashboard = () => {
             {/* Quick Actions */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <Dialog open={depositDialogOpen} onOpenChange={(open) => {
+                  if (open && depositType === 'savings') {
+                    setDepositAmount(String(savingsMinAmount));
+                  }
                   setDepositDialogOpen(open);
                   if (!open) setDepositTargetUserId(null);
                 }}>
@@ -722,7 +735,7 @@ const Dashboard = () => {
                     <DialogDescription className="text-[#5C665D]">
                       {depositTargetUserId
                         ? 'Submitting a deposit request to the selected member account.'
-                        : 'Monthly savings: UGX 52,000 | Development fee: UGX 3,000'}
+                        : `Savings minimum: UGX ${savingsPlaceholder} | Development fee: UGX 3,000`}
                     </DialogDescription>
                   </DialogHeader>
                   <form onSubmit={handleDeposit} className="space-y-4 mt-4">
@@ -733,7 +746,11 @@ const Dashboard = () => {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="savings">Monthly Savings (UGX 52,000)</SelectItem>
+                          <SelectItem value="savings">
+                            {targetMembershipType === 'premium'
+                              ? `Monthly Savings (UGX ${savingsMinAmount})`
+                              : 'Savings (Min UGX 500)'}
+                          </SelectItem>
                           <SelectItem value="development_fee">Development Fee (UGX 3,000)</SelectItem>
                           <SelectItem value="loan_payment">Pay Back Loan</SelectItem>
                         </SelectContent>
@@ -745,9 +762,9 @@ const Dashboard = () => {
                         type="number"
                         value={depositAmount}
                         onChange={(e) => setDepositAmount(e.target.value)}
-                        placeholder={depositType === 'savings' ? '52000' : depositType === 'development_fee' ? '3000' : '0'}
+                        placeholder={depositType === 'savings' ? savingsPlaceholder : depositType === 'development_fee' ? '3000' : '0'}
                         required
-                        min={depositType === 'savings' ? 52000 : 1}
+                        min={depositType === 'savings' ? savingsMinAmount : 1}
                       />
                     </div>
                     <div className="space-y-2">
