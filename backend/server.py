@@ -637,10 +637,14 @@ async def request_deposit(deposit: DepositRequest, user: dict = Depends(get_curr
     num_slots = target_user.get("max_guarantees", MAX_GUARANTEES_PER_MEMBER)
     
     if deposit.deposit_type == "savings":
-        # Minimum monthly savings scales by number of slots
-        minimum_required = MONTHLY_SAVINGS * num_slots
+        # Non-premium members may save any amount with a minimum of 500 UGX.
+        if target_user.get("membership_type") != "premium":
+            minimum_required = 500
+        else:
+            minimum_required = MONTHLY_SAVINGS * num_slots
+
         if deposit.amount < minimum_required:
-            raise HTTPException(status_code=400, detail=f"Minimum monthly savings is UGX {minimum_required:,}")
+            raise HTTPException(status_code=400, detail=f"Minimum savings amount is UGX {minimum_required:,}")
         
         # Get member's slots (max_guarantees) for late fee calculation
         if day_of_month > 10:
@@ -879,9 +883,17 @@ async def request_loan(loan: LoanRequest, user: dict = Depends(get_current_user)
     # Check guarantor hasn't exceeded limit
     guarantee_count = await get_member_guarantee_count(loan.guarantor_id)
     max_guarantees = guarantor.get("max_guarantees", MAX_GUARANTEES_PER_MEMBER)
+    guarantor_savings = guarantor.get("total_savings", 0)
+
     logger.info(f"Loan request: Guarantor {guarantor.get('name')} has {guarantee_count} guarantees, max allowed: {max_guarantees}")
     if guarantee_count >= max_guarantees:
         raise HTTPException(status_code=400, detail=f"This member already guarantees {max_guarantees} loans")
+
+    if guarantor_savings * 2 < loan.amount:
+        raise HTTPException(
+            status_code=400,
+            detail="Guarantor must have savings equal to at least 50% of the requested loan amount"
+        )
     
     # Auto-calculate interest and total due (first month 3%)
     interest_amount = loan.amount * LOAN_INTEREST_NORMAL
