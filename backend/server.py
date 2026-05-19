@@ -176,13 +176,12 @@ async def require_super_admin(request: Request) -> dict:
 
 # ==================== HELPER FUNCTIONS ====================
 
-def calculate_late_fee(day_of_month: int, position: int) -> float:
-    """Calculate late fee based on payment date"""
+def calculate_late_fee(day_of_month: int, num_slots: int) -> float:
+    """Calculate late fee based on payment date and member's slots"""
     if day_of_month <= 10:
         return 0
-    if day_of_month <= 20:
-        return position * LATE_FEE_PER_POSITION
-    return position * LATE_FEE_PER_POSITION  # Stops at 20th
+    # Late fee applies after day 10: num_slots × 3,000
+    return num_slots * LATE_FEE_PER_POSITION
 
 def calculate_months_elapsed(start_date: datetime, end_date: Optional[datetime] = None) -> int:
     end_date = end_date or datetime.now(timezone.utc)
@@ -296,6 +295,72 @@ async def check_can_leave_group(member_id: str) -> dict:
         return {"can_leave": False, "reason": f"You must wait {days_remaining} more days"}
     
     return {"can_leave": True, "reason": "You can leave the group"}
+
+async def check_and_create_auto_loan(member_id: str) -> dict:
+    """Check if member should have auto-loan created (after 20th without deposit this month)"""
+    today = datetime.now(timezone.utc)
+    day_of_month = today.day
+    
+    # Only check after 20th of month
+    if day_of_month <= 20:
+        return {"auto_loan_created": False, "reason": "Not after 20th of month"}
+    
+    # Check if member has made a savings deposit this month
+    month_start = today.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    savings_deposit = await db.deposits.find_one({
+        "user_id": member_id,
+        "deposit_type": "savings",
+        "status": "approved",
+        "created_at": {"$gte": month_start.isoformat()}
+    })
+    
+    if savings_deposit:
+        return {"auto_loan_created": False, "reason": "Member already deposited this month"}
+    
+    # Get member details
+    member = await db.users.find_one({"_id": ObjectId(member_id)})
+    if not member:
+        return {"auto_loan_created": False, "reason": "Member not found"}
+    
+    num_slots = member.get("max_guarantees", MAX_GUARANTEES_PER_MEMBER)
+    
+    # Calculate auto-loan amount: (52,000 + 3,000 late fee + 3,000 dev fee) × num_slots
+    auto_loan_amount = (MONTHLY_SAVINGS + LATE_FEE_PER_POSITION + DEVELOPMENT_FEE) * num_slots
+    
+    # Check if auto-loan already exists for this month
+    existing_auto_loan = await db.loans.find_one({
+        "user_id": member_id,
+        "auto_created": True,
+        "month": today.strftime("%Y-%m")
+    })
+    
+    if existing_auto_loan:
+        return {"auto_loan_created": False, "reason": "Auto-loan already exists for this month"}
+    
+    # Create auto-loan (pending admin approval)
+    loan_doc = {
+        "user_id": member_id,
+        "user_name": member["name"],
+        "amount": auto_loan_amount,
+        "guarantor_id": None,
+        "status": "pending_admin",  # Pending admin approval
+        "auto_created": True,  # Flag as auto-created
+        "month": today.strftime("%Y-%m"),
+        "interest_rate": LOAN_INTEREST_NORMAL,
+        "repaid": False,
+        "amount_repaid": 0,
+        "outstanding_balance": auto_loan_amount,
+        "due_date": None,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "approved_at": None,
+        "approved_by": None,
+        "last_interest_accrual_at": None
+    }
+    
+    result = await db.loans.insert_one(loan_doc)
+    logger.info(f"Auto-loan created for member {member['name']}: UGX {auto_loan_amount:,}")
+    
+    return {"auto_loan_created": True, "loan_id": str(result.inserted_id), "amount": auto_loan_amount}
 
 # ==================== AUTH ENDPOINTS ====================
 
@@ -525,21 +590,17 @@ async def request_deposit(deposit: DepositRequest, user: dict = Depends(get_curr
     today = datetime.now(timezone.utc)
     day_of_month = today.day
     late_fee = 0
+    num_slots = target_user.get("max_guarantees", MAX_GUARANTEES_PER_MEMBER)
     
     if deposit.deposit_type == "savings":
-        if deposit.amount < MONTHLY_SAVINGS:
-            raise HTTPException(status_code=400, detail=f"Minimum monthly savings is UGX {MONTHLY_SAVINGS:,}")
+        # Minimum monthly savings scales by number of slots
+        minimum_required = MONTHLY_SAVINGS * num_slots
+        if deposit.amount < minimum_required:
+            raise HTTPException(status_code=400, detail=f"Minimum monthly savings is UGX {minimum_required:,}")
         
-        # Get position for late fee calculation
+        # Get member's slots (max_guarantees) for late fee calculation
         if day_of_month > 10:
-            # Count how many have paid this month before this user
-            month_start = today.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-            paid_count = await db.deposits.count_documents({
-                "deposit_type": "savings",
-                "status": "approved",
-                "created_at": {"$gte": month_start.isoformat()}
-            })
-            late_fee = calculate_late_fee(day_of_month, paid_count + 1)
+            late_fee = calculate_late_fee(day_of_month, num_slots)
     elif deposit.deposit_type == "development_fee":
         if deposit.amount < DEVELOPMENT_FEE:
             raise HTTPException(status_code=400, detail=f"Development fee is UGX {DEVELOPMENT_FEE:,}")
@@ -565,6 +626,10 @@ async def request_deposit(deposit: DepositRequest, user: dict = Depends(get_curr
     result = await db.deposits.insert_one(deposit_doc)
     deposit_doc["id"] = str(result.inserted_id)
     deposit_doc.pop("_id", None)
+    
+    # Check if auto-loan should be created for this member (after 20th without deposit)
+    if day_of_month > 20:
+        await check_and_create_auto_loan(target_user["id"])
     
     return deposit_doc
 
@@ -721,6 +786,21 @@ async def delete_deposit(deposit_id: str, user: dict = Depends(get_current_user)
     
     await db.deposits.delete_one({"_id": ObjectId(deposit_id)})
     return {"message": "Deposit deleted"}
+
+@api_router.post("/deposits/check-auto-loan")
+async def check_auto_loan(request_data: dict, user: dict = Depends(get_current_user)):
+    """Check if member should have auto-loan created and create if needed"""
+    # Allow member to check their own or admin to check for anyone
+    target_member_id = request_data.get("member_id") or user["id"]
+    
+    if user.get("role") not in ["admin", "super_admin"] and target_member_id != user["id"]:
+        raise HTTPException(status_code=403, detail="Can only check auto-loan for yourself or admins can check for others")
+    
+    if not is_valid_object_id(target_member_id):
+        raise HTTPException(status_code=400, detail="Invalid member id")
+    
+    result = await check_and_create_auto_loan(target_member_id)
+    return result
 
 # ==================== LOAN ENDPOINTS ====================
 
