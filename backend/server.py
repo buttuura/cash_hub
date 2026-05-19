@@ -505,15 +505,15 @@ async def logout():
 
 @api_router.get("/members")
 async def get_members(user: dict = Depends(get_current_user)):
-    members = await db.users.find({}, {"password_hash": 0}).to_list(1000)
+    members = await db.users.find({"role": {"$ne": "super_admin"}}, {"password_hash": 0}).to_list(1000)
     result = []
     is_super_admin = user.get("role") == "super_admin"
     
     for m in members:
         m["id"] = str(m["_id"])
         m.pop("_id", None)
-        # Hide admin/super_admin role from non-super-admins
-        if not is_super_admin and m.get("role") in ["admin", "super_admin"]:
+        # Hide admin role from non-super-admins
+        if not is_super_admin and m.get("role") == "admin":
             m["role"] = "member"
         result.append(m)
     return result
@@ -1342,16 +1342,22 @@ async def get_total_petty_cash_used() -> float:
 
 @api_router.get("/stats/group")
 async def get_group_stats(user: dict = Depends(get_current_user)):
-    total_members = await db.users.count_documents({})
-    premium_members = await db.users.count_documents({"membership_type": "premium"})
+    total_members = await db.users.count_documents({"role": {"$ne": "super_admin"}})
+    premium_members = await db.users.count_documents({"membership_type": "premium", "role": {"$ne": "super_admin"}})
     
     # Total savings from all members
-    pipeline = [{"$group": {"_id": None, "total": {"$sum": "$total_savings"}}}]
+    pipeline = [
+        {"$match": {"role": {"$ne": "super_admin"}}},
+        {"$group": {"_id": None, "total": {"$sum": "$total_savings"}}}
+    ]
     result = await db.users.aggregate(pipeline).to_list(1)
     total_savings = result[0]["total"] if result else 0
     
     # Total development fund from all members
-    pipeline = [{"$group": {"_id": None, "total": {"$sum": "$development_fund"}}}]
+    pipeline = [
+        {"$match": {"role": {"$ne": "super_admin"}}},
+        {"$group": {"_id": None, "total": {"$sum": "$development_fund"}}}
+    ]
     result = await db.users.aggregate(pipeline).to_list(1)
     total_development = result[0]["total"] if result else 0
     
