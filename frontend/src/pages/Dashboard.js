@@ -77,7 +77,7 @@ const buildWhatsAppUrl = (phone, message) => {
 };
 
 const Dashboard = () => {
-  const { user, logout, getAuthHeaders, isAdmin, isSuperAdmin, isPremium, refreshUser } = useAuth();
+  const { user, logout, getAuthHeaders, isAdmin, isTreasurer, isPremium, refreshUser } = useAuth();
   const [stats, setStats] = useState(null);
   const [rules, setRules] = useState(null);
   const [financials, setFinancials] = useState(null);
@@ -646,7 +646,7 @@ const Dashboard = () => {
                       </div>
                       {isAdmin && (
                         <div className="flex flex-col gap-2 items-end">
-                          {isSuperAdmin && (
+                          {isTreasurer && (
                             <Dialog open={balanceDialogOpen} onOpenChange={setBalanceDialogOpen}>
                               <DialogTrigger asChild>
                                 <Button size="sm" variant="secondary" className="text-xs">
@@ -1012,7 +1012,7 @@ const Dashboard = () => {
               <CardContent>
                 <div className="space-y-4">
                   {deposits.slice(0, 5).map((d) => {
-                    const canDelete = d.user_id === user?.id || isSuperAdmin;
+                    const canDelete = d.user_id === user?.id || isTreasurer;
                     return (
                     <div key={d.id} className="flex items-center justify-between py-3 border-b border-[#E8EBE8] last:border-0">
                       <div className="flex items-center gap-3">
@@ -1097,7 +1097,7 @@ const Dashboard = () => {
                     </thead>
                     <tbody>
                       {deposits.map((d) => {
-                        const canDelete = d.user_id === user?.id || isSuperAdmin;
+                        const canDelete = d.user_id === user?.id || isTreasurer;
                         return (
                         <tr key={d.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5] transition-colors">
                           <td className="py-4 px-6 text-[#1E231F]">
@@ -1293,7 +1293,7 @@ const Dashboard = () => {
                                   Notify
                                 </a>
                               ) : null}
-                              {(l.user_id === user?.id || isSuperAdmin) && (
+                              {(l.user_id === user?.id || isTreasurer) && (
                                 <button
                                   onClick={() => handleDeleteRecord('loans', l.id)}
                                   data-testid={`delete-loan-${l.id}`}
@@ -1303,7 +1303,7 @@ const Dashboard = () => {
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </button>
                               )}
-                              {!showNotifyGuarantor && !(l.user_id === user?.id || isSuperAdmin) && (
+                              {!showNotifyGuarantor && !(l.user_id === user?.id || isTreasurer) && (
                                 <span className="text-[#5C665D] text-xs">-</span>
                               )}
                             </div>
@@ -1365,7 +1365,7 @@ const Dashboard = () => {
                     </thead>
                     <tbody>
                       {withdrawals.map((w) => {
-                        const canDelete = w.user_id === user?.id || isSuperAdmin;
+                        const canDelete = w.user_id === user?.id || isTreasurer;
                         return (
                         <tr key={w.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5] transition-colors">
                           <td className="py-4 px-6 text-[#1E231F]">
@@ -1455,7 +1455,7 @@ const Dashboard = () => {
                         </p>
                       </div>
                     </div>
-                    {isSuperAdmin && m.id !== user?.id && (
+                    {isTreasurer && m.id !== user?.id && (
                       <Button
                         size="sm"
                         variant="outline"
@@ -1756,7 +1756,7 @@ const Dashboard = () => {
                           <span className="font-semibold text-[#D05A49] font-numbers">
                             -{formatCurrency(item.amount)}
                           </span>
-                          {isSuperAdmin && (
+                          {isTreasurer && (
                             <Button
                               size="sm"
                               variant="ghost"
@@ -2003,7 +2003,7 @@ const Dashboard = () => {
             </Card>
 
             {/* Member Management (Treasurer only) */}
-            {isSuperAdmin && (
+            {isTreasurer && (
               <Card className="bg-white border border-[#E8EBE8] shadow-sm">
                 <CardHeader>
                   <CardTitle className="font-['Manrope'] text-[#1E231F] flex items-center gap-2">
