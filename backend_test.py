@@ -8,7 +8,7 @@ class GroupCashManagementTester:
         self.base_url = base_url
         self.token = None
         self.admin_token = None
-        self.super_admin_token = None
+        self.treasurer_token = None
         self.tests_run = 0
         self.tests_passed = 0
         self.test_user_id = None
@@ -60,18 +60,18 @@ class GroupCashManagementTester:
             return {'Authorization': f'Bearer {token}'}
         return {}
 
-    def test_super_admin_login(self):
-        """Test super admin login"""
+    def test_treasurer_login(self):
+        """Test treasurer login"""
         success, response = self.run_test(
-            "Super Admin Login",
+            "Treasurer Login",
             "POST",
             "api/auth/login",
             200,
-            data={"email": "superadmin@savingsgroup.com", "password": "SuperAdmin@123"}
+            data={"email": "treasurer@savingsgroup.com", "password": "Treasurer@123"}
         )
         if success and 'access_token' in response:
-            self.super_admin_token = response['access_token']
-            print(f"   Super Admin ID: {response.get('id')}")
+            self.treasurer_token = response['access_token']
+            print(f"   Treasurer ID: {response.get('id')}")
             return True
         return False
 
@@ -194,7 +194,7 @@ class GroupCashManagementTester:
             "GET",
             "api/deposits/pending",
             200,
-            headers=self.get_auth_headers(self.super_admin_token)
+            headers=self.get_auth_headers(self.treasurer_token)
         )
         if success:
             print(f"   Found {len(response)} pending deposits")
@@ -209,23 +209,23 @@ class GroupCashManagementTester:
                 "api/deposits/approve",
                 200,
                 data={"transaction_id": self.deposit_id, "approved": True, "notes": "Approved by admin"},
-                headers=self.get_auth_headers(self.super_admin_token)
+                headers=self.get_auth_headers(self.treasurer_token)
             )
             return success
         else:
             print("❌ No deposit ID available for approval test")
             return False
 
-    def test_super_admin_set_membership_premium(self):
-        """Test super admin setting user to premium membership"""
+    def test_treasurer_set_membership_premium(self):
+        """Test treasurer setting user to premium membership"""
         if self.test_user_id:
             success, response = self.run_test(
-                "Set User to Premium (Super Admin)",
+                "Set User to Premium (Treasurer)",
                 "POST",
                 "api/admin/set-membership",
                 200,
                 data={"user_id": self.test_user_id, "membership_type": "premium"},
-                headers=self.get_auth_headers(self.super_admin_token)
+                headers=self.get_auth_headers(self.treasurer_token)
             )
             return success
         return False
@@ -266,7 +266,7 @@ class GroupCashManagementTester:
                 "api/loans/approve",
                 200,
                 data={"transaction_id": self.loan_id, "approved": True, "notes": "Approved by admin"},
-                headers=self.get_auth_headers(self.super_admin_token)
+                headers=self.get_auth_headers(self.treasurer_token)
             )
             return success
         else:
@@ -288,16 +288,16 @@ class GroupCashManagementTester:
             print(f"   Withdrawal ID: {self.withdrawal_id}")
         return success
 
-    def test_super_admin_set_role(self):
-        """Test super admin setting user role"""
+    def test_treasurer_set_role(self):
+        """Test treasurer setting user role"""
         if self.test_user_id:
             success, response = self.run_test(
-                "Set User Role to Admin (Super Admin)",
+                "Set User Role to Admin (Treasurer)",
                 "POST",
                 "api/admin/set-role",
                 200,
                 data={"user_id": self.test_user_id, "new_role": "admin"},
-                headers=self.get_auth_headers(self.super_admin_token)
+                headers=self.get_auth_headers(self.treasurer_token)
             )
             return success
         return False
@@ -322,7 +322,7 @@ class GroupCashManagementTester:
                 "api/admin/set-role",
                 200,
                 data={"user_id": self.test_user_id, "new_role": "member"},
-                headers=self.get_auth_headers(self.super_admin_token)
+                headers=self.get_auth_headers(self.treasurer_token)
             )
         
         success, response = self.run_test(
@@ -341,7 +341,7 @@ class GroupCashManagementTester:
             "GET",
             "api/stats/group",
             200,
-            headers=self.get_auth_headers(self.super_admin_token)
+            headers=self.get_auth_headers(self.treasurer_token)
         )
         if success:
             # Check if numeric values are present (formatting is handled on frontend)
@@ -365,7 +365,7 @@ def main():
     # Test sequence
     tests = [
         # Authentication tests
-        ("Super Admin Login", tester.test_super_admin_login),
+        ("Treasurer Login", tester.test_treasurer_login),
         ("User Registration", tester.test_user_registration),
         ("Get Current User", tester.test_get_current_user),
         
@@ -383,12 +383,12 @@ def main():
         # Admin functionality tests
         ("Get Pending Deposits (Admin)", tester.test_admin_get_pending_deposits),
         ("Approve Deposit (Admin)", tester.test_admin_approve_deposit),
-        ("Set Membership to Premium", tester.test_super_admin_set_membership_premium),
+        ("Set Membership to Premium", tester.test_treasurer_set_membership_premium),
         ("Loan Request (Premium)", tester.test_loan_request_premium),
         ("Loan Request (Exceeds Limit)", tester.test_loan_request_exceeds_limit),
         ("Approve Loan (Admin)", tester.test_admin_approve_loan),
         ("Withdrawal Request (With Balance)", tester.test_withdrawal_request_with_balance),
-        ("Set User Role", tester.test_super_admin_set_role),
+        ("Set User Role", tester.test_treasurer_set_role),
         
         # Security tests
         ("Unauthorized Access", tester.test_unauthorized_access),
