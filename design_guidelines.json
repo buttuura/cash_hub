@@ -65,7 +65,7 @@
     "For the login/signup screens, use the `auth_background` image with a soft gradient overlay (bg-white/80 or bg-[#FAFAF8]/90) so form is perfectly readable.",
     "In the dashboard, create a high-impact 'Total Group Balance' card using the primary green background (#2C5530) and white text to make it stand out.",
     "For Member List, visually distinguish 'Premium' (UGX 52000/month) and 'Ordinary' members using colored badges.",
-    "Ensure the Super Admin view clearly highlights the destructive/sensitive actions (Delete User, Change Role) using the danger color (#D05A49) cautiously.",
+    "Ensure the Treasurer view clearly highlights the destructive/sensitive actions (Delete User, Change Role) using the danger color (#D05A49) cautiously.",
     "Ensure Shadcn/UI components (like Dialogs, Tables, Dropdowns) are styled to match the 'Clay & Crisp' 1px border aesthetic with soft rounded corners."
   ]
 }
