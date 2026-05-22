@@ -171,7 +171,7 @@ async def require_admin(request: Request) -> dict:
         raise HTTPException(status_code=403, detail="Admin access required")
     return user
 
-async def require_super_admin(request: Request) -> dict:
+async def require_treasurer(request: Request) -> dict:
     user = await get_current_user(request)
     if user.get("role") not in ["super_admin", "treasurer"]:
         raise HTTPException(status_code=403, detail="Treasurer access required")
@@ -513,15 +513,15 @@ async def logout():
 
 @api_router.get("/members")
 async def get_members(user: dict = Depends(get_current_user)):
-    members = await db.users.find({"role": {"$ne": "super_admin"}}, {"password_hash": 0}).to_list(1000)
+    members = await db.users.find({"role": {"$nin": ["super_admin", "treasurer"]}}, {"password_hash": 0}).to_list(1000)
     result = []
-    is_super_admin = user.get("role") == "super_admin"
+    is_treasurer = user.get("role") in ["super_admin", "treasurer"]
     
     for m in members:
         m["id"] = str(m["_id"])
         m.pop("_id", None)
         # Hide admin role from non-super-admins
-        if not is_super_admin and m.get("role") == "admin":
+        if not is_treasurer and m.get("role") == "admin":
             m["role"] = "member"
         result.append(m)
     return result
@@ -535,12 +535,12 @@ async def get_member(member_id: str, user: dict = Depends(get_current_user)):
     member.pop("_id", None)
     
     # Hide admin role from non-super-admins
-    if user.get("role") != "super_admin" and member.get("role") in ["admin", "super_admin"]:
+    if user.get("role") not in ["super_admin", "treasurer"] and member.get("role") in ["admin", "super_admin", "treasurer"]:
         member["role"] = "member"
     return member
 
 @api_router.delete("/members/{member_id}")
-async def delete_member(member_id: str, user: dict = Depends(require_super_admin)):
+async def delete_member(member_id: str, user: dict = Depends(require_treasurer)):
     if member_id == user.get("id"):
         raise HTTPException(status_code=400, detail="Cannot delete yourself")
     
@@ -548,8 +548,8 @@ async def delete_member(member_id: str, user: dict = Depends(require_super_admin
     if not member:
         raise HTTPException(status_code=404, detail="Member not found")
     
-    if member.get("role") == "super_admin":
-        raise HTTPException(status_code=400, detail="Cannot delete Super Admin")
+    if member.get("role") in ["super_admin", "treasurer"]:
+        raise HTTPException(status_code=400, detail="Cannot delete Treasurer")
     
     await db.users.delete_one({"_id": ObjectId(member_id)})
     return {"message": "Member deleted successfully"}
@@ -557,7 +557,7 @@ async def delete_member(member_id: str, user: dict = Depends(require_super_admin
 # ==================== ADMIN MANAGEMENT ====================
 
 @api_router.post("/admin/set-role")
-async def set_user_role(data: RoleUpdate, user: dict = Depends(require_super_admin)):
+async def set_user_role(data: RoleUpdate, user: dict = Depends(require_treasurer)):
     if data.new_role not in ["admin", "member"]:
         raise HTTPException(status_code=400, detail="Invalid role")
     
@@ -565,8 +565,8 @@ async def set_user_role(data: RoleUpdate, user: dict = Depends(require_super_adm
     if not target_user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    if target_user.get("role") == "super_admin":
-        raise HTTPException(status_code=400, detail="Cannot change Super Admin role")
+    if target_user.get("role") in ["super_admin", "treasurer"]:
+        raise HTTPException(status_code=400, detail="Cannot change Treasurer role")
     
     await db.users.update_one(
         {"_id": ObjectId(data.user_id)},
@@ -590,7 +590,7 @@ async def set_membership_type(data: MembershipUpdate, user: dict = Depends(requi
     return {"message": f"Membership updated to {data.membership_type}"}
 
 @api_router.post("/admin/set-max-guarantees")
-async def set_max_guarantees(data: MaxGuaranteesUpdate, user: dict = Depends(require_super_admin)):
+async def set_max_guarantees(data: MaxGuaranteesUpdate, user: dict = Depends(require_treasurer)):
     if data.max_guarantees < 0:
         raise HTTPException(status_code=400, detail="Max guarantees cannot be negative")
     
@@ -606,8 +606,8 @@ async def set_max_guarantees(data: MaxGuaranteesUpdate, user: dict = Depends(req
     return {"message": f"Max guarantees updated to {data.max_guarantees}"}
 
 @api_router.post("/admin/update-group-balance")
-async def update_group_balance(data: GroupBalanceUpdate, user: dict = Depends(require_super_admin)):
-    """Super Admin can reset/edit total group balance (for year end)"""
+async def update_group_balance(data: GroupBalanceUpdate, user: dict = Depends(require_treasurer)):
+    """Treasurer can reset/edit total group balance (for year end)"""
     await db.settings.update_one(
         {"key": "group_balance"},
         {"$set": {"value": data.new_balance, "updated_at": datetime.now(timezone.utc).isoformat(), "reason": data.reason}},
@@ -691,7 +691,7 @@ async def request_deposit(deposit: DepositRequest, user: dict = Depends(get_curr
 
 @api_router.get("/deposits")
 async def get_deposits(user: dict = Depends(get_current_user)):
-    if user.get("role") in ["admin", "super_admin"]:
+    if user.get("role") in ["admin", "super_admin", "treasurer"]:
         deposits = await db.deposits.find({}).to_list(1000)
     else:
         deposits = await db.deposits.find({"user_id": user["id"]}).to_list(1000)
@@ -810,19 +810,19 @@ async def approve_deposit(approval: TransactionApproval, user: dict = Depends(re
 
 @api_router.delete("/deposits/{deposit_id}")
 async def delete_deposit(deposit_id: str, user: dict = Depends(get_current_user)):
-    """Delete a deposit. Members can delete own pending/rejected; super_admin can delete any."""
+    """Delete a deposit. Members can delete own pending/rejected; Treasurer can delete any."""
     deposit = await db.deposits.find_one({"_id": ObjectId(deposit_id)})
     if not deposit:
         raise HTTPException(status_code=404, detail="Deposit not found")
     
-    is_super = user.get("role") == "super_admin"
+    is_treasurer = user.get("role") in ["super_admin", "treasurer"]
     is_owner = deposit.get("user_id") == user["id"]
     
-    if not is_super:
+    if not is_treasurer:
         if not is_owner:
             raise HTTPException(status_code=403, detail="You can only delete your own records")
         if deposit.get("status") == "approved":
-            raise HTTPException(status_code=403, detail="Approved deposits can only be deleted by Super Admin")
+            raise HTTPException(status_code=403, detail="Approved deposits can only be deleted by Treasurer")
     
     # If approved, reverse the balance changes
     if deposit.get("status") == "approved":
@@ -849,7 +849,7 @@ async def check_auto_loan(request_data: dict, user: dict = Depends(get_current_u
     # Allow member to check their own or admin to check for anyone
     target_member_id = request_data.get("member_id") or user["id"]
     
-    if user.get("role") not in ["admin", "super_admin"] and target_member_id != user["id"]:
+    if user.get("role") not in ["admin", "super_admin", "treasurer"] and target_member_id != user["id"]:
         raise HTTPException(status_code=403, detail="Can only check auto-loan for yourself or admins can check for others")
     
     if not is_valid_object_id(target_member_id):
@@ -977,7 +977,7 @@ async def guarantor_approve_loan(approval: GuarantorApproval, user: dict = Depen
 
 @api_router.get("/loans")
 async def get_loans(user: dict = Depends(get_current_user)):
-    if user.get("role") in ["admin", "super_admin"]:
+    if user.get("role") in ["admin", "super_admin", "treasurer"]:
         loans = await db.loans.find({}).to_list(1000)
     else:
         # Show loans where user is borrower or guarantor
@@ -1103,19 +1103,19 @@ async def repay_loan(loan_id: str, amount: float, user: dict = Depends(require_a
 
 @api_router.delete("/loans/{loan_id}")
 async def delete_loan(loan_id: str, user: dict = Depends(get_current_user)):
-    """Delete a loan. Members can delete own pending/rejected; super_admin can delete any (including approved/repaid)."""
+    """Delete a loan. Members can delete own pending/rejected; Treasurer can delete any (including approved/repaid)."""
     loan = await db.loans.find_one({"_id": ObjectId(loan_id)})
     if not loan:
         raise HTTPException(status_code=404, detail="Loan not found")
     
-    is_super = user.get("role") == "super_admin"
+    is_treasurer = user.get("role") in ["super_admin", "treasurer"]
     is_owner = loan.get("user_id") == user["id"]
     
-    if not is_super:
+    if not is_treasurer:
         if not is_owner:
             raise HTTPException(status_code=403, detail="You can only delete your own records")
         if loan.get("status") in ["approved", "pending_admin"]:
-            raise HTTPException(status_code=403, detail="Approved/admin-pending loans can only be deleted by Super Admin")
+            raise HTTPException(status_code=403, detail="Approved/admin-pending loans can only be deleted by Treasurer")
     
     # If loan was approved and guarantor counter was incremented, decrement back
     if loan.get("status") == "approved" and not loan.get("repaid") and loan.get("guarantor_id"):
@@ -1170,7 +1170,7 @@ async def request_withdrawal(withdrawal: WithdrawalRequest, user: dict = Depends
 
 @api_router.get("/withdrawals")
 async def get_withdrawals(user: dict = Depends(get_current_user)):
-    if user.get("role") in ["admin", "super_admin"]:
+    if user.get("role") in ["admin", "super_admin", "treasurer"]:
         withdrawals = await db.withdrawals.find({}).to_list(1000)
     else:
         withdrawals = await db.withdrawals.find({"user_id": user["id"]}).to_list(1000)
@@ -1231,19 +1231,19 @@ async def approve_withdrawal(approval: TransactionApproval, user: dict = Depends
 
 @api_router.delete("/withdrawals/{withdrawal_id}")
 async def delete_withdrawal(withdrawal_id: str, user: dict = Depends(get_current_user)):
-    """Delete a withdrawal. Members can delete own pending/rejected; super_admin can delete any."""
+    """Delete a withdrawal. Members can delete own pending/rejected; Treasurer can delete any."""
     withdrawal = await db.withdrawals.find_one({"_id": ObjectId(withdrawal_id)})
     if not withdrawal:
         raise HTTPException(status_code=404, detail="Withdrawal not found")
     
-    is_super = user.get("role") == "super_admin"
+    is_treasurer = user.get("role") in ["super_admin", "treasurer"]
     is_owner = withdrawal.get("user_id") == user["id"]
     
-    if not is_super:
+    if not is_treasurer:
         if not is_owner:
             raise HTTPException(status_code=403, detail="You can only delete your own records")
         if withdrawal.get("status") == "approved":
-            raise HTTPException(status_code=403, detail="Approved withdrawals can only be deleted by Super Admin")
+            raise HTTPException(status_code=403, detail="Approved withdrawals can only be deleted by Treasurer")
     
     # Reverse balance changes if it was approved
     if withdrawal.get("status") == "approved":
@@ -1364,7 +1364,7 @@ async def get_total_petty_cash_used() -> float:
 async def get_total_group_slots() -> int:
     """Count the total number of slots held by members in the group."""
     pipeline = [
-        {"$match": {"role": {"$ne": "super_admin"}}},
+        {"$match": {"role": {"$nin": ["super_admin", "treasurer"]}}},
         {"$group": {"_id": None, "total_slots": {"$sum": "$max_guarantees"}}}
     ]
     result = await db.users.aggregate(pipeline).to_list(1)
@@ -1413,7 +1413,7 @@ async def distribute_interest_shares_internal() -> dict:
         }
 
     per_slot_share = pending_amount / total_slots
-    members = await db.users.find({"role": {"$ne": "super_admin"}}).to_list(1000)
+    members = await db.users.find({"role": {"$nin": ["super_admin", "treasurer"]}}).to_list(1000)
     total_distributed = 0
 
     for member in members:
@@ -1445,12 +1445,12 @@ async def distribute_interest_shares(user: dict = Depends(require_admin)):
 async def get_group_stats(user: dict = Depends(get_current_user)):
     await distribute_interest_shares_internal()
 
-    total_members = await db.users.count_documents({"role": {"$ne": "super_admin"}})
-    premium_members = await db.users.count_documents({"membership_type": "premium", "role": {"$ne": "super_admin"}})
+    total_members = await db.users.count_documents({"role": {"$nin": ["super_admin", "treasurer"]}})
+    premium_members = await db.users.count_documents({"membership_type": "premium", "role": {"$nin": ["super_admin", "treasurer"]}})
     
     # Total savings from all members
     pipeline = [
-        {"$match": {"role": {"$ne": "super_admin"}}},
+        {"$match": {"role": {"$nin": ["super_admin", "treasurer"]}}},
         {"$group": {"_id": None, "total": {"$sum": "$total_savings"}}}
     ]
     result = await db.users.aggregate(pipeline).to_list(1)
@@ -1458,7 +1458,7 @@ async def get_group_stats(user: dict = Depends(get_current_user)):
     
     # Total development fund from all members
     pipeline = [
-        {"$match": {"role": {"$ne": "super_admin"}}},
+        {"$match": {"role": {"$nin": ["super_admin", "treasurer"]}}},
         {"$group": {"_id": None, "total": {"$sum": "$development_fund"}}}
     ]
     result = await db.users.aggregate(pipeline).to_list(1)
@@ -1654,7 +1654,7 @@ async def get_petty_cash(user: dict = Depends(get_current_user)):
 
 @api_router.delete("/petty-cash/{entry_id}")
 async def delete_petty_cash(entry_id: str, user: dict = Depends(require_admin)):
-    """Delete a petty cash entry (Admin or Super Admin)"""
+    """Delete a petty cash entry (Admin or Treasurer)"""
     result = await db.petty_cash.delete_one({"_id": ObjectId(entry_id)})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Entry not found")
@@ -1686,11 +1686,11 @@ async def get_group_rules():
         ]
     }
 
-# ==================== ADMIN SEED ====================
+# ==================== TREASURER SEED ====================
 
-async def seed_super_admin():
-    admin_email = os.environ.get("ADMIN_EMAIL", "superadmin@savingsgroup.com")
-    admin_password = os.environ.get("ADMIN_PASSWORD", "SuperAdmin@123")
+async def seed_treasurer():
+    admin_email = os.environ.get("ADMIN_EMAIL", "treasurer@savingsgroup.com")
+    admin_password = os.environ.get("ADMIN_PASSWORD", "Treasurer@123")
     admin_phone = os.environ.get("ADMIN_PHONE", "0700000000")
     
     existing = await db.users.find_one({"email": admin_email})
@@ -1698,9 +1698,9 @@ async def seed_super_admin():
         await db.users.insert_one({
             "email": admin_email,
             "password_hash": hash_password(admin_password),
-            "name": "Super Admin",
+            "name": "Treasurer",
             "phone": admin_phone,
-            "role": "super_admin",
+            "role": "treasurer",
             "membership_type": "premium",
             "total_savings": 0,
             "development_fund": 0,
@@ -1709,9 +1709,9 @@ async def seed_super_admin():
             "leaving_requested": False,
             "created_at": datetime.now(timezone.utc).isoformat()
         })
-        logger.info(f"Super Admin created: {admin_email} / {admin_phone}")
+        logger.info(f"Treasurer created: {admin_email} / {admin_phone}")
     else:
-        update_fields = {"role": "super_admin", "membership_type": "premium"}
+        update_fields = {"role": "treasurer", "membership_type": "premium"}
         if not existing.get("phone"):
             update_fields["phone"] = admin_phone
         await db.users.update_one(
@@ -1756,7 +1756,7 @@ async def startup_event():
         )
         logger.info("Migration completed: Added max_guarantees field to existing users")
         
-        await seed_super_admin()
+        await seed_treasurer()
     except Exception as e:
         logger.error(f"Database connection failed: {e}")
     
