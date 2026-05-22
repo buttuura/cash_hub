@@ -1,11 +1,11 @@
 # Class One Savings - Group Cash Hub PRD
 
 ## Original Problem Statement
-Web app for managing group cash with a Super Admin who can add other admins and delete users. Members save UGX 52,000/month (ordinary) and become eligible for loans up to UGX 600,000 (premium). System tracks total group balance, deposits, loans, withdrawals. Deployed as single service on Render with MongoDB Atlas.
+Web app for managing group cash with a Treasurer who can add other admins and delete users. Members save UGX 52,000/month (ordinary) and become eligible for loans up to UGX 600,000 (premium). System tracks total group balance, deposits, loans, withdrawals. Deployed as single service on Render with MongoDB Atlas.
 
 ## User Personas
 
-### Super Admin
+### Treasurer
 - Add/remove admins, delete any user (except self)
 - Change user roles (member ↔ admin) and memberships (ordinary ↔ premium)
 - Edit total group balance (year-end reset)
@@ -41,8 +41,8 @@ Web app for managing group cash with a Super Admin who can add other admins and 
 ## Implemented Features
 
 ### Backend (FastAPI + MongoDB)
-- JWT auth with role-based access (super_admin / admin / member)
-- Super Admin seeded on startup from ADMIN_EMAIL/ADMIN_PASSWORD env
+- JWT auth with role-based access (treasurer / admin / member)
+- Treasurer seeded on startup from ADMIN_EMAIL/ADMIN_PASSWORD env
 - Endpoints: deposits, loans (with interest calculation), withdrawals, leaving requests, petty cash CRUD
 - Auto-calculated group balance: savings + dev fund + interest + late fees − petty cash
 - Auto-promotion to premium when savings ≥ UGX 52,000
@@ -67,12 +67,12 @@ Web app for managing group cash with a Super Admin who can add other admins and 
 
 ### Members
 - GET /api/members, /api/members/{id}
-- DELETE /api/members/{id} (super_admin)
+- DELETE /api/members/{id} (treasurer)
 
 ### Admin Management
-- POST /api/admin/set-role (super_admin)
+- POST /api/admin/set-role (treasurer)
 - POST /api/admin/set-membership (admin)
-- POST /api/admin/update-group-balance (super_admin)
+- POST /api/admin/update-group-balance (treasurer)
 
 ### Transactions
 - POST /api/deposits/request, GET /api/deposits, POST /api/deposits/approve
@@ -84,7 +84,7 @@ Web app for managing group cash with a Super Admin who can add other admins and 
 
 ### Financials / Petty Cash
 - GET /api/stats/group, /api/stats/financial, /api/stats/rules
-- POST /api/petty-cash/add (admin), GET /api/petty-cash, DELETE /api/petty-cash/{id} (super_admin)
+- POST /api/petty-cash/add (admin), GET /api/petty-cash, DELETE /api/petty-cash/{id} (treasurer)
 
 ## DB Schema (MongoDB)
 - users: email, password_hash, name, phone, role, membership_type, total_savings, development_fund, total_late_fees, guarantees_given, leaving_requested
@@ -96,7 +96,7 @@ Web app for managing group cash with a Super Admin who can add other admins and 
 - settings: key='group_balance', value
 
 ## Test Credentials
-- Super Admin: superadmin@savingsgroup.com  **or phone** `0700000000` / SuperAdmin@123
+- Treasurer: treasurer@savingsgroup.com  **or phone** `0700000000` / Treasurer@123
 
 ## Tech Stack
 - Backend: FastAPI, Motor (MongoDB async), PyJWT, bcrypt
