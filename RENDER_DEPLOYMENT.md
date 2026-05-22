@@ -62,8 +62,8 @@ This app consists of:
 | `MONGO_URL` | `mongodb+srv://Group_cash:Buttuura@cluster0.od3sa0a.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0` | Your MongoDB Atlas connection string |
 | `DB_NAME` | `class_one_savings` | Database name |
 | `JWT_SECRET` | (auto-generated) | Secret for JWT tokens |
-| `ADMIN_EMAIL` | `superadmin@savingsgroup.com` | Super admin email |
-| `ADMIN_PASSWORD` | Your choice | Super admin password |
+| `ADMIN_EMAIL` | `treasurer@savingsgroup.com` | Treasurer email |
+| `ADMIN_PASSWORD` | Your choice | Treasurer password |
 | `CORS_ORIGINS` | `https://your-frontend-url.onrender.com` | Frontend URL |
 | `GOOGLE_SPREADSHEET_ID` | `1gbSYI3EOP2L6ZqvL0lWbWKyyqpXK46Y_f9s3F5S34HI` | Your spreadsheet ID |
 | `GOOGLE_SERVICE_ACCOUNT_EMAIL` | `class-one-savings-group@...` | Service account email |
@@ -92,7 +92,7 @@ This app consists of:
 ## Step 5: Test Your Deployment
 
 1. Visit your frontend URL: `https://class-one-frontend.onrender.com`
-2. Login with your super admin credentials
+2. Login with your Treasurer credentials
 3. Go to Admin Panel and click **"Sync to Google Sheets"**
 
 ---
