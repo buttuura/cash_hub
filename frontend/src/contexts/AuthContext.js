@@ -113,7 +113,7 @@ export const AuthProvider = ({ children }) => {
     getAuthHeaders,
     isAuthenticated: !!user,
     isAdmin: user?.role === 'admin' || user?.role === 'super_admin' || user?.role === 'treasurer',
-    isSuperAdmin: user?.role === 'super_admin' || user?.role === 'treasurer',
+    isTreasurer: user?.role === 'super_admin' || user?.role === 'treasurer',
     isPremium: user?.membership_type === 'premium',
   };
 
