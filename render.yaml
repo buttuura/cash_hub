@@ -16,9 +16,9 @@ services:
       - key: JWT_SECRET
         generateValue: true
       - key: ADMIN_EMAIL
-        value: superadmin@savingsgroup.com
+        value: treasurer@savingsgroup.com
       - key: ADMIN_PASSWORD
-        value: SuperAdmin@123
+        value: Treasurer@123
       - key: GOOGLE_SPREADSHEET_ID
         value: 1gbSYI3EOP2L6ZqvL0lWbWKyyqpXK46Y_f9s3F5S34HI
       - key: GOOGLE_SERVICE_ACCOUNT_EMAIL
