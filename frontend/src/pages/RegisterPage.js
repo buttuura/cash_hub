@@ -85,7 +85,7 @@ const RegisterPage = () => {
         <div className="relative z-10 flex flex-col justify-center px-12 text-white">
           <div className="flex items-center gap-3 mb-6">
             <img 
-              src="/logo.jpg" 
+              src="/logo.png" 
               alt="Class One Logo"
               className="w-16 h-16 rounded-full object-cover border-2 border-white/30"
             />
@@ -106,7 +106,7 @@ const RegisterPage = () => {
           <CardHeader className="space-y-1">
             <div className="lg:hidden flex items-center gap-2 mb-4">
               <img 
-                src="/logo.jpg" 
+                src="/logo.png" 
                 alt="Class One Logo"
                 className="w-10 h-10 rounded-full object-cover"
               />
