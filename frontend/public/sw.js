@@ -4,7 +4,7 @@ const PRECACHE_URLS = [
   '/index.html',
   '/offline.html',
   '/manifest.json',
-  '/logo.jpg',
+  '/classOne-logo.png',
   '/icons/icon-192.png',
   '/icons/icon-512.png'
 ];
