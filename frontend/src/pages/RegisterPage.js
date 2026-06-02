@@ -87,7 +87,7 @@ const RegisterPage = () => {
             <img 
               src="/logo.png" 
               alt="Class One Logo"
-              className="w-16 h-16 rounded-full object-cover border-2 border-white/30"
+              className="w-20 h-20 rounded-full object-cover border-2 border-white/30"
             />
             <h1 className="text-2xl font-bold font-['Manrope']">Class One Savings</h1>
           </div>
@@ -108,7 +108,7 @@ const RegisterPage = () => {
               <img 
                 src="/logo.png" 
                 alt="Class One Logo"
-                className="w-10 h-10 rounded-full object-cover"
+                className="w-16 h-16 rounded-full object-cover"
               />
               <span className="text-xl font-bold font-['Manrope'] text-[#1E231F]">Class One Savings</span>
             </div>
