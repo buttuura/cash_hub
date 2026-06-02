@@ -534,9 +534,9 @@ const Dashboard = () => {
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-3">
               <img 
-                src="/logo.jpg" 
+                src="/logo.png" 
                 alt="Class One Logo"
-                className="w-10 h-10 rounded-full object-cover"
+                className="w-12 h-12 rounded-full object-cover"
               />
               <span className="text-xl font-bold font-['Manrope'] text-[#1E231F]">Class One Savings</span>
             </div>
