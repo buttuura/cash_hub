@@ -1787,15 +1787,19 @@ async def seed_treasurer():
         })
         logger.info(f"Treasurer created: {admin_email} / {admin_phone}")
     else:
-        update_fields = {"role": "treasurer", "membership_type": "premium"}
-        if not existing.get("phone"):
-            update_fields["phone"] = admin_phone
-        if normalized_admin_phone and not existing.get("normalized_phone"):
-            update_fields["normalized_phone"] = normalized_admin_phone
+        update_fields = {
+            "email": admin_email,
+            "phone": admin_phone,
+            "normalized_phone": normalized_admin_phone,
+            "role": "treasurer",
+            "membership_type": "premium",
+            "password_hash": hash_password(admin_password),
+        }
         await db.users.update_one(
             {"_id": existing["_id"]},
             {"$set": update_fields}
         )
+        logger.info(f"Treasurer account normalized: {admin_email} / {admin_phone}")
 
 # ==================== APP EVENTS ====================
 
