@@ -419,7 +419,7 @@ const ShopPage = () => {
                 <CardFooter>
                   <Dialog open={addCategoryOpen} onOpenChange={setAddCategoryOpen}>
                     <DialogTrigger asChild>
-                      <Button variant="secondary" className="w-full">
+                      <Button className="w-full bg-[#172B12] text-white hover:bg-[#0f2409]">
                         <Plus className="mr-2 h-4 w-4" /> Add category
                       </Button>
                     </DialogTrigger>
@@ -448,7 +448,7 @@ const ShopPage = () => {
                             rows={4}
                           />
                         </div>
-                        <Button type="submit">Create category</Button>
+                        <Button type="submit" className="bg-[#172B12] text-white hover:bg-[#0f2409]">Create category</Button>
                       </form>
                     </DialogContent>
                   </Dialog>
@@ -482,11 +482,11 @@ const ShopPage = () => {
             </div>
             <div className="flex flex-wrap gap-3">
               {isAuthenticated && selectedCategory !== 'quick-loan' && (
-                <Button onClick={() => setAddProductOpen(true)}>
+                <Button onClick={() => setAddProductOpen(true)} className="bg-[#172B12] text-white hover:bg-[#0f2409]">
                   Add product in {categoryMap[selectedCategory]?.name || 'category'}
                 </Button>
               )}
-              <Button variant="secondary" onClick={() => handleSelectCategory('all')}>Show all</Button>
+              <Button onClick={() => handleSelectCategory('all')} className="bg-[#172B12] text-white hover:bg-[#0f2409]">Show all</Button>
             </div>
           </div>
 
@@ -511,7 +511,7 @@ const ShopPage = () => {
                       <span className="text-lg font-semibold">Start a loan request</span>
                     </div>
                     <p className="mt-3 text-sm text-[#4B5A45]">Submit your details and we will reach out with terms and next steps.</p>
-                    <Button className="mt-5 w-full" onClick={() => setQuickLoanOpen(true)}>
+                    <Button className="mt-5 w-full bg-[#172B12] text-white hover:bg-[#0f2409]" onClick={() => setQuickLoanOpen(true)}>
                       Request quick loan
                     </Button>
                   </div>
@@ -544,11 +544,11 @@ const ShopPage = () => {
                     </div>
                   </CardContent>
                   <CardFooter className="flex flex-wrap gap-3">
-                    <Button size="sm" onClick={() => handleOpenPurchase(product)}>Buy now</Button>
+                    <Button size="sm" onClick={() => handleOpenPurchase(product)} className="bg-[#172B12] text-white hover:bg-[#0f2409]">Buy now</Button>
                     {isAuthenticated ? (
                       <Badge variant="secondary">Member buyer</Badge>
                     ) : (
-                      <Button variant="secondary" size="sm" onClick={() => navigate('/login')}>Login to buy</Button>
+                      <Button size="sm" onClick={() => navigate('/login')} className="bg-[#172B12] text-white hover:bg-[#0f2409]">Login to buy</Button>
                     )}
                   </CardFooter>
                 </Card>
@@ -607,7 +607,7 @@ const ShopPage = () => {
                 placeholder="e.g. 50000"
               />
             </div>
-            <Button type="submit">Publish product</Button>
+            <Button type="submit" className="bg-[#172B12] text-white hover:bg-[#0f2409]">Publish product</Button>
           </form>
         </DialogContent>
       </Dialog>
@@ -639,7 +639,7 @@ const ShopPage = () => {
               <Label htmlFor="loan-purpose" className="text-sm font-medium text-slate-700">Loan purpose</Label>
               <Textarea id="loan-purpose" value={loanPurpose} onChange={(event) => setLoanPurpose(event.target.value)} placeholder="Tell us why you need this loan" rows={4} />
             </div>
-            <Button type="submit">Submit loan request</Button>
+            <Button type="submit" className="bg-[#172B12] text-white hover:bg-[#0f2409]">Submit loan request</Button>
           </form>
         </DialogContent>
       </Dialog>
@@ -672,7 +672,7 @@ const ShopPage = () => {
               <Label htmlFor="purchase-note" className="text-sm font-medium text-slate-700">Message</Label>
               <Textarea id="purchase-note" value={purchaseNote} onChange={(event) => setPurchaseNote(event.target.value)} placeholder="Write a short message to the seller" rows={4} />
             </div>
-            <Button type="submit">Send purchase request</Button>
+            <Button type="submit" className="bg-[#172B12] text-white hover:bg-[#0f2409]">Send purchase request</Button>
           </form>
         </DialogContent>
       </Dialog>
