@@ -1759,14 +1759,23 @@ async def seed_treasurer():
     admin_email = os.environ.get("ADMIN_EMAIL", "treasurer@savingsgroup.com")
     admin_password = os.environ.get("ADMIN_PASSWORD", "Treasurer@123")
     admin_phone = os.environ.get("ADMIN_PHONE", "0700000000")
-    
-    existing = await db.users.find_one({"email": admin_email})
+    normalized_admin_phone = normalize_phone(admin_phone)
+
+    existing = await db.users.find_one({
+        "$or": [
+            {"email": admin_email},
+            {"phone": admin_phone},
+            {"normalized_phone": normalized_admin_phone}
+        ]
+    })
+
     if existing is None:
         await db.users.insert_one({
             "email": admin_email,
             "password_hash": hash_password(admin_password),
             "name": "Treasurer",
             "phone": admin_phone,
+            "normalized_phone": normalized_admin_phone,
             "role": "treasurer",
             "membership_type": "premium",
             "total_savings": 0,
@@ -1781,8 +1790,10 @@ async def seed_treasurer():
         update_fields = {"role": "treasurer", "membership_type": "premium"}
         if not existing.get("phone"):
             update_fields["phone"] = admin_phone
+        if normalized_admin_phone and not existing.get("normalized_phone"):
+            update_fields["normalized_phone"] = normalized_admin_phone
         await db.users.update_one(
-            {"email": admin_email},
+            {"_id": existing["_id"]},
             {"$set": update_fields}
         )
 
