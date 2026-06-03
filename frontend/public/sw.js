@@ -35,6 +35,15 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Always use the network for API requests so data updates are fresh
+  if (event.request.url.includes('/api/')) {
+    event.respondWith(
+      fetch(event.request)
+        .catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
   event.respondWith(
     caches.match(event.request).then((resp) => {
       return resp || fetch(event.request).then((response) => {
