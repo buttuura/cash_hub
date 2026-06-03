@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import Dashboard from './pages/Dashboard';
+import ShopPage from './pages/ShopPage';
 import './App.css';
 
 // Protected Route Component
@@ -69,6 +70,8 @@ function AppRoutes() {
           </PublicRoute>
         }
       />
+      <Route path="/" element={<ShopPage />} />
+      <Route path="/shop" element={<ShopPage />} />
       <Route
         path="/dashboard"
         element={
@@ -77,8 +80,7 @@ function AppRoutes() {
           </ProtectedRoute>
         }
       />
-      <Route path="/" element={<Navigate to="/dashboard" replace />} />
-      <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }
