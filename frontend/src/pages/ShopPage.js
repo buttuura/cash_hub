@@ -10,36 +10,40 @@ import { Badge } from '../components/ui/badge';
 import { Toaster, toast } from 'sonner';
 import { ShoppingCart, FastForward, Box, Layers, Cpu, Sparkles, Plus, ShieldCheck, Tag, MessageCircle } from 'lucide-react';
 
+const ICON_MAP = {
+  'quick-loan': FastForward,
+  'food': Box,
+  'construction-materials': Layers,
+  'graphic-material': Tag,
+  'electronics': Cpu,
+  'default': Sparkles,
+};
+
 const DEFAULT_CATEGORIES = [
   {
     id: 'quick-loan',
     name: 'Quick Loan',
     description: 'Fast loan service for people who are not yet registered with us.',
-    icon: FastForward,
   },
   {
     id: 'food',
     name: 'Food',
     description: 'Fresh meals, groceries and snacks sold by group members.',
-    icon: Box,
   },
   {
     id: 'construction-materials',
     name: 'Construction Materials',
     description: 'Tools, cement, timber and supplies from trusted community sellers.',
-    icon: Layers,
   },
   {
     id: 'graphic-material',
     name: 'Graphic Material',
     description: 'Design assets, prints and creative services for businesses.',
-    icon: Tag,
   },
   {
     id: 'electronics',
     name: 'Electronics',
     description: 'Gadgets, accessories and tech items available from members.',
-    icon: Cpu,
   },
 ];
 
@@ -196,7 +200,6 @@ const ShopPage = () => {
         id: slug,
         name: trimmedName,
         description: newCategoryDescription || 'New product category added by admin.',
-        icon: Sparkles,
       },
     ]);
     setNewCategoryName('');
@@ -390,7 +393,7 @@ const ShopPage = () => {
                     <p className="mt-1 text-sm text-[#4B5A45]">Browse every item and loan service available in the market.</p>
                   </button>
                   {categories.map((category) => {
-                    const Icon = category.icon || Box;
+                    const Icon = ICON_MAP[category.id] || ICON_MAP.default;
                     const count = products.filter((product) => product.category === category.id).length;
                     return (
                       <button
