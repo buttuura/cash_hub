@@ -1759,6 +1759,11 @@ async def seed_treasurer():
     admin_email = os.environ.get("ADMIN_EMAIL", "treasurer@savingsgroup.com")
     admin_password = os.environ.get("ADMIN_PASSWORD", "Treasurer@123")
     admin_phone = os.environ.get("ADMIN_PHONE", "0700000000")
+    admin_name = os.environ.get("ADMIN_NAME", "Buttura Isaiah")
+    admin_role = os.environ.get("ADMIN_ROLE", "super_admin")
+    if admin_role not in ["super_admin", "treasurer"]:
+        admin_role = "super_admin"
+
     normalized_admin_phone = normalize_phone(admin_phone)
 
     existing = await db.users.find_one({
@@ -1773,10 +1778,10 @@ async def seed_treasurer():
         await db.users.insert_one({
             "email": admin_email,
             "password_hash": hash_password(admin_password),
-            "name": "Treasurer",
+            "name": admin_name,
             "phone": admin_phone,
             "normalized_phone": normalized_admin_phone,
-            "role": "treasurer",
+            "role": admin_role,
             "membership_type": "premium",
             "total_savings": 0,
             "development_fund": 0,
@@ -1785,13 +1790,13 @@ async def seed_treasurer():
             "leaving_requested": False,
             "created_at": datetime.now(timezone.utc).isoformat()
         })
-        logger.info(f"Treasurer created: {admin_email} / {admin_phone}")
+        logger.info(f"{admin_role.replace('_', ' ').title()} created: {admin_email} / {admin_phone}")
     else:
         update_fields = {
             "email": admin_email,
             "phone": admin_phone,
             "normalized_phone": normalized_admin_phone,
-            "role": "treasurer",
+            "role": admin_role,
             "membership_type": "premium",
             "password_hash": hash_password(admin_password),
         }
@@ -1799,7 +1804,7 @@ async def seed_treasurer():
             {"_id": existing["_id"]},
             {"$set": update_fields}
         )
-        logger.info(f"Treasurer account normalized: {admin_email} / {admin_phone}")
+        logger.info(f"{admin_role.replace('_', ' ').title()} account normalized: {admin_email} / {admin_phone}")
 
 # ==================== APP EVENTS ====================
 

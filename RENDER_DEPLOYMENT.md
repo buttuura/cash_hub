@@ -64,6 +64,8 @@ This app consists of:
 | `JWT_SECRET` | (auto-generated) | Secret for JWT tokens |
 | `ADMIN_EMAIL` | `treasurer@savingsgroup.com` | Treasurer email |
 | `ADMIN_PASSWORD` | Your choice | Treasurer password |
+| `ADMIN_NAME` | `Buttura Isaiah` | Treasurer / super-admin name |
+| `ADMIN_ROLE` | `super_admin` | Role seeded for the admin account (`super_admin` or `treasurer`) |
 | `CORS_ORIGINS` | `https://your-frontend-url.onrender.com` | Frontend URL |
 | `GOOGLE_SPREADSHEET_ID` | `1gbSYI3EOP2L6ZqvL0lWbWKyyqpXK46Y_f9s3F5S34HI` | Your spreadsheet ID |
 | `GOOGLE_SERVICE_ACCOUNT_EMAIL` | `class-one-savings-group@...` | Service account email |
