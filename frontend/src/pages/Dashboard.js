@@ -161,9 +161,18 @@ const Dashboard = () => {
       const response = await axios.get(`${API_URL}/api/products/me`, {
         headers: getAuthHeaders(),
       });
-      setMyProducts(response.data || []);
+      const payload = response.data;
+      if (Array.isArray(payload)) {
+        setMyProducts(payload);
+      } else if (Array.isArray(payload?.products)) {
+        setMyProducts(payload.products);
+      } else {
+        console.warn('Unexpected user products payload, defaulting to empty array:', payload);
+        setMyProducts([]);
+      }
     } catch (err) {
       console.warn('Unable to load user products:', err);
+      setMyProducts([]);
     }
   };
 
@@ -1635,7 +1644,7 @@ const Dashboard = () => {
             </Card>
 
             <div className="grid gap-4 md:grid-cols-2">
-              {myProducts.length === 0 ? (
+              {!Array.isArray(myProducts) || myProducts.length === 0 ? (
                 <Card className="bg-white border border-[#E8EBE8] shadow-sm">
                   <CardContent>
                     <p className="text-sm text-[#5C665D]">You have not uploaded any products yet. Use the form above to publish your first listing.</p>
