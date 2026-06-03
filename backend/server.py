@@ -257,12 +257,15 @@ def calculate_loan_interest(loan_amount: float, months_elapsed: int) -> float:
 def get_loan_last_interest_date(loan: dict) -> datetime:
     last_accrual = loan.get("last_interest_accrual_at") or loan.get("approved_at")
     if last_accrual:
-        return datetime.fromisoformat(last_accrual.replace('Z', '+00:00'))
+        try:
+            return datetime.fromisoformat(last_accrual.replace('Z', '+00:00'))
+        except ValueError:
+            logger.warning("Invalid loan date format for loan %s: %s", loan.get("id") or loan.get("_id"), last_accrual)
     return datetime.now(timezone.utc)
 
 
 def get_loan_outstanding_balance(loan: dict) -> float:
-    return loan.get("outstanding_balance", max(0, loan["amount"] - loan.get("amount_repaid", 0)))
+    return loan.get("outstanding_balance", max(0, loan.get("amount", 0) - loan.get("amount_repaid", 0)))
 
 
 async def accrue_loan_interest_on_db(loan: dict) -> dict:
@@ -270,12 +273,22 @@ async def accrue_loan_interest_on_db(loan: dict) -> dict:
     if loan.get("status") != "approved" or loan.get("repaid"):
         return loan
 
+    approved_at = loan.get("approved_at")
+    if not approved_at:
+        logger.warning("Skipping interest accrual for approved loan with missing approved_at: %s", loan.get("id") or loan.get("_id"))
+        return loan
+
+    try:
+        approved_date = datetime.fromisoformat(approved_at.replace('Z', '+00:00'))
+    except ValueError:
+        logger.warning("Skipping interest accrual for approved loan with invalid approved_at: %s", approved_at)
+        return loan
+
     last_accrual_date = get_loan_last_interest_date(loan)
     months_to_accrue = calculate_months_elapsed(last_accrual_date)
     if months_to_accrue <= 0:
         return loan
 
-    approved_date = datetime.fromisoformat(loan["approved_at"].replace('Z', '+00:00'))
     months_already_accrued = calculate_months_elapsed(approved_date, last_accrual_date)
 
     current_balance = get_loan_outstanding_balance(loan)
@@ -1070,10 +1083,20 @@ async def get_loans(user: dict = Depends(get_current_user)):
         
         # Calculate current interest for approved loans
         if l.get("status") == "approved" and not l.get("repaid"):
-            l = await accrue_loan_interest_on_db(l)
-            l["total_due"] = get_loan_outstanding_balance(l)
-            approved_date = datetime.fromisoformat(l["approved_at"].replace('Z', '+00:00'))
-            l["months_elapsed"] = calculate_months_elapsed(approved_date)
+            try:
+                l = await accrue_loan_interest_on_db(l)
+                l["total_due"] = get_loan_outstanding_balance(l)
+                approved_date = l.get("approved_at")
+                if approved_date:
+                    try:
+                        parsed_date = datetime.fromisoformat(approved_date.replace('Z', '+00:00'))
+                        l["months_elapsed"] = calculate_months_elapsed(parsed_date)
+                    except ValueError:
+                        logger.warning("Loan has invalid approved_at date: %s", approved_date)
+                else:
+                    logger.warning("Loan missing approved_at while approved: %s", l.get("id"))
+            except Exception as e:
+                logger.error("Failed to process loan %s during list retrieval: %s", l.get("id"), e)
         
         result.append(l)
     return result
