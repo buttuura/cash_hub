@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
@@ -18,6 +19,8 @@ const ICON_MAP = {
   'electronics': Cpu,
   'default': Sparkles,
 };
+
+const API_URL = process.env.REACT_APP_BACKEND_URL || '';
 
 const DEFAULT_CATEGORIES = [
   {
@@ -119,6 +122,11 @@ const ShopPage = () => {
   const [purchasePhone, setPurchasePhone] = useState('');
   const [purchaseNote, setPurchaseNote] = useState('');
 
+  const getImageUrl = (imageUrl) => {
+    if (!imageUrl) return null;
+    return imageUrl.startsWith('http') ? imageUrl : `${API_URL}${imageUrl}`;
+  };
+
   useEffect(() => {
     const cachedCategories = window.localStorage.getItem('shopCategories');
     if (cachedCategories) {
@@ -153,6 +161,21 @@ const ShopPage = () => {
       }
     }
     setProducts(DEFAULT_PRODUCTS);
+  }, []);
+
+  useEffect(() => {
+    const fetchBackendProducts = async () => {
+      try {
+        const response = await axios.get(`${API_URL}/api/products`);
+        if (Array.isArray(response.data) && response.data.length > 0) {
+          setProducts(response.data);
+        }
+      } catch (error) {
+        console.warn('Failed to load backend shop products', error);
+      }
+    };
+
+    fetchBackendProducts();
   }, []);
 
   useEffect(() => {
@@ -528,6 +551,15 @@ const ShopPage = () => {
                 </Card>
               ) : visibleProducts.map((product) => (
                 <Card key={product.id} className="border border-slate-200 bg-white">
+                  {product.image_url && (
+                    <div className="overflow-hidden rounded-t-3xl">
+                      <img
+                        src={getImageUrl(product.image_url)}
+                        alt={product.title}
+                        className="h-56 w-full object-cover"
+                      />
+                    </div>
+                  )}
                   <CardHeader>
                     <div className="flex items-start justify-between gap-3">
                       <div>
@@ -539,8 +571,8 @@ const ShopPage = () => {
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-2 text-sm text-[#4B5A45]">
-                      <p>Seller: <span className="font-medium text-[#172B12]">{product.sellerName}</span></p>
-                      <p className="text-xs text-[#6B7C61]">{new Date(product.createdAt).toLocaleDateString()}</p>
+                      <p>Seller: <span className="font-medium text-[#172B12]">{product.sellerName || product.seller_name}</span></p>
+                      <p className="text-xs text-[#6B7C61]">{new Date(product.createdAt || product.created_at).toLocaleDateString()}</p>
                     </div>
                   </CardContent>
                   <CardFooter className="flex flex-wrap gap-3">

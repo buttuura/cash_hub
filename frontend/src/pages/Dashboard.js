@@ -44,6 +44,7 @@ import {
   Trash2,
   BarChart3,
   MessageCircle,
+  ShoppingCart,
 } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
 import {
@@ -66,6 +67,13 @@ const getRoleLabel = (role) => {
   if (role === 'admin') return 'Admin';
   return 'Member';
 };
+
+const PRODUCT_CATEGORIES = [
+  { value: 'food', label: 'Food' },
+  { value: 'construction-materials', label: 'Construction Materials' },
+  { value: 'graphic-material', label: 'Graphic Material' },
+  { value: 'electronics', label: 'Electronics' },
+];
 
 // Build a wa.me link that opens WhatsApp (Messenger or Business) with pre-typed text.
 // Uganda numbers: replace leading 0 with 256. Strips spaces, dashes, +.
@@ -106,6 +114,13 @@ const Dashboard = () => {
   const [pettyCashAmount, setPettyCashAmount] = useState('');
   const [pettyCashDescription, setPettyCashDescription] = useState('');
   const [pettyCashCategory, setPettyCashCategory] = useState('general');
+  const [newProductTitle, setNewProductTitle] = useState('');
+  const [newProductDescription, setNewProductDescription] = useState('');
+  const [newProductCategory, setNewProductCategory] = useState('food');
+  const [newProductPrice, setNewProductPrice] = useState('');
+  const [newProductImage, setNewProductImage] = useState(null);
+  const [myProducts, setMyProducts] = useState([]);
+  const [uploadingProduct, setUploadingProduct] = useState(false);
 
   // Dialog states
   const [depositDialogOpen, setDepositDialogOpen] = useState(false);
@@ -141,9 +156,70 @@ const Dashboard = () => {
     }
   };
 
+  const fetchMyProducts = async () => {
+    try {
+      const response = await axios.get(`${API_URL}/api/products/me`, {
+        headers: getAuthHeaders(),
+      });
+      setMyProducts(response.data || []);
+    } catch (err) {
+      console.warn('Unable to load user products:', err);
+    }
+  };
+
   useEffect(() => {
     fetchData();
   }, []);
+
+  useEffect(() => {
+    if (activeTab === 'marketplace') {
+      fetchMyProducts();
+    }
+  }, [activeTab]);
+
+  const handleUploadProduct = async (event) => {
+    event.preventDefault();
+    if (!newProductTitle.trim() || !newProductPrice.trim() || !newProductCategory) {
+      toast.error('Please complete the product form before uploading.');
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('title', newProductTitle);
+    formData.append('description', newProductDescription);
+    formData.append('price', newProductPrice);
+    formData.append('category', newProductCategory);
+    if (newProductImage) {
+      formData.append('image', newProductImage);
+    }
+
+    setUploadingProduct(true);
+    try {
+      await axios.post(`${API_URL}/api/products`, formData, {
+        headers: {
+          ...getAuthHeaders(),
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+      toast.success('Product uploaded successfully. It will appear on the shop page.');
+      setNewProductTitle('');
+      setNewProductDescription('');
+      setNewProductPrice('');
+      setNewProductCategory('food');
+      setNewProductImage(null);
+      fetchMyProducts();
+    } catch (err) {
+      console.error('Product upload failed', err);
+      toast.error(err.response?.data?.detail || 'Failed to upload product');
+    } finally {
+      setUploadingProduct(false);
+    }
+  };
+
+  const getImageUrl = (imageUrl) => {
+    if (!imageUrl) return null;
+    return imageUrl.startsWith('http') ? imageUrl : `${API_URL}${imageUrl}`;
+  };
 
   // Calculate user's outstanding loan balance
   const userLoanBalance = loans
@@ -486,6 +562,7 @@ const Dashboard = () => {
     { id: 'loans', label: 'Loans', icon: CreditCard },
     { id: 'withdrawals', label: 'Withdrawals', icon: TrendingDown },
     { id: 'members', label: 'Members', icon: Users },
+    { id: 'marketplace', label: 'Sell', icon: ShoppingCart },
     { id: 'rules', label: 'Rules', icon: Shield },
   ];
 
@@ -1465,6 +1542,126 @@ const Dashboard = () => {
                         Deposit for Member
                       </Button>
                     )}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Marketplace Tab */}
+        {activeTab === 'marketplace' && (
+          <div className="space-y-6 animate-fade-in" data-testid="marketplace-tab">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-2xl font-bold font-['Manrope'] text-[#1E231F]">Sell Your Products</h2>
+                <p className="text-sm text-[#5C665D] max-w-2xl">
+                  Upload a product and image here. Once published, it becomes visible on the public shop page for all visitors.
+                </p>
+              </div>
+              <Badge className="bg-[#2C5530]/10 text-[#2C5530]">Your products</Badge>
+            </div>
+
+            <Card className="bg-white border border-[#E8EBE8] shadow-sm">
+              <CardHeader>
+                <CardTitle className="text-lg">Upload a new product</CardTitle>
+                <CardDescription>Fill in the product details and attach an image to display on the shop landing page.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handleUploadProduct} className="space-y-4">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div>
+                      <Label className="text-sm text-[#1E231F]">Product title</Label>
+                      <Input
+                        value={newProductTitle}
+                        onChange={(e) => setNewProductTitle(e.target.value)}
+                        placeholder="e.g. Handmade breakfast pack"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-sm text-[#1E231F]">Price (UGX)</Label>
+                      <Input
+                        type="number"
+                        value={newProductPrice}
+                        onChange={(e) => setNewProductPrice(e.target.value)}
+                        placeholder="e.g. 30000"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <Label className="text-sm text-[#1E231F]">Description</Label>
+                    <Textarea
+                      value={newProductDescription}
+                      onChange={(e) => setNewProductDescription(e.target.value)}
+                      rows={4}
+                      placeholder="Tell buyers more about this item"
+                    />
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div>
+                      <Label className="text-sm text-[#1E231F]">Category</Label>
+                      <Select value={newProductCategory} onValueChange={setNewProductCategory}>
+                        <SelectTrigger className="bg-white">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {PRODUCT_CATEGORIES.map((cat) => (
+                            <SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="text-sm text-[#1E231F]">Product image</Label>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => setNewProductImage(e.target.files?.[0] || null)}
+                        className="mt-2 block w-full text-sm text-[#1E231F]"
+                      />
+                      {newProductImage && (
+                        <p className="mt-2 text-xs text-[#5C665D]">Selected: {newProductImage.name}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <Button type="submit" className="bg-[#2C5530] text-white hover:bg-[#1A3B20]">
+                    {uploadingProduct ? 'Uploading...' : 'Upload product'}
+                  </Button>
+                </form>
+              </CardContent>
+            </Card>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              {myProducts.length === 0 ? (
+                <Card className="bg-white border border-[#E8EBE8] shadow-sm">
+                  <CardContent>
+                    <p className="text-sm text-[#5C665D]">You have not uploaded any products yet. Use the form above to publish your first listing.</p>
+                  </CardContent>
+                </Card>
+              ) : myProducts.map((product) => (
+                <Card key={product.id} className="bg-white border border-[#E8EBE8] shadow-sm">
+                  {product.image_url && (
+                    <div className="overflow-hidden rounded-t-3xl">
+                      <img
+                        src={getImageUrl(product.image_url)}
+                        alt={product.title}
+                        className="h-48 w-full object-cover"
+                      />
+                    </div>
+                  )}
+                  <CardContent>
+                    <div className="flex items-center justify-between gap-3 mb-3">
+                      <div>
+                        <CardTitle className="text-lg">{product.title}</CardTitle>
+                        <p className="text-sm text-[#5C665D]">{PRODUCT_CATEGORIES.find((cat) => cat.value === product.category)?.label || product.category}</p>
+                      </div>
+                      <Badge variant="secondary">UGX {Number(product.price).toLocaleString()}</Badge>
+                    </div>
+                    <p className="text-sm text-[#5C665D] mb-3">{product.description || 'No description provided'}</p>
+                    <p className="text-xs text-[#6B7C61]">Uploaded {new Date(product.created_at).toLocaleDateString()}</p>
                   </CardContent>
                 </Card>
               ))}

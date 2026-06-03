@@ -4,7 +4,7 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-from fastapi import FastAPI, APIRouter, HTTPException, Request, Depends
+from fastapi import FastAPI, APIRouter, HTTPException, Request, Depends, Form, File, UploadFile
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from starlette.middleware.cors import CORSMiddleware
@@ -13,8 +13,10 @@ from bson import ObjectId
 import os
 import re
 import logging
+import shutil
 import bcrypt
 import jwt
+from uuid import uuid4
 from pydantic import BaseModel, Field, EmailStr
 from typing import List, Optional
 from datetime import datetime, timezone, timedelta
@@ -30,6 +32,9 @@ logger = logging.getLogger(__name__)
 mongo_url = os.environ.get('MONGO_URL', 'mongodb://localhost:27017')
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ.get('DB_NAME', 'class_one_savings')]
+
+UPLOAD_DIR = ROOT_DIR / 'uploads'
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 # JWT Configuration
 JWT_SECRET = os.environ.get('JWT_SECRET', 'default-secret-change-in-production')
@@ -110,6 +115,13 @@ class GroupBalanceUpdate(BaseModel):
 class LeavingRequest(BaseModel):
     reason: Optional[str] = None
 
+class ProductCreate(BaseModel):
+    title: str
+    description: Optional[str] = None
+    price: float
+    category: str
+    image_url: Optional[str] = None
+
 # ==================== PASSWORD HASHING ====================
 
 def hash_password(password: str) -> str:
@@ -176,6 +188,14 @@ async def require_treasurer(request: Request) -> dict:
     if user.get("role") not in ["super_admin", "treasurer"]:
         raise HTTPException(status_code=403, detail="Treasurer access required")
     return user
+
+def save_uploaded_file(upload_file: UploadFile) -> str:
+    suffix = Path(upload_file.filename).suffix or ""
+    filename = f"{uuid4().hex}{suffix}"
+    destination = UPLOAD_DIR / filename
+    with destination.open("wb") as buffer:
+        shutil.copyfileobj(upload_file.file, buffer)
+    return filename
 
 # ==================== HELPER FUNCTIONS ====================
 
@@ -538,6 +558,53 @@ async def get_member(member_id: str, user: dict = Depends(get_current_user)):
     if user.get("role") not in ["super_admin", "treasurer"] and member.get("role") in ["admin", "super_admin", "treasurer"]:
         member["role"] = "member"
     return member
+
+@api_router.post("/products")
+async def create_product(
+    title: str = Form(...),
+    description: Optional[str] = Form(None),
+    price: float = Form(...),
+    category: str = Form(...),
+    image: Optional[UploadFile] = File(None),
+    user: dict = Depends(get_current_user),
+):
+    image_url = None
+    if image:
+        filename = save_uploaded_file(image)
+        image_url = f"/uploads/{filename}"
+
+    product_data = {
+        "title": title,
+        "description": description,
+        "price": price,
+        "category": category,
+        "image_url": image_url,
+        "seller_id": user["id"],
+        "sellerName": user["name"],
+        "seller_name": user["name"],
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    result = await db.products.insert_one(product_data)
+    product_data["id"] = str(result.inserted_id)
+
+    return product_data
+
+@api_router.get("/products")
+async def list_products():
+    products = await db.products.find().sort("created_at", -1).to_list(200)
+    for product in products:
+        product["id"] = str(product["_id"])
+        product.pop("_id", None)
+    return products
+
+@api_router.get("/products/me")
+async def list_my_products(user: dict = Depends(get_current_user)):
+    products = await db.products.find({"seller_id": user["id"]}).sort("created_at", -1).to_list(200)
+    for product in products:
+        product["id"] = str(product["_id"])
+        product.pop("_id", None)
+    return products
 
 @api_router.delete("/members/{member_id}")
 async def delete_member(member_id: str, user: dict = Depends(require_treasurer)):
@@ -1788,6 +1855,9 @@ if static_dir.exists():
     static_assets = static_dir / "static"
     if static_assets.exists():
         app.mount("/static", StaticFiles(directory=str(static_assets)), name="static-assets")
+
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
     
     @app.get("/{full_path:path}")
     async def serve_frontend(full_path: str):
