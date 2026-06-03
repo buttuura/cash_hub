@@ -296,7 +296,7 @@ const ShopPage = () => {
               <CardContent>
                 <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <p className="text-sm text-[#4B5A45] uppercase tracking-[0.24em] font-semibold">Cash Hub Market</p>
+                    <p className="text-sm text-[#4B5A45] uppercase tracking-[0.24em] font-semibold">Class one group Market</p>
                     <h1 className="mt-3 text-3xl font-semibold text-[#172B12]">Welcome to the group marketplace</h1>
                     <p className="mt-4 max-w-2xl text-base text-[#4B5A45]">
                       Browse products sold by members, request a quick loan, and discover new categories. This landing page works for everyone, including visitors who are not yet registered.
