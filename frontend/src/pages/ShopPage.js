@@ -304,15 +304,15 @@ const ShopPage = () => {
                   </div>
                   <div className="grid gap-3 sm:grid-cols-2">
                     {isAuthenticated ? (
-                      <Button onClick={() => navigate('/dashboard')} className="min-w-[140px]">
+                      <Button onClick={() => navigate('/dashboard')} className="min-w-[140px] bg-[#172B12] text-white hover:bg-[#0f2409]">
                         Go to Dashboard
                       </Button>
                     ) : (
                       <>
-                        <Button variant="secondary" onClick={() => navigate('/login')}>
+                        <Button variant="secondary" onClick={() => navigate('/login')} className="bg-[#172B12] text-white hover:bg-[#0f2409]">
                           Member Login
                         </Button>
-                        <Button onClick={() => navigate('/register')}>
+                        <Button onClick={() => navigate('/register')} className="bg-[#172B12] text-white hover:bg-[#0f2409]">
                           Register Now
                         </Button>
                       </>
