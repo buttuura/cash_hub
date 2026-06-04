@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import axios from 'axios';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
@@ -85,6 +86,7 @@ const buildWhatsAppUrl = (phone, message) => {
 };
 
 const Dashboard = () => {
+  const navigate = useNavigate();
   const { user, logout, getAuthHeaders, isAdmin, isTreasurer, isPremium, refreshUser } = useAuth();
   const [stats, setStats] = useState(null);
   const [rules, setRules] = useState(null);
@@ -729,6 +731,14 @@ const Dashboard = () => {
                   </Badge>
                 </div>
               </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => navigate('/shop')}
+                className="text-[#5C665D] hover:text-[#2C5530] hover:bg-[#ECF8E9]"
+              >
+                <ShoppingCart className="w-5 h-5" />
+              </Button>
               <Button
                 variant="ghost"
                 size="icon"
