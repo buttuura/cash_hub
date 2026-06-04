@@ -138,6 +138,16 @@ const LoginPage = () => {
               </Button>
             </form>
 
+            <div className="mt-4 flex justify-center">
+              <Button
+                onClick={() => navigate('/shop')}
+                variant="outline"
+                className="border-[#2C5530] text-[#2C5530] hover:bg-[#ECF8E9]"
+              >
+                Browse shop
+              </Button>
+            </div>
+
             <div className="mt-6 text-center">
               <p className="text-[#5C665D]">
                 Don't have an account?{' '}
