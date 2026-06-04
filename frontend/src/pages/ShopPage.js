@@ -111,6 +111,7 @@ const ShopPage = () => {
   const [newProductDescription, setNewProductDescription] = useState('');
   const [newProductPrice, setNewProductPrice] = useState('');
   const [newProductCategory, setNewProductCategory] = useState('food');
+  const [searchQuery, setSearchQuery] = useState('');
   const [loanName, setLoanName] = useState('');
   const [loanEmail, setLoanEmail] = useState('');
   const [loanPhone, setLoanPhone] = useState('');
@@ -187,9 +188,16 @@ const ShopPage = () => {
     return acc;
   }, {});
 
-  const visibleProducts = selectedCategory === 'all'
-    ? products
-    : products.filter((product) => product.category === selectedCategory);
+  const visibleProducts = products.filter((product) => {
+    const matchesCategory = selectedCategory === 'all' || product.category === selectedCategory;
+    const normalizedSearch = searchQuery.trim().toLowerCase();
+    const matchesSearch =
+      !normalizedSearch ||
+      product.title.toLowerCase().includes(normalizedSearch) ||
+      product.description?.toLowerCase().includes(normalizedSearch) ||
+      (product.sellerName || product.seller_name || '').toLowerCase().includes(normalizedSearch);
+    return matchesCategory && matchesSearch;
+  });
 
   const handleSelectCategory = (categoryId) => {
     setSelectedCategory(categoryId);
@@ -313,21 +321,22 @@ const ShopPage = () => {
     <div className="min-h-screen bg-[#F7FAF3] px-4 py-8 sm:px-6 lg:px-8">
       <Toaster position="top-right" />
       <div className="mx-auto max-w-7xl">
-        <div className="grid gap-6 lg:grid-cols-[2fr_1fr] mb-10">
+        <div className="grid gap-6 lg:grid-cols-[1.3fr_0.95fr] mb-10">
           <div className="space-y-6">
-            <Card className="bg-white border border-slate-200 shadow-sm">
-              <CardContent>
-                <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="text-sm text-[#4B5A45] uppercase tracking-[0.24em] font-semibold">Class one group Market</p>
-                    <h1 className="mt-3 text-3xl font-semibold text-[#172B12]">Welcome to the group marketplace</h1>
-                    <p className="mt-4 max-w-2xl text-base text-[#4B5A45]">
-                      Browse products sold by members, request a quick loan, and discover new categories. This landing page works for everyone, including visitors who are not yet registered.
+            <section className="rounded-[32px] border border-[#D8E4D3] bg-gradient-to-br from-[#F5FBF2] via-white to-[#EFF6ED] p-8 shadow-sm">
+              <div className="grid gap-8 lg:grid-cols-[1.4fr_0.8fr]">
+                <div className="space-y-6">
+                  <div className="space-y-3">
+                    <p className="text-sm uppercase tracking-[0.3em] text-[#2B6F38] font-semibold">Group marketplace</p>
+                    <h1 className="text-4xl font-semibold text-[#172B12]">Shop trusted member listings</h1>
+                    <p className="max-w-2xl text-base leading-8 text-[#4B5A45]">
+                      Discover products, services, and fast loan offerings listed by group members. Browse, search, and buy with confidence from our community marketplace.
                     </p>
                   </div>
+
                   <div className="grid gap-3 sm:grid-cols-2">
                     {isAuthenticated ? (
-                      <Button onClick={() => navigate('/dashboard')} className="min-w-[140px] bg-[#172B12] text-white hover:bg-[#0f2409]">
+                      <Button onClick={() => navigate('/dashboard')} className="min-w-[160px] bg-[#172B12] text-white hover:bg-[#0f2409]">
                         Go to Dashboard
                       </Button>
                     ) : (
@@ -342,26 +351,47 @@ const ShopPage = () => {
                     )}
                   </div>
                 </div>
-              </CardContent>
-            </Card>
+                <div className="rounded-[32px] border border-[#D8E4D3] bg-white p-6 shadow-sm">
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-3 text-[#2B6F38]">
+                      <Sparkles className="h-5 w-5" />
+                      <span className="font-semibold">Featured categories</span>
+                    </div>
+                    <div className="grid gap-3">
+                      {categories.slice(0, 3).map((category) => (
+                        <button
+                          key={category.id}
+                          type="button"
+                          className="text-left rounded-3xl border border-slate-200 bg-[#F7FCF4] px-4 py-4 transition hover:border-[#2B6F38]"
+                          onClick={() => handleSelectCategory(category.id)}
+                        >
+                          <div className="font-semibold text-[#1B3A16]">{category.name}</div>
+                          <p className="text-sm text-[#4B5A45]">{category.description}</p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
 
-            <div className="grid gap-4 lg:grid-cols-2">
+            <div className="grid gap-4 sm:grid-cols-2">
               <Card className="border border-slate-200 bg-white">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-xl">
                     <Sparkles className="h-5 w-5 text-[#2B6F38]" /> Quick loan service
                   </CardTitle>
                   <CardDescription>
-                    Help urgent buyers with short-term financing even if they are not registered with the group.
+                    Fast funding for urgent buyer needs, even before registration.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <p className="text-sm text-[#4B5A45]">
-                    Non-members can request instant loans for emergency needs. Admins and sellers can promote this service as part of the marketplace.
+                    Non-members can request a quick loan through the marketplace, and sellers can share this service with customers who need immediate support.
                   </p>
                 </CardContent>
                 <CardFooter>
-                  <Button onClick={() => setQuickLoanOpen(true)}>Request quick loan</Button>
+                  <Button onClick={() => setQuickLoanOpen(true)} className="bg-[#172B12] text-white hover:bg-[#0f2409]">Request quick loan</Button>
                 </CardFooter>
               </Card>
 
@@ -371,12 +401,12 @@ const ShopPage = () => {
                     <ShoppingCart className="h-5 w-5 text-[#2B6F38]" /> Sell products
                   </CardTitle>
                   <CardDescription>
-                    Members can list products by category, and guests can browse items instantly.
+                    Create listings quickly and reach buyers on the public shop page.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <p className="text-sm text-[#4B5A45]">
-                    Choose a category from the cards below, then list your product to reach customers inside and outside the group.
+                    Choose a category and upload your product details. Your listing appears publicly once published.
                   </p>
                 </CardContent>
                 <CardFooter>
@@ -388,6 +418,7 @@ const ShopPage = () => {
                         setAddProductOpen(true);
                       }
                     }}
+                    className="bg-[#172B12] text-white hover:bg-[#0f2409]"
                   >
                     {isAuthenticated ? 'List a product' : 'Login to sell'}
                   </Button>
@@ -396,7 +427,7 @@ const ShopPage = () => {
             </div>
           </div>
 
-          <div className="space-y-4">
+          <aside className="space-y-4">
             <Card className="border border-slate-200 bg-white">
               <CardHeader>
                 <CardTitle className="text-lg">Top categories</CardTitle>
@@ -490,7 +521,7 @@ const ShopPage = () => {
                 <p>4. Admins can add new categories so the marketplace grows with demand.</p>
               </CardContent>
             </Card>
-          </div>
+          </aside>
         </div>
 
         <div className="space-y-6">
@@ -542,17 +573,17 @@ const ShopPage = () => {
               </CardContent>
             </Card>
           ) : (
-            <div className="grid gap-4 lg:grid-cols-2">
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {visibleProducts.length === 0 ? (
-                <Card className="border border-slate-200 bg-white">
+                <Card className="border border-slate-200 bg-white shadow-sm">
                   <CardContent>
                     <p className="text-sm text-[#4B5A45]">No items have been listed in this category yet. Members can add a new product from the button above.</p>
                   </CardContent>
                 </Card>
               ) : visibleProducts.map((product) => (
-                <Card key={product.id} className="border border-slate-200 bg-white">
+                <Card key={product.id} className="border border-slate-200 bg-white shadow-sm">
                   {product.image_url && (
-                    <div className="overflow-hidden rounded-t-3xl">
+                    <div className="overflow-hidden rounded-t-[32px] bg-[#F4F8EF]">
                       <img
                         src={getImageUrl(product.image_url)}
                         alt={product.title}
@@ -560,22 +591,25 @@ const ShopPage = () => {
                       />
                     </div>
                   )}
-                  <CardHeader>
+                  <CardHeader className="space-y-3">
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <CardTitle className="text-lg">{product.title}</CardTitle>
                         <CardDescription>{product.description}</CardDescription>
                       </div>
-                      <Badge variant="secondary">UGX {Number(product.price).toLocaleString()}</Badge>
+                      <div className="text-right">
+                        <p className="text-sm text-[#4B5A45]">Price</p>
+                        <p className="text-xl font-semibold text-[#172B12]">UGX {Number(product.price).toLocaleString()}</p>
+                      </div>
                     </div>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-2 text-sm text-[#4B5A45]">
-                      <p>Seller: <span className="font-medium text-[#172B12]">{product.sellerName || product.seller_name}</span></p>
+                      <p>Seller: <span className="font-medium text-[#172B12]">{product.sellerName || product.seller_name || 'Member'}</span></p>
                       <p className="text-xs text-[#6B7C61]">{new Date(product.createdAt || product.created_at).toLocaleDateString()}</p>
                     </div>
                   </CardContent>
-                  <CardFooter className="flex flex-wrap gap-3">
+                  <CardFooter className="flex flex-wrap gap-3 border-t border-slate-200 pt-4">
                     <Button size="sm" onClick={() => handleOpenPurchase(product)} className="bg-[#172B12] text-white hover:bg-[#0f2409]">Buy now</Button>
                     {isAuthenticated ? (
                       <Badge variant="secondary">Member buyer</Badge>
