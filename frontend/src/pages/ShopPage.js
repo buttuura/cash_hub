@@ -9,13 +9,13 @@ import { Textarea } from '../components/ui/textarea';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '../components/ui/dialog';
 import { Badge } from '../components/ui/badge';
 import { Toaster, toast } from 'sonner';
-import { ShoppingCart, FastForward, Box, Layers, Cpu, Sparkles, Plus, ShieldCheck, Tag, MessageCircle } from 'lucide-react';
+import { ShoppingCart, FastForward, Box, Layers, Cpu, Sparkles, Plus, ShieldCheck, Tag, MessageCircle, ShoppingBag, HardHat, PenTool } from 'lucide-react';
 
 const ICON_MAP = {
   'quick-loan': FastForward,
-  'food': Box,
-  'construction-materials': Layers,
-  'graphic-material': Tag,
+  'food': ShoppingBag,
+  'construction-materials': HardHat,
+  'graphic-material': PenTool,
   'electronics': Cpu,
   'default': Sparkles,
 };
@@ -355,24 +355,31 @@ const ShopPage = () => {
                   <div className="space-y-4">
                     <div className="flex items-center gap-3 text-[#2B6F38]">
                       <Sparkles className="h-5 w-5" />
-                      <span className="font-semibold">Explore categories</span>
+                      <span className="font-semibold">Product categories</span>
                     </div>
-                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                      {categories.slice(0, 4).map((category) => {
+                    <p className="text-sm text-[#4B5A45]">
+                      Tap a category to browse products from members. All icons represent product categories added manually by the group.
+                    </p>
+                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                      {categories.filter((category) => category.id !== 'quick-loan').map((category) => {
                         const Icon = ICON_MAP[category.id] || ICON_MAP.default;
+                        const count = products.filter((product) => product.category === category.id).length;
                         return (
                           <button
                             key={category.id}
                             type="button"
                             onClick={() => handleSelectCategory(category.id)}
-                            className="group flex flex-col items-center gap-3 rounded-[28px] border border-slate-200 bg-[#F7FCF4] px-4 py-6 text-center transition hover:border-[#2B6F38] hover:bg-[#ECF8E9]"
+                            className="group overflow-hidden rounded-[28px] border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:border-[#2B6F38] hover:bg-[#F0F9F2]"
                           >
-                            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-[#2B6F38] shadow-sm transition group-hover:bg-[#E6F7E7]">
-                              <Icon className="h-7 w-7" />
+                            <div className="flex items-center justify-between gap-4">
+                              <div className="flex h-16 w-16 items-center justify-center rounded-3xl bg-[#ECF8E9] text-[#2B6F38] shadow-[0_12px_30px_-22px_rgba(43,111,56,0.8)] transition group-hover:bg-[#DFF3DE]">
+                                <Icon className="h-8 w-8" />
+                              </div>
+                              <Badge variant="secondary" className="rounded-full px-3 py-1 text-[11px] uppercase tracking-[0.16em]">{count} items</Badge>
                             </div>
-                            <div className="space-y-1">
-                              <div className="font-semibold text-[#1B3A16]">{category.name}</div>
-                              <p className="text-xs text-[#4B5A45] leading-5">{category.description}</p>
+                            <div className="mt-5 space-y-2">
+                              <div className="text-lg font-semibold text-[#172B12]">{category.name}</div>
+                              <p className="text-sm leading-6 text-[#4B5A45]">{category.description}</p>
                             </div>
                           </button>
                         );
