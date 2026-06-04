@@ -191,14 +191,26 @@ const Dashboard = () => {
   }, [activeTab]);
 
   const uploadFileToServer = async (file) => {
+    console.log(`Starting file upload: ${file.name}, size: ${file.size} bytes, type: ${file.type}`);
     const uploadForm = new FormData();
     uploadForm.append('file', file);
 
-    const response = await axios.post(`${API_URL}/api/uploads`, uploadForm, {
-      headers: getAuthHeaders(),
-    });
-
-    return response.data?.url;
+    try {
+      console.log('Sending request to /api/uploads');
+      const response = await axios.post(`${API_URL}/api/uploads`, uploadForm, {
+        headers: getAuthHeaders(),
+      });
+      console.log('Upload response:', response.data);
+      return response.data?.url;
+    } catch (err) {
+      console.error('Upload error details:', {
+        status: err.response?.status,
+        statusText: err.response?.statusText,
+        data: err.response?.data,
+        message: err.message,
+      });
+      throw err;
+    }
   };
 
   const handleUploadDataFile = async (event) => {
@@ -208,23 +220,33 @@ const Dashboard = () => {
       return;
     }
 
+    console.log(`Starting data file upload: ${newDataFile.name}`);
     setUploadingDataFile(true);
     setDataUploadMessage(null);
     try {
       const formData = new FormData();
       formData.append('file', newDataFile);
 
+      console.log(`Uploading file: ${newDataFile.name}, size: ${newDataFile.size} bytes`);
       const response = await axios.post(`${API_URL}/api/uploads`, formData, {
         headers: getAuthHeaders(),
       });
 
+      console.log('Data file upload successful:', response.data);
       setUploadedDataFile(response.data);
-      setDataUploadMessage('Data file uploaded successfully. Metadata saved to MongoDB.');
-      toast.success('Data file uploaded successfully.');
+      setDataUploadMessage(`Successfully uploaded: ${response.data.file_name} to Cloudinary`);
+      toast.success('Data file uploaded to Cloudinary and metadata saved to MongoDB.');
       setNewDataFile(null);
     } catch (err) {
-      console.error('Data file upload failed', err);
-      toast.error(err.response?.data?.detail || 'Failed to upload data file');
+      console.error('Data file upload failed:', {
+        status: err.response?.status,
+        statusText: err.response?.statusText,
+        detail: err.response?.data?.detail,
+        error: err.message,
+        fullError: err.response?.data,
+      });
+      const errorMsg = err.response?.data?.detail || err.message || 'Failed to upload data file';
+      toast.error(`Upload failed: ${errorMsg}`);
     } finally {
       setUploadingDataFile(false);
     }
