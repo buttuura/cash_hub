@@ -9,7 +9,7 @@ import { Textarea } from '../components/ui/textarea';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '../components/ui/dialog';
 import { Badge } from '../components/ui/badge';
 import { Toaster, toast } from 'sonner';
-import { ShoppingCart, FastForward, Box, Layers, Cpu, Sparkles, Plus, ShieldCheck, Tag, MessageCircle, ShoppingBag, HardHat, PenTool } from 'lucide-react';
+import { ShoppingCart, FastForward, Cpu, Sparkles, Plus, ShoppingBag, HardHat, PenTool } from 'lucide-react';
 
 const ICON_MAP = {
   'quick-loan': FastForward,
@@ -557,6 +557,15 @@ const ShopPage = () => {
               )}
               <Button onClick={() => handleSelectCategory('all')} className="bg-[#172B12] text-white hover:bg-[#0f2409]">Show all</Button>
             </div>
+          </div>
+
+          <div className="mt-6 max-w-xl">
+            <Input
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Search products, sellers, or descriptions"
+              className="w-full rounded-3xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm focus:border-[#2B6F38] focus:ring-2 focus:ring-[#2B6F38]/20"
+            />
           </div>
 
           {selectedCategory === 'quick-loan' ? (
