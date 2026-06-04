@@ -121,6 +121,10 @@ const Dashboard = () => {
   const [newProductImage, setNewProductImage] = useState(null);
   const [myProducts, setMyProducts] = useState([]);
   const [uploadingProduct, setUploadingProduct] = useState(false);
+  const [newDataFile, setNewDataFile] = useState(null);
+  const [uploadingDataFile, setUploadingDataFile] = useState(false);
+  const [uploadedDataFile, setUploadedDataFile] = useState(null);
+  const [dataUploadMessage, setDataUploadMessage] = useState(null);
 
   // Dialog states
   const [depositDialogOpen, setDepositDialogOpen] = useState(false);
@@ -195,6 +199,35 @@ const Dashboard = () => {
     });
 
     return response.data?.url;
+  };
+
+  const handleUploadDataFile = async (event) => {
+    event.preventDefault();
+    if (!newDataFile) {
+      toast.error('Please select a file before uploading.');
+      return;
+    }
+
+    setUploadingDataFile(true);
+    setDataUploadMessage(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', newDataFile);
+
+      const response = await axios.post(`${API_URL}/api/uploads`, formData, {
+        headers: getAuthHeaders(),
+      });
+
+      setUploadedDataFile(response.data);
+      setDataUploadMessage('Data file uploaded successfully. Metadata saved to MongoDB.');
+      toast.success('Data file uploaded successfully.');
+      setNewDataFile(null);
+    } catch (err) {
+      console.error('Data file upload failed', err);
+      toast.error(err.response?.data?.detail || 'Failed to upload data file');
+    } finally {
+      setUploadingDataFile(false);
+    }
   };
 
   const handleUploadProduct = async (event) => {
@@ -1652,6 +1685,49 @@ const Dashboard = () => {
                   <Button type="submit" className="bg-[#2C5530] text-white hover:bg-[#1A3B20]">
                     {uploadingProduct ? 'Uploading...' : 'Upload product'}
                   </Button>
+                </form>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-white border border-[#E8EBE8] shadow-sm">
+              <CardHeader>
+                <CardTitle className="text-lg">Upload a data file</CardTitle>
+                <CardDescription>
+                  Upload any document, spreadsheet, or data file. It will be stored in Cloudinary and the file metadata will be saved to MongoDB.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handleUploadDataFile} className="space-y-4">
+                  <div>
+                    <Label className="text-sm text-[#1E231F]">Choose a file</Label>
+                    <input
+                      type="file"
+                      onChange={(e) => setNewDataFile(e.target.files?.[0] || null)}
+                      className="mt-2 block w-full text-sm text-[#1E231F]"
+                    />
+                    {newDataFile && (
+                      <p className="mt-2 text-xs text-[#5C665D]">Selected: {newDataFile.name}</p>
+                    )}
+                  </div>
+
+                  <Button type="submit" className="bg-[#2C5530] text-white hover:bg-[#1A3B20]">
+                    {uploadingDataFile ? 'Uploading...' : 'Upload data file'}
+                  </Button>
+
+                  {dataUploadMessage && (
+                    <p className="text-sm text-[#2C5530]">{dataUploadMessage}</p>
+                  )}
+
+                  {uploadedDataFile?.url && (
+                    <div className="rounded-lg border border-[#E8EBE8] bg-[#F7FCF4] p-3 text-sm text-[#3F5C3F]">
+                      <p className="font-semibold">Uploaded file details:</p>
+                      <p>Name: {uploadedDataFile.file_name || newDataFile?.name}</p>
+                      <p>Type: {uploadedDataFile.content_type || 'unknown'}</p>
+                      <p>
+                        URL: <a className="text-[#1E231F] underline" href={uploadedDataFile.url} target="_blank" rel="noreferrer">Open file</a>
+                      </p>
+                    </div>
+                  )}
                 </form>
               </CardContent>
             </Card>
