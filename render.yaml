@@ -33,3 +33,5 @@ services:
         value: "107913506020948964345"
       - key: CORS_ORIGINS
         value: "*"
+      - key: CLOUDINARY_URL
+        value: cloudinary://<your_api_key>:<your_api_secret>@dwvfohqed

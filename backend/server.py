@@ -20,6 +20,9 @@ from uuid import uuid4
 from pydantic import BaseModel, Field, EmailStr
 from typing import List, Optional
 from datetime import datetime, timezone, timedelta
+import anyio
+import cloudinary
+import cloudinary.uploader
 
 # Configure logging
 logging.basicConfig(
@@ -39,6 +42,13 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 # JWT Configuration
 JWT_SECRET = os.environ.get('JWT_SECRET', 'default-secret-change-in-production')
 JWT_ALGORITHM = "HS256"
+
+# Cloudinary configuration
+CLOUDINARY_URL = os.environ.get('CLOUDINARY_URL')
+if CLOUDINARY_URL:
+    cloudinary.config(cloudinary_url=CLOUDINARY_URL)
+else:
+    logger.warning("CLOUDINARY_URL not set, uploads to Cloudinary are disabled.")
 
 # Group Rules Constants
 MONTHLY_SAVINGS = 52000  # UGX
@@ -196,6 +206,51 @@ def save_uploaded_file(upload_file: UploadFile) -> str:
     with destination.open("wb") as buffer:
         shutil.copyfileobj(upload_file.file, buffer)
     return filename
+
+async def upload_to_cloudinary(upload_file: UploadFile, folder: str = "cash_hub/uploads") -> str:
+    if not CLOUDINARY_URL:
+        raise HTTPException(status_code=500, detail="Cloudinary is not configured")
+
+    file_obj = upload_file.file
+    size_bytes = None
+    if hasattr(file_obj, "seek") and hasattr(file_obj, "tell"):
+        try:
+            current_pos = file_obj.tell()
+            file_obj.seek(0, os.SEEK_END)
+            size_bytes = file_obj.tell()
+            file_obj.seek(current_pos)
+        except Exception:
+            size_bytes = None
+
+    upload_options = {
+        "resource_type": "auto",
+        "folder": folder,
+        "use_filename": True,
+        "unique_filename": True,
+        "overwrite": False,
+    }
+
+    if size_bytes and size_bytes > 500 * 1024:
+        upload_options.update({
+            "quality": "auto:low",
+            "fetch_format": "auto",
+            "flags": "lossy",
+        })
+
+    if hasattr(file_obj, "seek"):
+        try:
+            file_obj.seek(0)
+        except Exception:
+            pass
+
+    def _upload(file_obj):
+        return cloudinary.uploader.upload(file_obj, **upload_options)
+
+    result = await anyio.to_thread.run_sync(_upload, file_obj)
+    secure_url = result.get("secure_url") or result.get("url")
+    if not secure_url:
+        raise HTTPException(status_code=500, detail="Cloudinary upload failed")
+    return secure_url
 
 # ==================== HELPER FUNCTIONS ====================
 
@@ -579,12 +634,11 @@ async def create_product(
     price: float = Form(...),
     category: str = Form(...),
     image: Optional[UploadFile] = File(None),
+    image_url: Optional[str] = Form(None),
     user: dict = Depends(get_current_user),
 ):
-    image_url = None
     if image:
-        filename = save_uploaded_file(image)
-        image_url = f"/uploads/{filename}"
+        image_url = await upload_to_cloudinary(image)
 
     product_data = {
         "title": title,
@@ -610,6 +664,23 @@ async def list_products():
         product["id"] = str(product["_id"])
         product.pop("_id", None)
     return products
+
+@api_router.post("/uploads")
+async def upload_media(
+    file: UploadFile = File(...),
+    user: dict = Depends(get_current_user),
+):
+    url = await upload_to_cloudinary(file)
+    upload_metadata = {
+        "file_name": file.filename,
+        "content_type": file.content_type,
+        "url": url,
+        "uploaded_by": user["id"],
+        "uploaded_at": datetime.now(timezone.utc).isoformat(),
+    }
+    result = await db.uploads.insert_one(upload_metadata)
+    upload_metadata["id"] = str(result.inserted_id)
+    return upload_metadata
 
 @api_router.get("/products/me")
 async def list_my_products(user: dict = Depends(get_current_user)):

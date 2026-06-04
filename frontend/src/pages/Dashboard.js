@@ -186,6 +186,17 @@ const Dashboard = () => {
     }
   }, [activeTab]);
 
+  const uploadFileToServer = async (file) => {
+    const uploadForm = new FormData();
+    uploadForm.append('file', file);
+
+    const response = await axios.post(`${API_URL}/api/uploads`, uploadForm, {
+      headers: getAuthHeaders(),
+    });
+
+    return response.data?.url;
+  };
+
   const handleUploadProduct = async (event) => {
     event.preventDefault();
     if (!newProductTitle.trim() || !newProductPrice.trim() || !newProductCategory) {
@@ -193,22 +204,24 @@ const Dashboard = () => {
       return;
     }
 
-    const formData = new FormData();
-    formData.append('title', newProductTitle);
-    formData.append('description', newProductDescription);
-    formData.append('price', newProductPrice);
-    formData.append('category', newProductCategory);
-    if (newProductImage) {
-      formData.append('image', newProductImage);
-    }
-
     setUploadingProduct(true);
     try {
+      let imageUrl = null;
+      if (newProductImage) {
+        imageUrl = await uploadFileToServer(newProductImage);
+      }
+
+      const formData = new FormData();
+      formData.append('title', newProductTitle);
+      formData.append('description', newProductDescription);
+      formData.append('price', newProductPrice);
+      formData.append('category', newProductCategory);
+      if (imageUrl) {
+        formData.append('image_url', imageUrl);
+      }
+
       await axios.post(`${API_URL}/api/products`, formData, {
-        headers: {
-          ...getAuthHeaders(),
-          'Content-Type': 'multipart/form-data',
-        },
+        headers: getAuthHeaders(),
       });
       toast.success('Product uploaded successfully. It will appear on the shop page.');
       setNewProductTitle('');
