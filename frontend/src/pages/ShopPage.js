@@ -749,5 +749,5 @@ const ShopPage = () => {
 const Label = ({ className, ...props }) => (
   <label className={`block text-sm font-medium text-slate-700 ${className || ''}`} {...props} />
 );
-
+<script src="//code.tidio.co/0lik4wnyvcdb975vtudlpps5bgxlfryr.js" async></script>
 export default ShopPage;
