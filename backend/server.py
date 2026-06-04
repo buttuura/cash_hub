@@ -209,18 +209,29 @@ def save_uploaded_file(upload_file: UploadFile) -> str:
 
 async def upload_to_cloudinary(upload_file: UploadFile, folder: str = "cash_hub/uploads") -> dict:
     if not CLOUDINARY_URL:
+        logger.error("CLOUDINARY_URL not configured")
         raise HTTPException(status_code=500, detail="Cloudinary is not configured")
 
+    logger.info(f"Starting Cloudinary upload for: {upload_file.filename}")
     file_obj = upload_file.file
     size_bytes = None
+    
     if hasattr(file_obj, "seek") and hasattr(file_obj, "tell"):
         try:
-            current_pos = file_obj.tell()
             file_obj.seek(0, os.SEEK_END)
             size_bytes = file_obj.tell()
-            file_obj.seek(current_pos)
-        except Exception:
+            logger.info(f"File size: {size_bytes} bytes")
+            file_obj.seek(0)
+        except Exception as e:
+            logger.warning(f"Could not determine file size: {e}")
             size_bytes = None
+
+    if hasattr(file_obj, "seek"):
+        try:
+            file_obj.seek(0)
+            logger.info("File pointer reset to beginning")
+        except Exception as e:
+            logger.warning(f"Could not reset file pointer: {e}")
 
     upload_options = {
         "resource_type": "auto",
@@ -231,32 +242,32 @@ async def upload_to_cloudinary(upload_file: UploadFile, folder: str = "cash_hub/
     }
 
     if size_bytes and size_bytes > 500 * 1024:
+        logger.info("Large file detected, applying compression")
         upload_options.update({
             "quality": "auto:low",
             "fetch_format": "auto",
             "flags": "lossy",
         })
 
-    if hasattr(file_obj, "seek"):
-        try:
-            file_obj.seek(0)
-        except Exception:
-            pass
-
     def _upload(file_obj):
-        return cloudinary.uploader.upload(file_obj, **upload_options)
+        logger.info("Calling cloudinary.uploader.upload")
+        result = cloudinary.uploader.upload(file_obj, **upload_options)
+        logger.info(f"Cloudinary response keys: {result.keys()}")
+        return result
 
     try:
         result = await anyio.to_thread.run_sync(_upload, file_obj)
+        logger.info(f"Cloudinary upload successful for {upload_file.filename}")
     except Exception as e:
-        logger.exception("Cloudinary upload failed")
+        logger.error(f"Cloudinary upload failed for {upload_file.filename}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Cloudinary upload failed: {str(e)}")
 
     secure_url = result.get("secure_url") or result.get("url")
     if not secure_url:
-        logger.error("Cloudinary upload returned no URL: %s", result)
+        logger.error(f"Cloudinary upload returned no URL. Response: {result}")
         raise HTTPException(status_code=500, detail="Cloudinary upload failed: no URL returned")
 
+    logger.info(f"Secure URL obtained: {secure_url}")
     result["secure_url"] = secure_url
     return result
 
@@ -683,8 +694,23 @@ async def upload_media(
     file: UploadFile = File(...),
     user: dict = Depends(get_current_user),
 ):
-    upload_result = await upload_to_cloudinary(file)
+    if not file or not file.filename:
+        raise HTTPException(status_code=400, detail="No file provided")
+    
+    logger.info(f"Upload started for file: {file.filename}, user: {user['id']}")
+    
+    try:
+        upload_result = await upload_to_cloudinary(file)
+        logger.info(f"Cloudinary upload successful: public_id={upload_result.get('public_id')}")
+    except Exception as e:
+        logger.error(f"Cloudinary upload failed: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"File upload to cloud failed: {str(e)}")
+    
     url = upload_result.get("secure_url") or upload_result.get("url")
+    if not url:
+        logger.error(f"No URL in Cloudinary response: {upload_result}")
+        raise HTTPException(status_code=500, detail="Cloud upload returned no URL")
+    
     upload_metadata = {
         "file_name": file.filename,
         "content_type": file.content_type,
@@ -706,12 +732,36 @@ async def upload_media(
     }
     try:
         result = await db.uploads.insert_one(upload_metadata)
+        logger.info(f"Upload metadata saved to MongoDB: {result.inserted_id}")
     except Exception as e:
         logger.exception("Failed to save upload metadata")
-        raise HTTPException(status_code=500, detail=f"Failed to save upload metadata: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to save file metadata: {str(e)}")
 
     upload_metadata["id"] = str(result.inserted_id)
     return upload_metadata
+
+@api_router.get("/debug/cloudinary-status")
+async def cloudinary_status(user: dict = Depends(require_treasurer)):
+    is_configured = bool(CLOUDINARY_URL)
+    status = {
+        "cloudinary_configured": is_configured,
+        "cloudinary_url_present": is_configured,
+    }
+    
+    if is_configured:
+        try:
+            config = cloudinary.config()
+            status["cloudinary_cloud_name"] = config.cloud_name
+            status["cloudinary_api_key"] = "***" if config.api_key else None
+            status["status"] = "OK - Cloudinary is configured"
+        except Exception as e:
+            status["status"] = f"ERROR - {str(e)}"
+            status["error"] = str(e)
+    else:
+        status["status"] = "ERROR - Cloudinary is not configured"
+        status["message"] = "CLOUDINARY_URL environment variable is not set"
+    
+    return status
 
 @api_router.get("/products/me")
 async def list_my_products(user: dict = Depends(get_current_user)):
