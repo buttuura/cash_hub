@@ -246,10 +246,16 @@ async def upload_to_cloudinary(upload_file: UploadFile, folder: str = "cash_hub/
     def _upload(file_obj):
         return cloudinary.uploader.upload(file_obj, **upload_options)
 
-    result = await anyio.to_thread.run_sync(_upload, file_obj)
+    try:
+        result = await anyio.to_thread.run_sync(_upload, file_obj)
+    except Exception as e:
+        logger.exception("Cloudinary upload failed")
+        raise HTTPException(status_code=500, detail=f"Cloudinary upload failed: {str(e)}")
+
     secure_url = result.get("secure_url") or result.get("url")
     if not secure_url:
-        raise HTTPException(status_code=500, detail="Cloudinary upload failed")
+        logger.error("Cloudinary upload returned no URL: %s", result)
+        raise HTTPException(status_code=500, detail="Cloudinary upload failed: no URL returned")
     return secure_url
 
 # ==================== HELPER FUNCTIONS ====================
@@ -652,9 +658,13 @@ async def create_product(
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
 
-    result = await db.products.insert_one(product_data)
-    product_data["id"] = str(result.inserted_id)
+    try:
+        result = await db.products.insert_one(product_data)
+    except Exception as e:
+        logger.exception("Failed to save product")
+        raise HTTPException(status_code=500, detail=f"Failed to save product: {str(e)}")
 
+    product_data["id"] = str(result.inserted_id)
     return product_data
 
 @api_router.get("/products")
@@ -678,7 +688,12 @@ async def upload_media(
         "uploaded_by": user["id"],
         "uploaded_at": datetime.now(timezone.utc).isoformat(),
     }
-    result = await db.uploads.insert_one(upload_metadata)
+    try:
+        result = await db.uploads.insert_one(upload_metadata)
+    except Exception as e:
+        logger.exception("Failed to save upload metadata")
+        raise HTTPException(status_code=500, detail=f"Failed to save upload metadata: {str(e)}")
+
     upload_metadata["id"] = str(result.inserted_id)
     return upload_metadata
 
