@@ -207,7 +207,7 @@ def save_uploaded_file(upload_file: UploadFile) -> str:
         shutil.copyfileobj(upload_file.file, buffer)
     return filename
 
-async def upload_to_cloudinary(upload_file: UploadFile, folder: str = "cash_hub/uploads") -> str:
+async def upload_to_cloudinary(upload_file: UploadFile, folder: str = "cash_hub/uploads") -> dict:
     if not CLOUDINARY_URL:
         raise HTTPException(status_code=500, detail="Cloudinary is not configured")
 
@@ -256,7 +256,9 @@ async def upload_to_cloudinary(upload_file: UploadFile, folder: str = "cash_hub/
     if not secure_url:
         logger.error("Cloudinary upload returned no URL: %s", result)
         raise HTTPException(status_code=500, detail="Cloudinary upload failed: no URL returned")
-    return secure_url
+
+    result["secure_url"] = secure_url
+    return result
 
 # ==================== HELPER FUNCTIONS ====================
 
@@ -644,7 +646,8 @@ async def create_product(
     user: dict = Depends(get_current_user),
 ):
     if image:
-        image_url = await upload_to_cloudinary(image)
+        upload_result = await upload_to_cloudinary(image)
+        image_url = upload_result.get("secure_url") or upload_result.get("url")
 
     product_data = {
         "title": title,
@@ -680,11 +683,24 @@ async def upload_media(
     file: UploadFile = File(...),
     user: dict = Depends(get_current_user),
 ):
-    url = await upload_to_cloudinary(file)
+    upload_result = await upload_to_cloudinary(file)
+    url = upload_result.get("secure_url") or upload_result.get("url")
     upload_metadata = {
         "file_name": file.filename,
         "content_type": file.content_type,
         "url": url,
+        "cloudinary": {
+            "public_id": upload_result.get("public_id"),
+            "resource_type": upload_result.get("resource_type"),
+            "format": upload_result.get("format"),
+            "bytes": upload_result.get("bytes"),
+            "width": upload_result.get("width"),
+            "height": upload_result.get("height"),
+            "secure_url": upload_result.get("secure_url"),
+            "original_filename": upload_result.get("original_filename"),
+            "folder": upload_result.get("folder"),
+            "type": upload_result.get("type"),
+        },
         "uploaded_by": user["id"],
         "uploaded_at": datetime.now(timezone.utc).isoformat(),
     }
