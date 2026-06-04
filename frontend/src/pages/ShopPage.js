@@ -355,20 +355,28 @@ const ShopPage = () => {
                   <div className="space-y-4">
                     <div className="flex items-center gap-3 text-[#2B6F38]">
                       <Sparkles className="h-5 w-5" />
-                      <span className="font-semibold">Featured categories</span>
+                      <span className="font-semibold">Explore categories</span>
                     </div>
-                    <div className="grid gap-3">
-                      {categories.slice(0, 3).map((category) => (
-                        <button
-                          key={category.id}
-                          type="button"
-                          className="text-left rounded-3xl border border-slate-200 bg-[#F7FCF4] px-4 py-4 transition hover:border-[#2B6F38]"
-                          onClick={() => handleSelectCategory(category.id)}
-                        >
-                          <div className="font-semibold text-[#1B3A16]">{category.name}</div>
-                          <p className="text-sm text-[#4B5A45]">{category.description}</p>
-                        </button>
-                      ))}
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                      {categories.slice(0, 4).map((category) => {
+                        const Icon = ICON_MAP[category.id] || ICON_MAP.default;
+                        return (
+                          <button
+                            key={category.id}
+                            type="button"
+                            onClick={() => handleSelectCategory(category.id)}
+                            className="group flex flex-col items-center gap-3 rounded-[28px] border border-slate-200 bg-[#F7FCF4] px-4 py-6 text-center transition hover:border-[#2B6F38] hover:bg-[#ECF8E9]"
+                          >
+                            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-[#2B6F38] shadow-sm transition group-hover:bg-[#E6F7E7]">
+                              <Icon className="h-7 w-7" />
+                            </div>
+                            <div className="space-y-1">
+                              <div className="font-semibold text-[#1B3A16]">{category.name}</div>
+                              <p className="text-xs text-[#4B5A45] leading-5">{category.description}</p>
+                            </div>
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 </div>
@@ -749,5 +757,5 @@ const ShopPage = () => {
 const Label = ({ className, ...props }) => (
   <label className={`block text-sm font-medium text-slate-700 ${className || ''}`} {...props} />
 );
-<script src="//code.tidio.co/0lik4wnyvcdb975vtudlpps5bgxlfryr.js" async></script>
+
 export default ShopPage;
