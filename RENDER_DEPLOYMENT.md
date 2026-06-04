@@ -67,6 +67,7 @@ This app consists of:
 | `ADMIN_NAME` | `Buttura Isaiah` | Treasurer / super-admin name |
 | `ADMIN_ROLE` | `super_admin` | Role seeded for the admin account (`super_admin` or `treasurer`) |
 | `CORS_ORIGINS` | `https://your-frontend-url.onrender.com` | Frontend URL |
+| `CLOUDINARY_URL` | `cloudinary://<API_KEY>:<API_SECRET>@<CLOUD_NAME>` | Cloudinary connection string for uploads |
 | `GOOGLE_SPREADSHEET_ID` | `1gbSYI3EOP2L6ZqvL0lWbWKyyqpXK46Y_f9s3F5S34HI` | Your spreadsheet ID |
 | `GOOGLE_SERVICE_ACCOUNT_EMAIL` | `class-one-savings-group@...` | Service account email |
 | `GOOGLE_PROJECT_ID` | `awesome-habitat-374402` | Google Cloud project |
