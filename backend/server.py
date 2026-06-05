@@ -32,9 +32,13 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # MongoDB connection
-mongo_url = os.environ.get('MONGO_URL', 'mongodb://localhost:27017')
+mongo_url = os.environ['MONGO_URL']  # Removed .get() and fallback
+if not mongo_url:
+    raise ValueError("MONGO_URL not found in .env file")
+    
+logger.info(f"Connecting to MongoDB: {mongo_url[:25]}...")  # This will print part of the URL
 client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ.get('DB_NAME', 'class_one_savings')]
+db = client[os.environ['DB_NAME']]
 
 UPLOAD_DIR = ROOT_DIR / 'uploads'
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
