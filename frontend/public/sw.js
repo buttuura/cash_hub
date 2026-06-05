@@ -40,6 +40,16 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(event.request)
         .catch(() => caches.match(event.request))
+        .then((cachedResponse) => {
+          if (cachedResponse) {
+            return cachedResponse;
+          }
+          return new Response(JSON.stringify({ error: 'Network error' }), {
+            status: 503,
+            statusText: 'Service Unavailable',
+            headers: { 'Content-Type': 'application/json' }
+          });
+        })
     );
     return;
   }
@@ -51,7 +61,7 @@ self.addEventListener('fetch', (event) => {
           try { cache.put(event.request, response.clone()); } catch (e) {}
           return response;
         });
-      }).catch(() => caches.match('/index.html'));
+      }).catch(() => caches.match('/offline.html'));
     })
   );
 });
