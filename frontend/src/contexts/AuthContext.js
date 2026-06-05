@@ -5,6 +5,26 @@ const API_URL = process.env.REACT_APP_BACKEND_URL || '';
 
 const AuthContext = createContext(null);
 
+const getBackendErrorMessage = (error, defaultMsg) => {
+  const isNetworkError = error?.code === 'ERR_NETWORK' ||
+    error?.message?.includes('Network Error') ||
+    error?.message?.includes('Connection refused') ||
+    (!error?.response && !!error?.message);
+
+  if (!API_URL) {
+    return 'Backend URL is not configured. Add REACT_APP_BACKEND_URL=http://localhost:8000 to frontend/.env.local and restart the app.';
+  }
+
+  if (isNetworkError) {
+    return `Cannot reach backend at ${API_URL}. Make sure the backend server is running and refresh the page.`;
+  }
+
+  const detail = error?.response?.data?.detail;
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) return detail.map((e) => e.msg).join(', ');
+  return defaultMsg;
+};
+
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {
@@ -30,6 +50,12 @@ export const AuthProvider = ({ children }) => {
       return;
     }
 
+    if (!API_URL) {
+      setError('Backend URL is not configured. Add REACT_APP_BACKEND_URL=http://localhost:8000 to frontend/.env.local.');
+      setLoading(false);
+      return;
+    }
+
     try {
       const response = await axios.get(`${API_URL}/api/auth/me`, {
         headers: getAuthHeaders(),
@@ -39,6 +65,7 @@ export const AuthProvider = ({ children }) => {
       localStorage.removeItem('access_token');
       localStorage.removeItem('refresh_token');
       setUser(null);
+      setError(getBackendErrorMessage(err, 'Session validation failed'));
     } finally {
       setLoading(false);
     }
@@ -51,6 +78,12 @@ export const AuthProvider = ({ children }) => {
   const login = async (identifier, password) => {
     setError(null);
     try {
+      if (!API_URL) {
+        const missingUrlError = 'Backend URL is not configured. Add REACT_APP_BACKEND_URL=http://localhost:8000 to frontend/.env.local and restart the app.';
+        setError(missingUrlError);
+        throw new Error(missingUrlError);
+      }
+
       const response = await axios.post(`${API_URL}/api/auth/login`, {
         identifier,
         password,
@@ -61,10 +94,7 @@ export const AuthProvider = ({ children }) => {
       setUser(userData);
       return userData;
     } catch (err) {
-      const detail = err.response?.data?.detail;
-      const errorMsg = typeof detail === 'string' ? detail : 
-        Array.isArray(detail) ? detail.map(e => e.msg).join(', ') : 
-        'Login failed';
+      const errorMsg = getBackendErrorMessage(err, 'Login failed');
       setError(errorMsg);
       throw new Error(errorMsg);
     }
@@ -73,6 +103,11 @@ export const AuthProvider = ({ children }) => {
   const register = async (name, phone, password, email, nextOfKinName, nationalId) => {
     setError(null);
     try {
+      if (!API_URL) {
+        const missingUrlError = 'Backend URL is not configured. Add REACT_APP_BACKEND_URL=http://localhost:8000 to frontend/.env.local and restart the app.';
+        setError(missingUrlError);
+        throw new Error(missingUrlError);
+      }
       const payload = { name, phone, password, next_of_kin_name: nextOfKinName };
       if (email) payload.email = email;
       if (nationalId) payload.national_id = nationalId;
@@ -83,10 +118,7 @@ export const AuthProvider = ({ children }) => {
       setUser(userData);
       return userData;
     } catch (err) {
-      const detail = err.response?.data?.detail;
-      const errorMsg = typeof detail === 'string' ? detail : 
-        Array.isArray(detail) ? detail.map(e => e.msg).join(', ') : 
-        'Registration failed';
+      const errorMsg = getBackendErrorMessage(err, 'Registration failed');
       setError(errorMsg);
       throw new Error(errorMsg);
     }
