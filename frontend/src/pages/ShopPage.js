@@ -279,9 +279,7 @@ const ShopPage = () => {
 
       // Get authorization token from localStorage
       const authToken = localStorage.getItem('access_token');
-      const headers = {
-        'Content-Type': 'multipart/form-data',
-      };
+      const headers = {};
       if (authToken) {
         headers['Authorization'] = `Bearer ${authToken}`;
       }
