@@ -111,6 +111,9 @@ const ShopPage = () => {
   const [newProductDescription, setNewProductDescription] = useState('');
   const [newProductPrice, setNewProductPrice] = useState('');
   const [newProductCategory, setNewProductCategory] = useState('food');
+  const [newProductImage, setNewProductImage] = useState(null);
+  const [newProductImagePreview, setNewProductImagePreview] = useState('');
+  const [uploadingProduct, setUploadingProduct] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [loanName, setLoanName] = useState('');
   const [loanEmail, setLoanEmail] = useState('');
@@ -239,7 +242,7 @@ const ShopPage = () => {
     setAddCategoryOpen(false);
   };
 
-  const handleAddProduct = (e) => {
+  const handleAddProduct = async (e) => {
     e.preventDefault();
     if (!newProductTitle.trim()) {
       toast.error('Enter a product title');
@@ -260,26 +263,60 @@ const ShopPage = () => {
       return;
     }
 
-    setProducts([
-      {
-        id: `prod-${Date.now()}`,
-        category: newProductCategory,
-        title: newProductTitle.trim(),
-        description: newProductDescription.trim(),
-        price,
-        sellerName: user?.name || 'Member',
-        createdAt: new Date().toISOString(),
-      },
-      ...products,
-    ]);
+    setUploadingProduct(true);
+    try {
+      // Create FormData for multipart upload
+      const formData = new FormData();
+      formData.append('title', newProductTitle.trim());
+      formData.append('description', newProductDescription.trim());
+      formData.append('price', price);
+      formData.append('category', newProductCategory);
+      
+      // Add image if selected
+      if (newProductImage) {
+        formData.append('image', newProductImage);
+      }
 
-    setNewProductTitle('');
-    setNewProductDescription('');
-    setNewProductPrice('');
-    setNewProductCategory(newProductCategory);
-    toast.success('Product listed successfully');
-    setAddProductOpen(false);
-    setSelectedCategory(newProductCategory);
+      // Get authorization token from localStorage
+      const authToken = localStorage.getItem('access_token');
+      const headers = {
+        'Content-Type': 'multipart/form-data',
+      };
+      if (authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`;
+      }
+
+      // Send to backend
+      const response = await axios.post(`${API_URL}/api/products`, formData, {
+        headers,
+        withCredentials: true, // Include cookies if available
+      });
+
+      const newProduct = {
+        id: response.data.id || `prod-${Date.now()}`,
+        category: newProductCategory,
+        title: response.data.title || newProductTitle.trim(),
+        description: response.data.description || newProductDescription.trim(),
+        price: response.data.price || price,
+        sellerName: user?.name || 'Member',
+        seller_name: user?.name || 'Member',
+        image_url: response.data.image_url,
+        createdAt: response.data.created_at || new Date().toISOString(),
+      };
+
+      setProducts([newProduct, ...products]);
+      
+      resetProductForm();
+      toast.success('Product listed successfully');
+      setAddProductOpen(false);
+      setSelectedCategory(newProductCategory);
+    } catch (error) {
+      console.error('Failed to add product:', error);
+      const errorMessage = error.response?.data?.detail || 'Failed to list product. Please try again.';
+      toast.error(errorMessage);
+    } finally {
+      setUploadingProduct(false);
+    }
   };
 
   const handleRequestQuickLoan = (e) => {
@@ -315,6 +352,38 @@ const ShopPage = () => {
   const handleOpenPurchase = (product) => {
     setPurchaseProduct(product);
     setPurchaseOpen(true);
+  };
+
+  const handleImageSelect = (event) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        toast.error('Please select a valid image file');
+        return;
+      }
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error('Image size must be less than 5MB');
+        return;
+      }
+      setNewProductImage(file);
+      // Create preview
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setNewProductImagePreview(reader.result);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const resetProductForm = () => {
+    setNewProductTitle('');
+    setNewProductDescription('');
+    setNewProductPrice('');
+    setNewProductCategory('food');
+    setNewProductImage(null);
+    setNewProductImagePreview('');
   };
 
   return (
@@ -662,6 +731,7 @@ const ShopPage = () => {
                 value={newProductTitle}
                 onChange={(event) => setNewProductTitle(event.target.value)}
                 placeholder="e.g. Handmade breakfast pack"
+                disabled={uploadingProduct}
               />
             </div>
             <div>
@@ -672,6 +742,7 @@ const ShopPage = () => {
                 onChange={(event) => setNewProductDescription(event.target.value)}
                 placeholder="Tell buyers about this item"
                 rows={4}
+                disabled={uploadingProduct}
               />
             </div>
             <div>
@@ -680,7 +751,8 @@ const ShopPage = () => {
                 id="product-category"
                 value={newProductCategory}
                 onChange={(event) => setNewProductCategory(event.target.value)}
-                className="mt-2 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-[#2B6F38] focus:ring-2 focus:ring-[#2B6F38]/20"
+                className="mt-2 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-[#2B6F38] focus:ring-2 focus:ring-[#2B6F38]/20 disabled:opacity-50"
+                disabled={uploadingProduct}
               >
                 {categories.filter((category) => category.id !== 'quick-loan').map((category) => (
                   <option key={category.id} value={category.id}>{category.name}</option>
@@ -695,9 +767,56 @@ const ShopPage = () => {
                 value={newProductPrice}
                 onChange={(event) => setNewProductPrice(event.target.value)}
                 placeholder="e.g. 50000"
+                disabled={uploadingProduct}
               />
             </div>
-            <Button type="submit" className="bg-[#172B12] text-white hover:bg-[#0f2409]">Publish product</Button>
+            <div>
+              <Label htmlFor="product-image" className="text-sm font-medium text-slate-700">Product image</Label>
+              <div className="mt-2 space-y-3">
+                <input
+                  id="product-image"
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageSelect}
+                  disabled={uploadingProduct}
+                  className="block w-full text-sm text-slate-500
+                    file:mr-4 file:py-2 file:px-4
+                    file:rounded-lg file:border-0
+                    file:text-sm file:font-semibold
+                    file:bg-[#172B12] file:text-white
+                    hover:file:bg-[#0f2409]
+                    disabled:opacity-50"
+                />
+                <p className="text-xs text-[#4B5A45]">Max file size: 5MB. Supported formats: JPG, PNG, GIF, WebP</p>
+                {newProductImagePreview && (
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <img
+                      src={newProductImagePreview}
+                      alt="Preview"
+                      className="h-32 w-full rounded object-cover"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setNewProductImage(null);
+                        setNewProductImagePreview('');
+                      }}
+                      disabled={uploadingProduct}
+                      className="mt-2 text-xs text-red-600 hover:text-red-800 disabled:opacity-50"
+                    >
+                      Remove image
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+            <Button 
+              type="submit" 
+              className="bg-[#172B12] text-white hover:bg-[#0f2409] disabled:opacity-50"
+              disabled={uploadingProduct}
+            >
+              {uploadingProduct ? 'Publishing...' : 'Publish product'}
+            </Button>
           </form>
         </DialogContent>
       </Dialog>
