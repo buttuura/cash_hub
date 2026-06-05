@@ -68,6 +68,13 @@ YEAR_END_DATE = "2026-12-20"
 
 # Create the main app
 app = FastAPI(title="Class One Savings API")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 api_router = APIRouter(prefix="/api")
 
 # ==================== PYDANTIC MODELS ====================
