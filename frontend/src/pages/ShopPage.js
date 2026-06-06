@@ -388,39 +388,39 @@ const ShopPage = () => {
     <div className="min-h-screen bg-[#F7FAF3] px-4 py-8 sm:px-6 lg:px-8">
       <Toaster position="top-right" />
       <div className="mx-auto max-w-7xl">
-        <div className="grid gap-6 lg:grid-cols-[1.3fr_0.95fr] mb-10">
-          <div className="space-y-6">
-            <section className="rounded-[32px] border border-[#D8E4D3] bg-gradient-to-br from-[#F5FBF2] via-white to-[#EFF6ED] p-8 shadow-sm">
-              <div className="grid gap-8 lg:grid-cols-1">
-                <div className="space-y-6">
-                  <div className="space-y-3">
-                    <p className="text-sm uppercase tracking-[0.3em] text-[#2B6F38] font-semibold">Group marketplace</p>
-                    <h1 className="text-4xl font-semibold text-[#172B12]">Shop trusted member listings</h1>
-                    <p className="max-w-2xl text-base leading-8 text-[#4B5A45]">
-                      Browse trusted member listings from our group marketplace.
-                    </p>
-                  </div>
-
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {isAuthenticated ? (
-                      <Button onClick={() => navigate('/dashboard')} className="min-w-[160px] bg-[#172B12] text-white hover:bg-[#0f2409]">
-                        Go to Dashboard
-                      </Button>
-                    ) : (
-                      <>
-                        <Button variant="secondary" onClick={() => navigate('/login')} className="bg-[#172B12] text-white hover:bg-[#0f2409]">
-                          Member Login
-                        </Button>
-                        <Button onClick={() => navigate('/register')} className="bg-[#172B12] text-white hover:bg-[#0f2409]">
-                          Register Now
-                        </Button>
-                      </>
-                    )}
-                  </div>
-                </div>
+        <section className="w-full h-[50vh] rounded-[32px] border border-[#D8E4D3] bg-gradient-to-br from-[#F5FBF2] via-white to-[#EFF6ED] p-8 shadow-sm">
+          <div className="h-full flex flex-col justify-between">
+            <div className="space-y-6">
+              <div className="space-y-3">
+                <p className="text-sm uppercase tracking-[0.3em] text-[#2B6F38] font-semibold">Group marketplace</p>
+                <h1 className="text-4xl font-semibold text-[#172B12]">Shop trusted member listings</h1>
+                <p className="max-w-2xl text-base leading-8 text-[#4B5A45]">
+                  Browse trusted member listings from our group marketplace.
+                </p>
               </div>
-            </section>
+            </div>
 
+            <div className="grid gap-3 sm:grid-cols-2">
+              {isAuthenticated ? (
+                <Button onClick={() => navigate('/dashboard')} className="min-w-[160px] bg-[#172B12] text-white hover:bg-[#0f2409]">
+                  Go to Dashboard
+                </Button>
+              ) : (
+                <>
+                  <Button variant="secondary" onClick={() => navigate('/login')} className="bg-[#172B12] text-white hover:bg-[#0f2409]">
+                    Member Login
+                  </Button>
+                  <Button onClick={() => navigate('/register')} className="bg-[#172B12] text-white hover:bg-[#0f2409]">
+                    Register Now
+                  </Button>
+                </>
+              )}
+            </div>
+          </div>
+        </section>
+
+        <div className="grid gap-6 lg:grid-cols-[1.3fr_0.95fr] mb-10 mt-6">
+          <div className="space-y-6">
             <div className="grid gap-4 sm:grid-cols-2">
               <Card className="border border-slate-200 bg-white">
                 <CardHeader>
