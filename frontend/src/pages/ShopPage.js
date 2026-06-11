@@ -6,10 +6,13 @@ import { Button } from '../components/ui/button';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '../components/ui/card';
 import { Input } from '../components/ui/input';
 import { Textarea } from '../components/ui/textarea';
+import { Label } from '../components/ui/label';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '../components/ui/dialog';
 import { Badge } from '../components/ui/badge';
 import { Toaster, toast } from 'sonner';
 import { ShoppingCart, FastForward, Cpu, Sparkles, Plus, ShoppingBag, HardHat, PenTool } from 'lucide-react';
+import { exportLoanAgreementPDF } from '../utils/pdfExport';
+import { OFFICERS } from '../data/officers';
 
 const ICON_MAP = {
   'quick-loan': FastForward,
@@ -20,7 +23,7 @@ const ICON_MAP = {
   'default': Sparkles,
 };
 
-const API_URL = process.env.REACT_APP_BACKEND_URL || '';
+const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
 
 const DEFAULT_CATEGORIES = [
   {
@@ -120,11 +123,93 @@ const ShopPage = () => {
   const [loanPhone, setLoanPhone] = useState('');
   const [loanAmount, setLoanAmount] = useState('');
   const [loanPurpose, setLoanPurpose] = useState('');
+  const [collateral, setCollateral] = useState('');
+  const [loanIsGuaranteed, setLoanIsGuaranteed] = useState(true);
+  const [collateralImage, setCollateralImage] = useState(null);
+  const [collateralImagePreview, setCollateralImagePreview] = useState('');
+  const [officerCode, setOfficerCode] = useState('');
+  const [loanRequestSubmitted, setLoanRequestSubmitted] = useState(false);
+  const [loanRequestData, setLoanRequestData] = useState(null);
   const [purchaseProduct, setPurchaseProduct] = useState(null);
   const [purchaseName, setPurchaseName] = useState('');
   const [purchaseEmail, setPurchaseEmail] = useState('');
   const [purchasePhone, setPurchasePhone] = useState('');
   const [purchaseNote, setPurchaseNote] = useState('');
+  const [orderSubmitting, setOrderSubmitting] = useState(false);
+
+  const loadOrderRequests = () => {
+    try {
+      return JSON.parse(window.localStorage.getItem('cash_hub_orders') || '[]');
+    } catch (error) {
+      console.warn('Failed to load order requests', error);
+      return [];
+    }
+  };
+
+  const saveOrderRequests = (orders) => {
+    window.localStorage.setItem('cash_hub_orders', JSON.stringify(orders));
+  };
+
+  const handleDownloadLoanAgreement = () => {
+    if (!loanRequestData) return;
+    const officer = OFFICERS.find((o) => o.code === loanRequestData.officerCode) || null;
+    exportLoanAgreementPDF(loanRequestData, officer, { download: true });
+  };
+
+  const resetQuickLoanDialogState = () => {
+    setLoanRequestSubmitted(false);
+    setLoanRequestData(null);
+    setLoanName('');
+    setLoanEmail('');
+    setLoanPhone('');
+    setLoanAmount('');
+    setLoanPurpose('');
+    setCollateral('');
+    setCollateralImage(null);
+    setCollateralImagePreview('');
+    setOfficerCode('');
+  };
+
+  const handlePurchaseRequest = (e) => {
+    e.preventDefault();
+
+    if (!purchaseName.trim() || !purchasePhone.trim()) {
+      toast.error('Please enter your name and phone number so the seller can contact you.');
+      return;
+    }
+
+    if (!purchaseProduct) {
+      toast.error('No product selected for the request.');
+      return;
+    }
+
+    const order = {
+      id: `order-${Date.now()}`,
+      productId: purchaseProduct.id,
+      productTitle: purchaseProduct.title,
+      productPrice: purchaseProduct.price,
+      sellerName: purchaseProduct.sellerName || purchaseProduct.seller_name || 'Member',
+      buyerId: user?.id || null,
+      buyerName: purchaseName.trim(),
+      buyerEmail: purchaseEmail.trim(),
+      buyerPhone: purchasePhone.trim(),
+      note: purchaseNote.trim(),
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+    };
+
+    setOrderSubmitting(true);
+    const existingOrders = loadOrderRequests();
+    saveOrderRequests([order, ...existingOrders]);
+    setOrderSubmitting(false);
+
+    toast.success('Order request sent. The seller will contact you by phone.');
+    setPurchaseOpen(false);
+    setPurchaseName('');
+    setPurchaseEmail('');
+    setPurchasePhone('');
+    setPurchaseNote('');
+  };
 
   const getImageUrl = (imageUrl) => {
     if (!imageUrl) return null;
@@ -317,34 +402,55 @@ const ShopPage = () => {
     }
   };
 
-  const handleRequestQuickLoan = (e) => {
+  const handleRequestQuickLoan = async (e) => {
     e.preventDefault();
     if (!loanName.trim() || !loanEmail.trim() || !loanAmount.trim()) {
-      toast.error('Please fill all required fields');
+      toast.error('Please fill your name, email and loan amount');
       return;
     }
-    toast.success('Quick loan request submitted. We will contact you soon.');
-    setLoanName('');
-    setLoanEmail('');
-    setLoanPhone('');
-    setLoanAmount('');
-    setLoanPurpose('');
-    setQuickLoanOpen(false);
-  };
 
-  const handlePurchaseRequest = (e) => {
-    e.preventDefault();
-    if (!purchaseProduct || !purchaseName.trim() || !purchaseEmail.trim()) {
-      toast.error('Please fill in your contact details');
+    const officer = OFFICERS.find(o => o.code === officerCode) || null;
+
+    // If loan is guaranteed, officer is required
+    if (loanIsGuaranteed && !officer) {
+      toast.error('Please select a loans officer for a guaranteed loan');
       return;
     }
-    toast.success(`Purchase request sent for ${purchaseProduct.title}`);
-    setPurchaseProduct(null);
-    setPurchaseName('');
-    setPurchaseEmail('');
-    setPurchasePhone('');
-    setPurchaseNote('');
-    setPurchaseOpen(false);
+
+    // If loan is collateral-based we require collateral description (image optional)
+    if (!loanIsGuaranteed && !collateral.trim()) {
+      toast.error('Please provide collateral details for a collateral-backed loan');
+      return;
+    }
+
+    try {
+      const requestPayload = {
+        loan_name: loanName.trim(),
+        loan_email: loanEmail.trim(),
+        loan_phone: loanPhone.trim(),
+        amount: Number(loanAmount),
+        purpose: loanPurpose.trim(),
+        collateral: collateral.trim() || null,
+        is_guaranteed: loanIsGuaranteed,
+        officer_code: officerCode || null,
+        officer_name: officer?.name || null,
+        collateral_image: collateralImage || null,
+      };
+
+      const headers = isAuthenticated ? { Authorization: `Bearer ${localStorage.getItem('access_token')}` } : {};
+      const response = await axios.post(`${API_URL}/api/quick-loans/request`, requestPayload, {
+        headers,
+      });
+
+      setLoanRequestSubmitted(true);
+      setLoanRequestData(response.data);
+
+      toast.success('Quick loan request submitted to the treasurer for approval. You can download the agreement below.');
+    } catch (error) {
+      console.error('Failed to submit quick loan request:', error);
+      const message = error.response?.data?.detail || 'Failed to submit quick loan request. Please try again.';
+      toast.error(message);
+    }
   };
 
   const handleOpenPurchase = (product) => {
@@ -387,190 +493,201 @@ const ShopPage = () => {
   return (
     <div className="min-h-screen bg-[#F7FAF3] px-4 py-8 sm:px-6 lg:px-8">
       <Toaster position="top-right" />
-      <div className="mx-auto max-w-7xl">
-        <section className="w-full h-[50vh] rounded-[32px] border border-[#D8E4D3] bg-gradient-to-br from-[#F5FBF2] via-white to-[#EFF6ED] p-8 shadow-sm">
-          <div className="h-full flex flex-col justify-between">
-            <div className="space-y-6">
-              <div className="space-y-3">
+      <div className="mx-auto max-w-7xl space-y-10">
+        <section className="grid gap-8 lg:grid-cols-[1.45fr_0.95fr]">
+          <div className="relative overflow-hidden rounded-[32px] border border-[#D8E4D3] bg-gradient-to-br from-[#F5FBF2] via-white to-[#EFF6ED] p-10 shadow-sm">
+            <div className="space-y-8">
+              <div className="max-w-3xl space-y-6">
                 <p className="text-sm uppercase tracking-[0.3em] text-[#2B6F38] font-semibold">Group marketplace</p>
-                <h1 className="text-4xl font-semibold text-[#172B12]">Shop trusted member listings</h1>
-                <p className="max-w-2xl text-base leading-8 text-[#4B5A45]">
-                  Browse trusted member listings from our group marketplace.
+                <h1 className="text-5xl font-semibold tracking-tight text-[#172B12]">Buy, sell and access fast member loans in one place.</h1>
+                <p className="text-base leading-8 text-[#4B5A45]">
+                  Discover trusted seller listings from our community, place purchase requests, or request a quick loan when cash is needed fast.
                 </p>
               </div>
-            </div>
 
-            <div className="grid gap-3 sm:grid-cols-2">
-              {isAuthenticated ? (
-                <Button onClick={() => navigate('/dashboard')} className="min-w-[160px] bg-[#172B12] text-white hover:bg-[#0f2409]">
-                  Go to Dashboard
+              <div className="grid gap-4 sm:grid-cols-1">
+                <Button
+                  onClick={() => navigate(isAuthenticated ? '/dashboard' : '/login')}
+                  className="min-w-[160px] bg-[#172B12] text-white hover:bg-[#0f2409]"
+                >
+                  Go to dashboard
                 </Button>
-              ) : (
-                <>
-                  <Button variant="secondary" onClick={() => navigate('/login')} className="bg-[#172B12] text-white hover:bg-[#0f2409]">
-                    Member Login
-                  </Button>
-                  <Button onClick={() => navigate('/register')} className="bg-[#172B12] text-white hover:bg-[#0f2409]">
-                    Register Now
-                  </Button>
-                </>
-              )}
-            </div>
-          </div>
-        </section>
+              </div>
 
-        <div className="grid gap-6 lg:grid-cols-[1.3fr_0.95fr] mb-10 mt-6">
-          <div className="space-y-6">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Card className="border border-slate-200 bg-white">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-xl">
-                    <Sparkles className="h-5 w-5 text-[#2B6F38]" /> Quick loan service
-                  </CardTitle>
-                  <CardDescription>
-                    Fast funding for urgent buyer needs, even before registration.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-[#4B5A45]">
-                    Non-members can request a quick loan through the marketplace, and sellers can share this service with customers who need immediate support.
-                  </p>
-                </CardContent>
-                <CardFooter>
-                  <Button onClick={() => setQuickLoanOpen(true)} className="bg-[#172B12] text-white hover:bg-[#0f2409]">Request quick loan</Button>
-                </CardFooter>
-              </Card>
-
-              <Card className="border border-slate-200 bg-white">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-xl">
-                    <ShoppingCart className="h-5 w-5 text-[#2B6F38]" /> Sell products
-                  </CardTitle>
-                  <CardDescription>
-                    Create listings quickly and reach buyers on the public shop page.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-[#4B5A45]">
-                    Choose a category and upload your product details. Your listing appears publicly once published.
-                  </p>
-                </CardContent>
-                <CardFooter>
-                  <Button
-                    onClick={() => {
-                      if (!isAuthenticated) {
-                        navigate('/login');
-                      } else {
-                        setAddProductOpen(true);
-                      }
-                    }}
-                    className="bg-[#172B12] text-white hover:bg-[#0f2409]"
-                  >
-                    {isAuthenticated ? 'List a product' : 'Login to sell'}
-                  </Button>
-                </CardFooter>
-              </Card>
+              <div className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-[#4B5A45]">Search the marketplace</p>
+                    <h2 className="text-xl font-semibold text-[#172B12]">Find products from members</h2>
+                  </div>
+                  <Badge variant="secondary">{visibleProducts.length} matches</Badge>
+                </div>
+                <div className="mt-5">
+                  <Input
+                    value={searchQuery}
+                    onChange={(event) => setSearchQuery(event.target.value)}
+                    placeholder="Search products, sellers, or descriptions"
+                    className="w-full rounded-3xl border border-slate-300 bg-[#F7FAF3] px-4 py-3 text-sm text-slate-700 shadow-sm focus:border-[#2B6F38] focus:ring-2 focus:ring-[#2B6F38]/20"
+                  />
+                </div>
+              </div>
             </div>
+            <div className="pointer-events-none absolute right-6 top-6 hidden h-32 w-32 rounded-full bg-[#D8E4D3]/60 blur-2xl md:block" />
           </div>
 
-          <aside className="space-y-4">
+          <aside className="space-y-6">
             <Card className="border border-slate-200 bg-white">
               <CardHeader>
-                <CardTitle className="text-lg">Categories</CardTitle>
+                <CardTitle className="flex items-center gap-2 text-xl">
+                  <Sparkles className="h-5 w-5 text-[#2B6F38]" /> Quick loan service
+                </CardTitle>
+                <CardDescription>
+                  Fast funding for urgent buyer needs, even before registration.
+                </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="grid gap-3">
-                  <button
-                    className={`relative block rounded-3xl border px-4 py-4 text-left transition ${selectedCategory === 'all' ? 'border-[#2B6F38] bg-[#ECF8E9]' : 'border-slate-200 bg-white hover:border-[#2B6F38]/60'}`}
-                    type="button"
-                    onClick={() => handleSelectCategory('all')}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="font-semibold text-[#1B3A16]">All categories</span>
-                      <Badge variant="secondary">{products.length}</Badge>
-                    </div>
-                  </button>
-                  {categories.map((category) => {
+                <p className="text-sm text-[#4B5A45]">
+                  Request a quick loan to cover urgent purchases or keep your business moving while you wait for buyer payments.
+                </p>
+              </CardContent>
+              <CardFooter>
+                <Button onClick={() => setQuickLoanOpen(true)} className="bg-[#172B12] text-white hover:bg-[#0f2409]">Request quick loan</Button>
+              </CardFooter>
+            </Card>
+
+            <Card className="border border-slate-200 bg-white">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-xl">
+                  <ShoppingCart className="h-5 w-5 text-[#2B6F38]" /> Sell products
+                </CardTitle>
+                <CardDescription>
+                  List your products and reach buyers across the group marketplace.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-[#4B5A45]">
+                  Create a listing quickly and keep your inventory visible to the community.
+                </p>
+              </CardContent>
+              <CardFooter>
+                <Button
+                  onClick={() => {
+                    if (!isAuthenticated) {
+                      navigate('/login');
+                    } else {
+                      setAddProductOpen(true);
+                    }
+                  }}
+                  className="bg-[#172B12] text-white hover:bg-[#0f2409]"
+                >
+                  {isAuthenticated ? 'List a product' : 'Login to sell'}
+                </Button>
+              </CardFooter>
+            </Card>
+
+            <Card className="border border-slate-200 bg-white">
+              <CardHeader>
+                <CardTitle className="text-lg">Popular categories</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {categories.slice(0, 4).map((category) => {
                     const Icon = ICON_MAP[category.id] || ICON_MAP.default;
                     const count = products.filter((product) => product.category === category.id).length;
                     return (
                       <button
                         key={category.id}
-                        className={`relative block w-full rounded-3xl border px-4 py-4 text-left transition ${selectedCategory === category.id ? 'border-[#2B6F38] bg-[#ECF8E9]' : 'border-slate-200 bg-white hover:border-[#2B6F38]/60'}`}
                         type="button"
                         onClick={() => handleSelectCategory(category.id)}
+                        className="flex w-full items-center justify-between rounded-3xl border border-slate-200 bg-[#F7FAF3] px-4 py-3 text-left text-sm font-medium text-[#1B3A16] hover:border-[#2B6F38]/70"
                       >
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="flex items-center gap-3">
-                            <Icon className="h-5 w-5 text-[#2B6F38]" />
-                            <span className="font-semibold text-[#1B3A16]">{category.name}</span>
-                          </div>
-                          <Badge variant="secondary">{category.id === 'quick-loan' ? 'Service' : `${count} products`}</Badge>
-                        </div>
+                        <span className="flex items-center gap-3">
+                          <Icon className="h-4 w-4 text-[#2B6F38]" />
+                          {category.name}
+                        </span>
+                        <Badge variant="secondary">{category.id === 'quick-loan' ? 'Service' : `${count}`}</Badge>
                       </button>
                     );
                   })}
                 </div>
               </CardContent>
-              {isAdmin && (
-                <CardFooter>
-                  <Dialog open={addCategoryOpen} onOpenChange={setAddCategoryOpen}>
-                    <DialogTrigger asChild>
-                      <Button className="w-full bg-[#172B12] text-white hover:bg-[#0f2409]">
-                        <Plus className="mr-2 h-4 w-4" /> Add category
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent className="sm:max-w-lg">
-                      <DialogHeader>
-                        <DialogTitle>Add a new category</DialogTitle>
-                        <DialogDescription>New categories will appear on the shop landing page for everyone.</DialogDescription>
-                      </DialogHeader>
-                      <form onSubmit={handleAddCategory} className="space-y-4">
-                        <div>
-                          <Label htmlFor="category-name" className="text-sm font-medium text-slate-700">Category name</Label>
-                          <Input
-                            id="category-name"
-                            value={newCategoryName}
-                            onChange={(event) => setNewCategoryName(event.target.value)}
-                            placeholder="e.g. Clothing"
-                          />
-                        </div>
-                        <div>
-                          <Label htmlFor="category-description" className="text-sm font-medium text-slate-700">Description</Label>
-                          <Textarea
-                            id="category-description"
-                            value={newCategoryDescription}
-                            onChange={(event) => setNewCategoryDescription(event.target.value)}
-                            placeholder="Short description for this category"
-                            rows={4}
-                          />
-                        </div>
-                        <Button type="submit" className="bg-[#172B12] text-white hover:bg-[#0f2409]">Create category</Button>
-                      </form>
-                    </DialogContent>
-                  </Dialog>
-                </CardFooter>
-              )}
-            </Card>
-
-            <Card className="border border-slate-200 bg-white">
-              <CardHeader>
-                <CardTitle className="text-lg">Quick guide</CardTitle>
-              </CardHeader>
-              <CardContent className="text-sm text-[#4B5A45]">
-                <p>Pick a category, find what you need, and contact the seller or request a loan.</p>
-              </CardContent>
             </Card>
           </aside>
-        </div>
+        </section>
 
-        <div className="space-y-6">
+        <section className="grid gap-6 lg:grid-cols-[1.3fr_0.95fr]">
+          <div className="space-y-6">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm uppercase tracking-[0.3em] text-[#2B6F38] font-semibold">Explore by category</p>
+                <h2 className="text-3xl font-semibold text-[#172B12]">Shop by collection</h2>
+              </div>
+              {isAdmin && (
+                <Button onClick={() => setAddCategoryOpen(true)} className="bg-[#172B12] text-white hover:bg-[#0f2409]">
+                  <Plus className="mr-2 h-4 w-4" /> Add category
+                </Button>
+              )}
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              <button
+                type="button"
+                onClick={() => handleSelectCategory('all')}
+                className={`rounded-[28px] border px-6 py-5 text-left transition ${selectedCategory === 'all' ? 'border-[#2B6F38] bg-[#ECF8E9]' : 'border-slate-200 bg-white hover:border-[#2B6F38]/60'}`}
+              >
+                <p className="text-sm font-semibold text-[#1B3A16]">All categories</p>
+                <p className="mt-2 text-xs text-[#4B5A45]">{products.length} listings available</p>
+              </button>
+
+              {categories.map((category) => {
+                const Icon = ICON_MAP[category.id] || ICON_MAP.default;
+                const count = products.filter((product) => product.category === category.id).length;
+                return (
+                  <button
+                    key={category.id}
+                    type="button"
+                    onClick={() => handleSelectCategory(category.id)}
+                    className={`rounded-[28px] border px-6 py-5 text-left transition ${selectedCategory === category.id ? 'border-[#2B6F38] bg-[#ECF8E9]' : 'border-slate-200 bg-white hover:border-[#2B6F38]/60'}`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <Icon className="h-5 w-5 text-[#2B6F38]" />
+                      <span className="font-semibold text-[#1B3A16]">{category.name}</span>
+                    </div>
+                    <p className="mt-2 text-xs text-[#4B5A45]">{category.id === 'quick-loan' ? 'Quick loan service' : `${count} products`}</p>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <Card className="border border-slate-200 bg-white p-6 shadow-sm">
+            <CardHeader>
+              <CardTitle className="text-lg">How it works</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-5 text-sm text-[#4B5A45]">
+              <div className="space-y-3 rounded-3xl border border-slate-200 bg-[#F7FAF3] p-4">
+                <p className="font-semibold text-[#172B12]">Search and choose</p>
+                <p>Use the search bar and category cards to find the products you need.</p>
+              </div>
+              <div className="space-y-3 rounded-3xl border border-slate-200 bg-[#F7FAF3] p-4">
+                <p className="font-semibold text-[#172B12]">Contact the seller</p>
+                <p>Submit a purchase request and the seller will contact you by phone.</p>
+              </div>
+              <div className="space-y-3 rounded-3xl border border-slate-200 bg-[#F7FAF3] p-4">
+                <p className="font-semibold text-[#172B12]">Need money now?</p>
+                <p>Request a quick loan and submit your request to the treasurer for approval. You can download the agreement manually after submitting.</p>
+              </div>
+            </CardContent>
+          </Card>
+        </section>
+
+        <section className="space-y-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-2xl font-semibold text-[#172B12]">{selectedCategory === 'all' ? 'All products and services' : categoryMap[selectedCategory]?.name || 'Category'}</h2>
-              <p className="mt-2 text-sm text-[#4B5A45]">
+              <h2 className="text-3xl font-semibold text-[#172B12]">{selectedCategory === 'all' ? 'Latest marketplace items' : categoryMap[selectedCategory]?.name || 'Category'}</h2>
+              <p className="text-sm text-[#4B5A45]">
                 {selectedCategory === 'all'
-                  ? 'Explore everything that members and the group marketplace have to offer.'
+                  ? 'Browse the latest listings from group members across every category.'
                   : categoryMap[selectedCategory]?.description}
               </p>
             </div>
@@ -582,15 +699,6 @@ const ShopPage = () => {
               )}
               <Button onClick={() => handleSelectCategory('all')} className="bg-[#172B12] text-white hover:bg-[#0f2409]">Show all</Button>
             </div>
-          </div>
-
-          <div className="mt-6 max-w-xl">
-            <Input
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-              placeholder="Search products, sellers, or descriptions"
-              className="w-full rounded-3xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-700 shadow-sm focus:border-[#2B6F38] focus:ring-2 focus:ring-[#2B6F38]/20"
-            />
           </div>
 
           {selectedCategory === 'quick-loan' ? (
@@ -670,7 +778,7 @@ const ShopPage = () => {
               ))}
             </div>
           )}
-        </div>
+        </section>
       </div>
 
       <Dialog open={addProductOpen} onOpenChange={setAddProductOpen}>
@@ -777,35 +885,120 @@ const ShopPage = () => {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={quickLoanOpen} onOpenChange={setQuickLoanOpen}>
-        <DialogContent className="sm:max-w-lg">
+      <Dialog open={quickLoanOpen} onOpenChange={(open) => {
+          if (!open) {
+            resetQuickLoanDialogState();
+          }
+          setQuickLoanOpen(open);
+        }}>
+        <DialogContent className="sm:max-w-lg max-h- overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Request a quick loan</DialogTitle>
             <DialogDescription>Fill in your contact details and we will follow up with loan terms.</DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleRequestQuickLoan} className="space-y-4">
-            <div>
-              <Label htmlFor="loan-name" className="text-sm font-medium text-slate-700">Full name</Label>
-              <Input id="loan-name" value={loanName} onChange={(event) => setLoanName(event.target.value)} placeholder="Your name" />
+          {loanRequestSubmitted ? (
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <p className="text-lg font-semibold text-[#172B12]">Loan request received</p>
+                <p className="mt-2 text-sm text-slate-600">
+                  Your quick loan request has been submitted to the treasurer for approval.
+                  You can download the loan agreement manually below if you want a copy now.
+                </p>
+                <div className="mt-4 text-sm text-slate-700">
+                  <p><span className="font-semibold">Name:</span> {loanRequestData?.loanName}</p>
+                  <p><span className="font-semibold">Email:</span> {loanRequestData?.loanEmail}</p>
+                  <p><span className="font-semibold">Phone:</span> {loanRequestData?.loanPhone || 'Not provided'}</p>
+                  <p><span className="font-semibold">Amount:</span> UGX {Number(loanRequestData?.loanAmount || 0).toLocaleString()}</p>
+                </div>
+              </div>
+              <div className="flex flex-col gap-3">
+                <Button type="button" className="bg-[#172B12] text-white hover:bg-[#0f2409]" onClick={handleDownloadLoanAgreement}>
+                  Download loan agreement
+                </Button>
+                <Button type="button" className="border border-slate-300 text-slate-700 hover:bg-slate-100" onClick={() => setQuickLoanOpen(false)}>
+                  Close
+                </Button>
+              </div>
             </div>
-            <div>
-              <Label htmlFor="loan-email" className="text-sm font-medium text-slate-700">Email</Label>
-              <Input id="loan-email" value={loanEmail} onChange={(event) => setLoanEmail(event.target.value)} placeholder="you@example.com" />
-            </div>
-            <div>
-              <Label htmlFor="loan-phone" className="text-sm font-medium text-slate-700">Phone number</Label>
-              <Input id="loan-phone" value={loanPhone} onChange={(event) => setLoanPhone(event.target.value)} placeholder="Optional" />
-            </div>
-            <div>
-              <Label htmlFor="loan-amount" className="text-sm font-medium text-slate-700">Loan amount (UGX)</Label>
-              <Input id="loan-amount" type="number" value={loanAmount} onChange={(event) => setLoanAmount(event.target.value)} placeholder="e.g. 100000" />
-            </div>
-            <div>
-              <Label htmlFor="loan-purpose" className="text-sm font-medium text-slate-700">Loan purpose</Label>
-              <Textarea id="loan-purpose" value={loanPurpose} onChange={(event) => setLoanPurpose(event.target.value)} placeholder="Tell us why you need this loan" rows={4} />
-            </div>
-            <Button type="submit" className="bg-[#172B12] text-white hover:bg-[#0f2409]">Submit loan request</Button>
-          </form>
+          ) : (
+            <form onSubmit={handleRequestQuickLoan} className="space-y-4">
+              <div>
+                <Label htmlFor="loan-name" className="text-sm font-medium text-slate-700">Full name</Label>
+                <Input id="loan-name" value={loanName} onChange={(event) => setLoanName(event.target.value)} placeholder="Your name" />
+              </div>
+              <div>
+                <Label htmlFor="loan-email" className="text-sm font-medium text-slate-700">Email</Label>
+                <Input id="loan-email" value={loanEmail} onChange={(event) => setLoanEmail(event.target.value)} placeholder="you@example.com" />
+              </div>
+              <div>
+                <Label htmlFor="loan-phone" className="text-sm font-medium text-slate-700">Phone number</Label>
+                <Input id="loan-phone" value={loanPhone} onChange={(event) => setLoanPhone(event.target.value)} placeholder="Optional" />
+              </div>
+              <div>
+                <Label htmlFor="loan-amount" className="text-sm font-medium text-slate-700">Loan amount (UGX)</Label>
+                <Input id="loan-amount" type="number" value={loanAmount} onChange={(event) => setLoanAmount(event.target.value)} placeholder="e.g. 100000" />
+              </div>
+              <div>
+                <Label htmlFor="loan-purpose" className="text-sm font-medium text-slate-700">Loan purpose</Label>
+                <Textarea id="loan-purpose" value={loanPurpose} onChange={(event) => setLoanPurpose(event.target.value)} placeholder="Tell us why you need this loan" rows={4} />
+              </div>
+              <div>
+                <Label htmlFor="loan-collateral" className="text-sm font-medium text-slate-700">Collateral details</Label>
+                <Textarea id="loan-collateral" value={collateral} onChange={(event) => setCollateral(event.target.value)} placeholder="Describe the collateral for this loan" rows={3} />
+              </div>
+              <div className="mb-4">
+                <Label className="text-sm font-medium text-slate-700">Loan type</Label>
+                <div className="flex items-center gap-4 mt-2">
+                  <label className="inline-flex items-center">
+                    <input type="radio" name="loan-type" checked={loanIsGuaranteed} onChange={() => setLoanIsGuaranteed(true)} />
+                    <span className="ml-2">Guaranteed (by loans officer)</span>
+                  </label>
+                  <label className="inline-flex items-center">
+                    <input type="radio" name="loan-type" checked={!loanIsGuaranteed} onChange={() => setLoanIsGuaranteed(false)} />
+                    <span className="ml-2">Collateral-backed (upload item image)</span>
+                  </label>
+                </div>
+
+                {loanIsGuaranteed ? (
+                  <div className="mt-3">
+                    <Label htmlFor="officer" className="text-sm font-medium text-slate-700">Select Loans Officer *</Label>
+                    <select
+                      id="officer"
+                      value={officerCode}
+                      onChange={(e) => setOfficerCode(e.target.value)}
+                      className="w-full p-2 border border-slate-300 rounded-md mt-1"
+                      required={loanIsGuaranteed}
+                    >
+                      <option value="">-- Choose Officer --</option>
+                      {OFFICERS.map(o => (
+                        <option key={o.code} value={o.code}>{o.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                ) : (
+                  <div className="mt-3">
+                    <Label htmlFor="collateral-image" className="text-sm font-medium text-slate-700">Collateral image (optional)</Label>
+                    <input id="collateral-image" type="file" accept="image/*" onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      if (!file.type.startsWith('image/')) { toast.error('Please select a valid image file for collateral'); return; }
+                      if (file.size > 5 * 1024 * 1024) { toast.error('Collateral image must be less than 5MB'); return; }
+                      const reader = new FileReader();
+                      reader.onloadend = () => { setCollateralImage(reader.result); setCollateralImagePreview(reader.result); };
+                      reader.readAsDataURL(file);
+                    }} className="mt-2 block w-full text-sm text-slate-500" />
+                    {collateralImagePreview && (
+                      <div className="mt-2 rounded-lg border border-slate-200 p-2">
+                        <img src={collateralImagePreview} alt="Collateral preview" className="h-28 w-full object-cover rounded" />
+                        <button type="button" onClick={() => { setCollateralImage(null); setCollateralImagePreview(''); }} className="mt-2 text-xs text-red-600">Remove image</button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+              <Button type="submit" className="bg-[#172B12] text-white hover:bg-[#0f2409]">Submit loan request</Button>
+            </form>
+          )}
         </DialogContent>
       </Dialog>
 
@@ -830,23 +1023,21 @@ const ShopPage = () => {
               <Input id="purchase-email" value={purchaseEmail} onChange={(event) => setPurchaseEmail(event.target.value)} placeholder="you@example.com" />
             </div>
             <div>
-              <Label htmlFor="purchase-phone" className="text-sm font-medium text-slate-700">Phone</Label>
-              <Input id="purchase-phone" value={purchasePhone} onChange={(event) => setPurchasePhone(event.target.value)} placeholder="Optional" />
+              <Label htmlFor="purchase-phone" className="text-sm font-medium text-slate-700">Phone number</Label>
+              <Input id="purchase-phone" value={purchasePhone} onChange={(event) => setPurchasePhone(event.target.value)} placeholder="e.g. 0771 234567" required />
             </div>
             <div>
               <Label htmlFor="purchase-note" className="text-sm font-medium text-slate-700">Message</Label>
               <Textarea id="purchase-note" value={purchaseNote} onChange={(event) => setPurchaseNote(event.target.value)} placeholder="Write a short message to the seller" rows={4} />
             </div>
-            <Button type="submit" className="bg-[#172B12] text-white hover:bg-[#0f2409]">Send purchase request</Button>
+            <Button type="submit" className="bg-[#172B12] text-white hover:bg-[#0f2409]">
+              {orderSubmitting ? 'Sending request...' : 'Send purchase request'}
+            </Button>
           </form>
         </DialogContent>
       </Dialog>
     </div>
   );
 };
-
-const Label = ({ className, ...props }) => (
-  <label className={`block text-sm font-medium text-slate-700 ${className || ''}`} {...props} />
-);
 
 export default ShopPage;

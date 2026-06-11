@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import axios from 'axios';
@@ -57,7 +57,7 @@ import {
 } from '../utils/pdfExport';
 import { FileDown } from 'lucide-react';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL || '';
+const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
 
 const formatCurrency = (amount) => {
   return `UGX ${Number(amount || 0).toLocaleString()}`;
@@ -94,6 +94,7 @@ const Dashboard = () => {
   const [deposits, setDeposits] = useState([]);
   const [loans, setLoans] = useState([]);
   const [withdrawals, setWithdrawals] = useState([]);
+  const [quickLoans, setQuickLoans] = useState([]);
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
@@ -116,17 +117,8 @@ const Dashboard = () => {
   const [pettyCashAmount, setPettyCashAmount] = useState('');
   const [pettyCashDescription, setPettyCashDescription] = useState('');
   const [pettyCashCategory, setPettyCashCategory] = useState('general');
-  const [newProductTitle, setNewProductTitle] = useState('');
-  const [newProductDescription, setNewProductDescription] = useState('');
-  const [newProductCategory, setNewProductCategory] = useState('food');
-  const [newProductPrice, setNewProductPrice] = useState('');
-  const [newProductImage, setNewProductImage] = useState(null);
   const [myProducts, setMyProducts] = useState([]);
-  const [uploadingProduct, setUploadingProduct] = useState(false);
-  const [newDataFile, setNewDataFile] = useState(null);
-  const [uploadingDataFile, setUploadingDataFile] = useState(false);
-  const [uploadedDataFile, setUploadedDataFile] = useState(null);
-  const [dataUploadMessage, setDataUploadMessage] = useState(null);
+  const [orders, setOrders] = useState([]);
 
   // Dialog states
   const [depositDialogOpen, setDepositDialogOpen] = useState(false);
@@ -135,7 +127,7 @@ const Dashboard = () => {
   const [balanceDialogOpen, setBalanceDialogOpen] = useState(false);
   const [pettyCashDialogOpen, setPettyCashDialogOpen] = useState(false);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       const headers = getAuthHeaders();
       const [statsRes, rulesRes, financialsRes, depositsRes, loansRes, withdrawalsRes, membersRes] = await Promise.all([
@@ -154,15 +146,27 @@ const Dashboard = () => {
       setLoans(loansRes.data);
       setWithdrawals(withdrawalsRes.data);
       setMembers(membersRes.data);
+
+      if (isAdmin || isTreasurer) {
+        try {
+          const quickLoansRes = await axios.get(`${API_URL}/api/quick-loans`, { headers });
+          setQuickLoans(quickLoansRes.data);
+        } catch (loanErr) {
+          console.warn('Failed to load quick loan requests:', loanErr);
+          setQuickLoans([]);
+        }
+      } else {
+        setQuickLoans([]);
+      }
     } catch (err) {
       console.error('Failed to fetch data:', err);
       toast.error('Failed to load data');
     } finally {
       setLoading(false);
     }
-  };
+  }, [getAuthHeaders, isAdmin, isTreasurer]);
 
-  const fetchMyProducts = async () => {
+  const fetchMyProducts = useCallback(async () => {
     try {
       const response = await axios.get(`${API_URL}/api/products/me`, {
         headers: getAuthHeaders(),
@@ -180,120 +184,48 @@ const Dashboard = () => {
       console.warn('Unable to load user products:', err);
       setMyProducts([]);
     }
+  }, [getAuthHeaders]);
+
+  const loadOrdersFromStorage = () => {
+    try {
+      return JSON.parse(window.localStorage.getItem('cash_hub_orders') || '[]');
+    } catch (error) {
+      console.warn('Unable to load shop orders:', error);
+      return [];
+    }
   };
+
+  const saveOrdersToStorage = (orders) => {
+    window.localStorage.setItem('cash_hub_orders', JSON.stringify(orders));
+  };
+
+  const fetchOrders = useCallback(() => {
+    setOrders(loadOrdersFromStorage());
+  }, []);
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [fetchData]);
 
   useEffect(() => {
     if (activeTab === 'marketplace') {
       fetchMyProducts();
+      fetchOrders();
     }
-  }, [activeTab]);
+  }, [activeTab, fetchMyProducts, fetchOrders]);
 
-  const uploadFileToServer = async (file) => {
-    console.log(`Starting file upload: ${file.name}, size: ${file.size} bytes, type: ${file.type}`);
-    const uploadForm = new FormData();
-    uploadForm.append('file', file);
-
-    try {
-      console.log('Sending request to /api/uploads');
-      const response = await axios.post(`${API_URL}/api/uploads`, uploadForm, {
-        headers: getAuthHeaders(),
-      });
-      console.log('Upload response:', response.data);
-      return response.data?.url;
-    } catch (err) {
-      console.error('Upload error details:', {
-        status: err.response?.status,
-        statusText: err.response?.statusText,
-        data: err.response?.data,
-        message: err.message,
-      });
-      throw err;
-    }
+  const handleOrderStatusChange = (orderId, status) => {
+    const updated = orders.map((order) =>
+      order.id === orderId ? { ...order, status } : order
+    );
+    setOrders(updated);
+    saveOrdersToStorage(updated);
+    toast.success(`Order ${status === 'approved' ? 'approved' : 'rejected'} successfully.`);
   };
 
-  const handleUploadDataFile = async (event) => {
-    event.preventDefault();
-    if (!newDataFile) {
-      toast.error('Please select a file before uploading.');
-      return;
-    }
-
-    console.log(`Starting data file upload: ${newDataFile.name}`);
-    setUploadingDataFile(true);
-    setDataUploadMessage(null);
-    try {
-      const formData = new FormData();
-      formData.append('file', newDataFile);
-
-      console.log(`Uploading file: ${newDataFile.name}, size: ${newDataFile.size} bytes`);
-      const response = await axios.post(`${API_URL}/api/uploads`, formData, {
-        headers: getAuthHeaders(),
-      });
-
-      console.log('Data file upload successful:', response.data);
-      setUploadedDataFile(response.data);
-      setDataUploadMessage(`Successfully uploaded: ${response.data.file_name} to Cloudinary`);
-      toast.success('Data file uploaded to Cloudinary and metadata saved to MongoDB.');
-      setNewDataFile(null);
-    } catch (err) {
-      console.error('Data file upload failed:', {
-        status: err.response?.status,
-        statusText: err.response?.statusText,
-        detail: err.response?.data?.detail,
-        error: err.message,
-        fullError: err.response?.data,
-      });
-      const errorMsg = err.response?.data?.detail || err.message || 'Failed to upload data file';
-      toast.error(`Upload failed: ${errorMsg}`);
-    } finally {
-      setUploadingDataFile(false);
-    }
-  };
-
-  const handleUploadProduct = async (event) => {
-    event.preventDefault();
-    if (!newProductTitle.trim() || !newProductPrice.trim() || !newProductCategory) {
-      toast.error('Please complete the product form before uploading.');
-      return;
-    }
-
-    setUploadingProduct(true);
-    try {
-      let imageUrl = null;
-      if (newProductImage) {
-        imageUrl = await uploadFileToServer(newProductImage);
-      }
-
-      const formData = new FormData();
-      formData.append('title', newProductTitle);
-      formData.append('description', newProductDescription);
-      formData.append('price', newProductPrice);
-      formData.append('category', newProductCategory);
-      if (imageUrl) {
-        formData.append('image_url', imageUrl);
-      }
-
-      await axios.post(`${API_URL}/api/products`, formData, {
-        headers: getAuthHeaders(),
-      });
-      toast.success('Product uploaded successfully. It will appear on the shop page.');
-      setNewProductTitle('');
-      setNewProductDescription('');
-      setNewProductPrice('');
-      setNewProductCategory('food');
-      setNewProductImage(null);
-      fetchMyProducts();
-    } catch (err) {
-      console.error('Product upload failed', err);
-      toast.error(err.response?.data?.detail || 'Failed to upload product');
-    } finally {
-      setUploadingProduct(false);
-    }
-  };
+  const sellerOrders = user?.name
+    ? orders.filter((order) => (order.sellerName || '').toLowerCase() === user.name.toLowerCase())
+    : orders;
 
   const getImageUrl = (imageUrl) => {
     if (!imageUrl) return null;
@@ -504,6 +436,21 @@ const Dashboard = () => {
     }
   };
 
+  const handleApproveQuickLoan = async (id, approved) => {
+    try {
+      await axios.post(
+        `${API_URL}/api/quick-loans/approve`,
+        { transaction_id: id, approved },
+        { headers: getAuthHeaders() }
+      );
+      toast.success(`${approved ? 'Approved' : 'Rejected'} successfully`);
+      fetchData();
+      refreshUser();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Action failed');
+    }
+  };
+
   const handleSetRole = async (userId, newRole) => {
     try {
       await axios.post(
@@ -641,7 +588,7 @@ const Dashboard = () => {
     { id: 'loans', label: 'Loans', icon: CreditCard },
     { id: 'withdrawals', label: 'Withdrawals', icon: TrendingDown },
     { id: 'members', label: 'Members', icon: Users },
-    { id: 'marketplace', label: 'Sell', icon: ShoppingCart },
+    { id: 'marketplace', label: 'Orders', icon: ShoppingCart },
     { id: 'rules', label: 'Rules', icon: Shield },
   ];
 
@@ -1641,161 +1588,124 @@ const Dashboard = () => {
           <div className="space-y-6 animate-fade-in" data-testid="marketplace-tab">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h2 className="text-2xl font-bold font-['Manrope'] text-[#1E231F]">Sell Your Products</h2>
+                <h2 className="text-2xl font-bold font-['Manrope'] text-[#1E231F]">Order handling</h2>
                 <p className="text-sm text-[#5C665D] max-w-2xl">
-                  Upload a product and image here. Once published, it becomes visible on the public shop page for all visitors.
+                  Review buyer order requests from the shop page and approve or reject them.
                 </p>
               </div>
-              <Badge className="bg-[#2C5530]/10 text-[#2C5530]">Your products</Badge>
+              <Badge className="bg-[#2C5530]/10 text-[#2C5530]">Incoming orders</Badge>
             </div>
 
             <Card className="bg-white border border-[#E8EBE8] shadow-sm">
               <CardHeader>
-                <CardTitle className="text-lg">Upload a new product</CardTitle>
-                <CardDescription>Fill in the product details and attach an image to display on the shop landing page.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <form onSubmit={handleUploadProduct} className="space-y-4">
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div>
-                      <Label className="text-sm text-[#1E231F]">Product title</Label>
-                      <Input
-                        value={newProductTitle}
-                        onChange={(e) => setNewProductTitle(e.target.value)}
-                        placeholder="e.g. Handmade breakfast pack"
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-sm text-[#1E231F]">Price (UGX)</Label>
-                      <Input
-                        type="number"
-                        value={newProductPrice}
-                        onChange={(e) => setNewProductPrice(e.target.value)}
-                        placeholder="e.g. 30000"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <Label className="text-sm text-[#1E231F]">Description</Label>
-                    <Textarea
-                      value={newProductDescription}
-                      onChange={(e) => setNewProductDescription(e.target.value)}
-                      rows={4}
-                      placeholder="Tell buyers more about this item"
-                    />
-                  </div>
-
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div>
-                      <Label className="text-sm text-[#1E231F]">Category</Label>
-                      <Select value={newProductCategory} onValueChange={setNewProductCategory}>
-                        <SelectTrigger className="bg-white">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {PRODUCT_CATEGORIES.map((cat) => (
-                            <SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label className="text-sm text-[#1E231F]">Product image</Label>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={(e) => setNewProductImage(e.target.files?.[0] || null)}
-                        className="mt-2 block w-full text-sm text-[#1E231F]"
-                      />
-                      {newProductImage && (
-                        <p className="mt-2 text-xs text-[#5C665D]">Selected: {newProductImage.name}</p>
-                      )}
-                    </div>
-                  </div>
-
-                  <Button type="submit" className="bg-[#2C5530] text-white hover:bg-[#1A3B20]">
-                    {uploadingProduct ? 'Uploading...' : 'Upload product'}
-                  </Button>
-                </form>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-white border border-[#E8EBE8] shadow-sm">
-              <CardHeader>
-                <CardTitle className="text-lg">Upload a data file</CardTitle>
+                <CardTitle className="text-lg">Order requests</CardTitle>
                 <CardDescription>
-                  Upload any document, spreadsheet, or data file. It will be stored in Cloudinary and the file metadata will be saved to MongoDB.
+                  When a buyer places an order, it appears here for you to approve and contact them.
                 </CardDescription>
               </CardHeader>
-              <CardContent>
-                <form onSubmit={handleUploadDataFile} className="space-y-4">
-                  <div>
-                    <Label className="text-sm text-[#1E231F]">Choose a file</Label>
-                    <input
-                      type="file"
-                      onChange={(e) => setNewDataFile(e.target.files?.[0] || null)}
-                      className="mt-2 block w-full text-sm text-[#1E231F]"
-                    />
-                    {newDataFile && (
-                      <p className="mt-2 text-xs text-[#5C665D]">Selected: {newDataFile.name}</p>
-                    )}
+              <CardContent className="space-y-4">
+                {sellerOrders.length === 0 ? (
+                  <div className="rounded-xl border border-[#E8EBE8] bg-[#F7FCF4] p-6 text-sm text-[#4B5A45]">
+                    No order requests found yet. Buyers can place orders from the shop page, and they will appear here for review.
                   </div>
-
-                  <Button type="submit" className="bg-[#2C5530] text-white hover:bg-[#1A3B20]">
-                    {uploadingDataFile ? 'Uploading...' : 'Upload data file'}
-                  </Button>
-
-                  {dataUploadMessage && (
-                    <p className="text-sm text-[#2C5530]">{dataUploadMessage}</p>
-                  )}
-
-                  {uploadedDataFile?.url && (
-                    <div className="rounded-lg border border-[#E8EBE8] bg-[#F7FCF4] p-3 text-sm text-[#3F5C3F]">
-                      <p className="font-semibold">Uploaded file details:</p>
-                      <p>Name: {uploadedDataFile.file_name || newDataFile?.name}</p>
-                      <p>Type: {uploadedDataFile.content_type || 'unknown'}</p>
-                      <p>
-                        URL: <a className="text-[#1E231F] underline" href={uploadedDataFile.url} target="_blank" rel="noreferrer">Open file</a>
-                      </p>
+                ) : (
+                  sellerOrders.map((order) => (
+                    <div key={order.id} className="rounded-3xl border border-[#E8EBE8] bg-white p-6 shadow-sm">
+                      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                        <div className="space-y-2">
+                          <p className="text-xs uppercase tracking-[0.25em] text-[#2B6F38]">Request</p>
+                          <h3 className="text-lg font-semibold text-[#172B12]">{order.productTitle}</h3>
+                          <p className="text-sm text-[#4B5A45]">UGX {Number(order.productPrice || 0).toLocaleString()}</p>
+                          <p className="text-sm text-[#4B5A45]">Buyer: <span className="font-semibold text-[#172B12]">{order.buyerName}</span></p>
+                          <p className="text-sm text-[#4B5A45]">Phone: <a className="text-[#172B12] underline" href={`tel:${order.buyerPhone}`}>{order.buyerPhone}</a></p>
+                          {order.buyerEmail && (
+                            <p className="text-sm text-[#4B5A45]">Email: <a className="text-[#172B12] underline" href={`mailto:${order.buyerEmail}`}>{order.buyerEmail}</a></p>
+                          )}
+                          <div className="flex flex-wrap gap-2">
+                            {order.buyerPhone && (
+                              <a
+                                className="inline-flex items-center rounded-full border border-[#2C5530] px-3 py-1 text-sm text-[#2C5530] hover:bg-[#2C5530]/5"
+                                href={buildWhatsAppUrl(order.buyerPhone, `Hello ${order.buyerName}, your order request for ${order.productTitle} is being reviewed.`)}
+                                target="_blank"
+                                rel="noreferrer"
+                              >
+                                Message on WhatsApp
+                              </a>
+                            )}
+                            {order.buyerEmail && (
+                              <a className="inline-flex items-center rounded-full border border-[#2C5530] px-3 py-1 text-sm text-[#2C5530] hover:bg-[#2C5530]/5" href={`mailto:${order.buyerEmail}`}>
+                                Send email
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex flex-col gap-2 text-right">
+                          <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${order.status === 'approved' ? 'bg-[#DEF2DD] text-[#2C5530]' : order.status === 'rejected' ? 'bg-[#FBD7D4] text-[#D05A49]' : 'bg-[#FEF6E8] text-[#C57A17]'}`}>
+                            {order.status === 'pending' ? 'Pending' : order.status === 'approved' ? 'Approved' : 'Rejected'}
+                          </span>
+                          <p className="text-xs text-[#6B7C61]">Requested {new Date(order.createdAt).toLocaleDateString()}</p>
+                        </div>
+                      </div>
+                      {order.note && (
+                        <div className="mt-4 rounded-2xl bg-[#F7F9F5] p-4 text-sm text-[#4B5A45]">
+                          <p className="font-semibold text-[#172B12] mb-1">Buyer note</p>
+                          <p>{order.note}</p>
+                        </div>
+                      )}
+                      {order.status === 'pending' && (
+                        <div className="mt-4 flex flex-wrap gap-3">
+                          <Button size="sm" className="bg-[#2C5530] text-white hover:bg-[#1A3B20]" onClick={() => handleOrderStatusChange(order.id, 'approved')}>
+                            Approve
+                          </Button>
+                          <Button size="sm" variant="outline" className="border-[#D05A49] text-[#D05A49] hover:bg-[#FDE8E7]" onClick={() => handleOrderStatusChange(order.id, 'rejected')}>
+                            Reject
+                          </Button>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </form>
+                  ))
+                )}
               </CardContent>
             </Card>
 
-            <div className="grid gap-4 md:grid-cols-2">
-              {!Array.isArray(myProducts) || myProducts.length === 0 ? (
-                <Card className="bg-white border border-[#E8EBE8] shadow-sm">
-                  <CardContent>
-                    <p className="text-sm text-[#5C665D]">You have not uploaded any products yet. Use the form above to publish your first listing.</p>
-                  </CardContent>
-                </Card>
-              ) : myProducts.map((product) => (
-                <Card key={product.id} className="bg-white border border-[#E8EBE8] shadow-sm">
-                  {product.image_url && (
-                    <div className="overflow-hidden rounded-t-3xl">
-                      <img
-                        src={getImageUrl(product.image_url)}
-                        alt={product.title}
-                        className="h-48 w-full object-cover"
-                      />
-                    </div>
-                  )}
-                  <CardContent>
-                    <div className="flex items-center justify-between gap-3 mb-3">
-                      <div>
-                        <CardTitle className="text-lg">{product.title}</CardTitle>
-                        <p className="text-sm text-[#5C665D]">{PRODUCT_CATEGORIES.find((cat) => cat.value === product.category)?.label || product.category}</p>
+            <Card className="bg-white border border-[#E8EBE8] shadow-sm">
+              <CardHeader>
+                <CardTitle className="text-lg">Your listed products</CardTitle>
+                <CardDescription>
+                  These are the items buyers can order from you on the shop page.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-4 md:grid-cols-2">
+                {!Array.isArray(myProducts) || myProducts.length === 0 ? (
+                  <div className="rounded-xl border border-[#E8EBE8] bg-[#F7FCF4] p-6 text-sm text-[#4B5A45]">
+                    No products found. Your current shop listings will appear here when available.
+                  </div>
+                ) : myProducts.map((product) => (
+                  <Card key={product.id} className="bg-white border border-[#E8EBE8] shadow-sm">
+                    {product.image_url && (
+                      <div className="overflow-hidden rounded-t-3xl">
+                        <img
+                          src={getImageUrl(product.image_url)}
+                          alt={product.title}
+                          className="h-48 w-full object-cover"
+                        />
                       </div>
-                      <Badge variant="secondary">UGX {Number(product.price).toLocaleString()}</Badge>
-                    </div>
-                    <p className="text-sm text-[#5C665D] mb-3">{product.description || 'No description provided'}</p>
-                    <p className="text-xs text-[#6B7C61]">Uploaded {new Date(product.created_at).toLocaleDateString()}</p>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
+                    )}
+                    <CardContent>
+                      <div className="flex items-center justify-between gap-3 mb-3">
+                        <div>
+                          <CardTitle className="text-lg">{product.title}</CardTitle>
+                          <p className="text-sm text-[#5C665D]">{PRODUCT_CATEGORIES.find((cat) => cat.value === product.category)?.label || product.category}</p>
+                        </div>
+                        <Badge variant="secondary">UGX {Number(product.price).toLocaleString()}</Badge>
+                      </div>
+                      <p className="text-sm text-[#5C665D] mb-3">{product.description || 'No description provided'}</p>
+                      <p className="text-xs text-[#6B7C61]">Uploaded {new Date(product.created_at || product.createdAt).toLocaleDateString()}</p>
+                    </CardContent>
+                  </Card>
+                ))}
+              </CardContent>
+            </Card>
           </div>
         )}
 
@@ -2157,7 +2067,7 @@ const Dashboard = () => {
             <h2 className="text-2xl font-bold font-['Manrope'] text-[#1E231F]">Admin Panel</h2>
 
             {/* Pending Approvals */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
               {/* Pending Deposits */}
               <Card className="bg-white border border-[#E8EBE8] shadow-sm">
                 <CardHeader className="pb-2">
@@ -2246,6 +2156,49 @@ const Dashboard = () => {
                   ))}
                   {loans.filter(l => l.status === 'pending_admin').length === 0 && (
                     <p className="text-center text-[#5C665D] py-4 text-sm">No pending loans</p>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Pending Quick Loans */}
+              <Card className="bg-white border border-[#E8EBE8] shadow-sm">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-lg font-['Manrope'] text-[#1E231F] flex items-center gap-2">
+                    <Clock className="w-5 h-5 text-[#D48C70]" />
+                    Pending Quick Loans ({quickLoans.filter(q => q.status === 'pending_treasurer').length})
+                  </CardTitle>
+                  <p className="text-xs text-[#5C665D]">Quick loan service requests awaiting treasurer review</p>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {quickLoans.filter(q => q.status === 'pending_treasurer').map((q) => (
+                    <div key={q.id} className="p-3 bg-[#FAFAF8] rounded-xl">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="font-medium text-[#1E231F]">{q.loan_name}</span>
+                        <span className="font-semibold text-[#D48C70] font-numbers">{formatCurrency(q.amount)}</span>
+                      </div>
+                      <p className="text-xs text-[#5C665D] mb-1">Officer: {q.officer_name || 'Unassigned'}</p>
+                      <p className="text-xs text-[#5C665D] mb-2">Purpose: {q.purpose || 'N/A'}</p>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          onClick={() => handleApproveQuickLoan(q.id, true)}
+                          className="flex-1 bg-[#347242] hover:bg-[#2C5530] text-xs"
+                        >
+                          Approve
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleApproveQuickLoan(q.id, false)}
+                          className="flex-1 border-[#D05A49] text-[#D05A49] hover:bg-[#D05A49]/10 text-xs"
+                        >
+                          Reject
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                  {quickLoans.filter(q => q.status === 'pending_treasurer').length === 0 && (
+                    <p className="text-center text-[#5C665D] py-4 text-sm">No pending quick loan requests</p>
                   )}
                 </CardContent>
               </Card>

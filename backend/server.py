@@ -107,6 +107,18 @@ class GuarantorApproval(BaseModel):
     approved: bool
     notes: Optional[str] = None
 
+class QuickLoanRequest(BaseModel):
+    loan_name: str
+    loan_email: Optional[EmailStr] = None
+    loan_phone: Optional[str] = None
+    amount: float
+    purpose: Optional[str] = None
+    collateral: Optional[str] = None
+    is_guaranteed: bool = True
+    officer_code: Optional[str] = None
+    officer_name: Optional[str] = None
+    collateral_image: Optional[str] = None
+
 class WithdrawalRequest(BaseModel):
     amount: float
     withdrawal_type: str = "savings"  # savings, leaving_group
@@ -197,6 +209,14 @@ async def get_current_user(request: Request) -> dict:
         raise HTTPException(status_code=401, detail="Token expired")
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
+
+async def get_current_user_optional(request: Request) -> Optional[dict]:
+    try:
+        return await get_current_user(request)
+    except HTTPException as exc:
+        if exc.status_code == 401:
+            return None
+        raise
 
 async def require_admin(request: Request) -> dict:
     user = await get_current_user(request)
@@ -1180,6 +1200,74 @@ async def request_loan(loan: LoanRequest, user: dict = Depends(get_current_user)
     loan_doc.pop("_id", None)
     
     return loan_doc
+
+@api_router.post("/quick-loans/request")
+async def request_quick_loan(loan: QuickLoanRequest, user: Optional[dict] = Depends(get_current_user_optional)):
+    if loan.amount <= 0:
+        raise HTTPException(status_code=400, detail="Quick loan amount must be positive")
+
+    if loan.is_guaranteed and not loan.officer_code:
+        raise HTTPException(status_code=400, detail="Please select a loans officer for a guaranteed quick loan")
+
+    if not loan.is_guaranteed and not loan.collateral:
+        raise HTTPException(status_code=400, detail="Please provide collateral details for a collateral-backed quick loan")
+
+    loan_doc = {
+        "user_id": user["id"] if user else None,
+        "user_name": user["name"] if user else loan.loan_name,
+        "user_email": user.get("email") if user else loan.loan_email,
+        "loan_name": loan.loan_name,
+        "loan_email": loan.loan_email,
+        "loan_phone": loan.loan_phone,
+        "amount": loan.amount,
+        "purpose": loan.purpose,
+        "collateral": loan.collateral,
+        "is_guaranteed": loan.is_guaranteed,
+        "officer_code": loan.officer_code,
+        "officer_name": loan.officer_name,
+        "collateral_image": loan.collateral_image,
+        "status": "pending_treasurer",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "approved_at": None,
+        "approved_by": None,
+        "notes": None,
+    }
+
+    result = await db.quick_loans.insert_one(loan_doc)
+    loan_doc["id"] = str(result.inserted_id)
+    loan_doc.pop("_id", None)
+    return loan_doc
+
+@api_router.get("/quick-loans")
+async def get_quick_loans(user: dict = Depends(require_treasurer)):
+    quick_loans = await db.quick_loans.find({}).to_list(1000)
+    result = []
+    for q in quick_loans:
+        q["id"] = str(q["_id"])
+        q.pop("_id", None)
+        result.append(q)
+    return result
+
+@api_router.post("/quick-loans/approve")
+async def approve_quick_loan(approval: TransactionApproval, user: dict = Depends(require_treasurer)):
+    quick_loan = await db.quick_loans.find_one({"_id": ObjectId(approval.transaction_id)})
+    if not quick_loan:
+        raise HTTPException(status_code=404, detail="Quick loan request not found")
+
+    if quick_loan.get("status") != "pending_treasurer":
+        raise HTTPException(status_code=400, detail="Quick loan request has already been processed")
+
+    new_status = "approved" if approval.approved else "rejected"
+    await db.quick_loans.update_one(
+        {"_id": ObjectId(approval.transaction_id)},
+        {"$set": {
+            "status": new_status,
+            "approved_at": datetime.now(timezone.utc).isoformat(),
+            "approved_by": user["id"],
+            "notes": approval.notes,
+        }}
+    )
+    return {"message": f"Quick loan request {new_status}"}
 
 @api_router.post("/loans/guarantor-approve")
 async def guarantor_approve_loan(approval: GuarantorApproval, user: dict = Depends(get_current_user)):
