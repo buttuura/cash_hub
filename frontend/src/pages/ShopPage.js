@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { useNavigate } from 'react-router-dom';
+import { renderMatches, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '../components/ui/card';
@@ -125,10 +125,15 @@ const ShopPage = () => {
   const [loanPurpose, setLoanPurpose] = useState('');
   const [collateral, setCollateral] = useState('');
   const [loanIsGuaranteed, setLoanIsGuaranteed] = useState(true);
+  const [loanType, setLoanType] = useState('guaranteed'); 
+  const [serialNumber, setSerialNumber] = useState('');
   const [collateralImage, setCollateralImage] = useState(null);
   const [collateralImagePreview, setCollateralImagePreview] = useState('');
   const [officerCode, setOfficerCode] = useState('');
   const [loanRequestSubmitted, setLoanRequestSubmitted] = useState(false);
+  useEffect(() => {
+  setLoanIsGuaranteed(loanType === 'guaranteed');
+}, [loanType]);
   const [loanRequestData, setLoanRequestData] = useState(null);
   const [purchaseProduct, setPurchaseProduct] = useState(null);
   const [purchaseName, setPurchaseName] = useState('');
@@ -144,7 +149,7 @@ const ShopPage = () => {
       console.warn('Failed to load order requests', error);
       return [];
     }
-  };
+   };
 
   const saveOrderRequests = (orders) => {
     window.localStorage.setItem('cash_hub_orders', JSON.stringify(orders));
@@ -905,10 +910,10 @@ const ShopPage = () => {
                   You can download the loan agreement manually below if you want a copy now.
                 </p>
                 <div className="mt-4 text-sm text-slate-700">
-                  <p><span className="font-semibold">Name:</span> {loanRequestData?.loanName}</p>
-                  <p><span className="font-semibold">Email:</span> {loanRequestData?.loanEmail}</p>
-                  <p><span className="font-semibold">Phone:</span> {loanRequestData?.loanPhone || 'Not provided'}</p>
-                  <p><span className="font-semibold">Amount:</span> UGX {Number(loanRequestData?.loanAmount || 0).toLocaleString()}</p>
+                  <p><span className="font-semibold">Name:</span> {loanRequestData?.loanName || loanRequestData?.loan_name}</p>
+                  <p><span className="font-semibold">Email:</span> {loanRequestData?.loanEmail || loanRequestData?.loan_email}</p>
+                  <p><span className="font-semibold">Phone:</span> {loanRequestData?.loanPhone || loanRequestData?.loan_phone || 'Not provided'}</p>
+                  <p><span className="font-semibold">Amount:</span> UGX {Number(loanRequestData?.loanAmount || loanRequestData?.amount || 0).toLocaleString()}</p>
                 </div>
               </div>
               <div className="flex flex-col gap-3">
@@ -922,81 +927,102 @@ const ShopPage = () => {
             </div>
           ) : (
             <form onSubmit={handleRequestQuickLoan} className="space-y-4">
-              <div>
-                <Label htmlFor="loan-name" className="text-sm font-medium text-slate-700">Full name</Label>
-                <Input id="loan-name" value={loanName} onChange={(event) => setLoanName(event.target.value)} placeholder="Your name" />
-              </div>
-              <div>
-                <Label htmlFor="loan-email" className="text-sm font-medium text-slate-700">Email</Label>
-                <Input id="loan-email" value={loanEmail} onChange={(event) => setLoanEmail(event.target.value)} placeholder="you@example.com" />
-              </div>
-              <div>
-                <Label htmlFor="loan-phone" className="text-sm font-medium text-slate-700">Phone number</Label>
-                <Input id="loan-phone" value={loanPhone} onChange={(event) => setLoanPhone(event.target.value)} placeholder="Optional" />
-              </div>
-              <div>
-                <Label htmlFor="loan-amount" className="text-sm font-medium text-slate-700">Loan amount (UGX)</Label>
-                <Input id="loan-amount" type="number" value={loanAmount} onChange={(event) => setLoanAmount(event.target.value)} placeholder="e.g. 100000" />
-              </div>
-              <div>
-                <Label htmlFor="loan-purpose" className="text-sm font-medium text-slate-700">Loan purpose</Label>
-                <Textarea id="loan-purpose" value={loanPurpose} onChange={(event) => setLoanPurpose(event.target.value)} placeholder="Tell us why you need this loan" rows={4} />
-              </div>
-              <div>
-                <Label htmlFor="loan-collateral" className="text-sm font-medium text-slate-700">Collateral details</Label>
-                <Textarea id="loan-collateral" value={collateral} onChange={(event) => setCollateral(event.target.value)} placeholder="Describe the collateral for this loan" rows={3} />
-              </div>
               <div className="mb-4">
                 <Label className="text-sm font-medium text-slate-700">Loan type</Label>
                 <div className="flex items-center gap-4 mt-2">
                   <label className="inline-flex items-center">
-                    <input type="radio" name="loan-type" checked={loanIsGuaranteed} onChange={() => setLoanIsGuaranteed(true)} />
+                    <input 
+                      type="radio" 
+                      name="loan-type" 
+                      checked={loanType === 'guaranteed'} 
+                      onChange={() => setLoanType('guaranteed')} 
+                      className="mr-2"
+                    />
                     <span className="ml-2">Guaranteed (by loans officer)</span>
                   </label>
                   <label className="inline-flex items-center">
-                    <input type="radio" name="loan-type" checked={!loanIsGuaranteed} onChange={() => setLoanIsGuaranteed(false)} />
-                    <span className="ml-2">Collateral-backed (upload item image)</span>
+                    <input 
+                      type="radio" 
+                      name="loan-type" 
+                      checked={loanType === 'collateral-backed'} 
+                      onChange={() => setLoanType('collateral-backed')} 
+                      className="mr-2"
+                    />
+                    <span className="ml-2">Collateral-Backed / Selling</span>
                   </label>
                 </div>
+              </div>
 
-                {loanIsGuaranteed ? (
-                  <div className="mt-3">
-                    <Label htmlFor="officer" className="text-sm font-medium text-slate-700">Select Loans Officer *</Label>
-                    <select
-                      id="officer"
-                      value={officerCode}
-                      onChange={(e) => setOfficerCode(e.target.value)}
-                      className="w-full p-2 border border-slate-300 rounded-md mt-1"
-                      required={loanIsGuaranteed}
-                    >
-                      <option value="">-- Choose Officer --</option>
-                      {OFFICERS.map(o => (
-                        <option key={o.code} value={o.code}>{o.name}</option>
-                      ))}
-                    </select>
+              <div>
+                <Label htmlFor="loan-name" className="text-sm font-medium text-slate-700">Full name</Label>
+                <Input id="loan-name" value={loanName} onChange={(e) => setLoanName(e.target.value)} placeholder="Your name" required />
+              </div>
+              
+              <div>
+                <Label htmlFor="loan-email" className="text-sm font-medium text-slate-700">Email</Label>
+                <Input id="loan-email" type="email" value={loanEmail} onChange={(e) => setLoanEmail(e.target.value)} placeholder="you@example.com" required />
+              </div>
+              
+              <div>
+                <Label htmlFor="loan-phone" className="text-sm font-medium text-slate-700">Phone number</Label>
+                <Input id="loan-phone" value={loanPhone} onChange={(e) => setLoanPhone(e.target.value)} placeholder="07XXXXXXXX" required />
+              </div>
+              
+              <div>
+                <Label htmlFor="loan-amount" className="text-sm font-medium text-slate-700">
+                  {loanType === 'guaranteed' ? 'Loan amount (UGX)' : 'Selling Price (UGX)'}
+                </Label>
+                <Input id="loan-amount" type="number" value={loanAmount} onChange={(e) => setLoanAmount(e.target.value)} placeholder="e.g. 100000" required />
+              </div>
+
+              {loanType === 'guaranteed' && (
+                <>
+                  <div>
+                    <Label htmlFor="loan-purpose" className="text-sm font-medium text-slate-700">Loan purpose</Label>
+                    <Textarea id="loan-purpose" value={loanPurpose} onChange={(e) => setLoanPurpose(e.target.value)} placeholder="Tell us why you need this loan" required />
                   </div>
-                ) : (
-                  <div className="mt-3">
-                    <Label htmlFor="collateral-image" className="text-sm font-medium text-slate-700">Collateral image (optional)</Label>
-                    <input id="collateral-image" type="file" accept="image/*" onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (!file) return;
-                      if (!file.type.startsWith('image/')) { toast.error('Please select a valid image file for collateral'); return; }
-                      if (file.size > 5 * 1024 * 1024) { toast.error('Collateral image must be less than 5MB'); return; }
-                      const reader = new FileReader();
-                      reader.onloadend = () => { setCollateralImage(reader.result); setCollateralImagePreview(reader.result); };
-                      reader.readAsDataURL(file);
-                    }} className="mt-2 block w-full text-sm text-slate-500" />
+                  <div>
+                    <Label htmlFor="officer-code" className="text-sm font-medium text-slate-700">Officer Code</Label>
+                    <Input id="officer-code" value={officerCode} onChange={(e) => setOfficerCode(e.target.value)} placeholder="Enter officer code" required />
+                  </div>
+                </>
+              )}
+
+              {loanType === 'collateral-backed' && (
+                <>
+                  <div>
+                    <Label htmlFor="loan-collateral" className="text-sm font-medium text-slate-700">Item Name</Label>
+                    <Input id="loan-collateral" value={collateral} onChange={(e) => setCollateral(e.target.value)} placeholder="e.g. iPhone 13, HP Laptop" required />
+                  </div>
+                  <div>
+                    <Label htmlFor="serial-number" className="text-sm font-medium text-slate-700">Serial Number</Label>
+                    <Input id="serial-number" value={serialNumber} onChange={(e) => setSerialNumber(e.target.value)} placeholder="Serial/IMEI" />
+                  </div>
+                  <div>
+                    <Label htmlFor="collateral-image" className="text-sm font-medium text-slate-700">Item Photo</Label>
+                    <Input 
+                      id="collateral-image" 
+                      type="file" 
+                      accept="image/*"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          setCollateralImage(file);
+                          const reader = new FileReader();
+                          reader.onloadend = () => setCollateralImagePreview(reader.result);
+                          reader.readAsDataURL(file);
+                        }
+                      }}
+                      required
+                    />
                     {collateralImagePreview && (
-                      <div className="mt-2 rounded-lg border border-slate-200 p-2">
-                        <img src={collateralImagePreview} alt="Collateral preview" className="h-28 w-full object-cover rounded" />
-                        <button type="button" onClick={() => { setCollateralImage(null); setCollateralImagePreview(''); }} className="mt-2 text-xs text-red-600">Remove image</button>
-                      </div>
+                      <img src={collateralImagePreview} alt="preview" className="mt-2 h-24 w-24 object-cover rounded" />
                     )}
                   </div>
-                )}
-              </div>
-              <Button type="submit" className="bg-[#172B12] text-white hover:bg-[#0f2409]">Submit loan request</Button>
+                </>
+              )}
+
+              <Button type="submit" className="w-full">Submit Request</Button>
             </form>
           )}
         </DialogContent>

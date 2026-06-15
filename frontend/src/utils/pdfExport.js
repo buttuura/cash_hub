@@ -69,7 +69,9 @@ autoTable(doc, {
 };
 export const exportLoanAgreementPDF = (loanData, officer, options = { download: true }) => {
   const doc = new jsPDF();
-  const pageWidth = doc.internal.pageSize.width;
+console.log('LOAN DATA RECEIVED:', loanData);
+console.log('OFFICER RECEIVED:', officer);
+const pageWidth = doc.internal.pageSize.width;
   const lineHeight = 7; 
   let y = 45; 
   // 1. LOGO - Your Class One icon
@@ -81,50 +83,73 @@ export const exportLoanAgreementPDF = (loanData, officer, options = { download: 
   // 2. H1 - MAIN HEADING
   doc.setFontSize(16);
   doc.setFont(undefined, 'bold');
-  doc.text('CLASS ONE GROUP - LOAN AGREEMENT', pageWidth / 2, y, { align: 'center' });
+ const heading = loanData?.loan_type === 'collateral-backed' 
+  ? 'CLASS ONE GROUP - SELLING AGREEMENT'
+  : 'CLASS ONE GROUP - LOAN AGREEMENT';
+doc.text(heading, pageWidth / 2, y, { align: 'center' });
   y += 8;
 
   // 3. H3 - ADVERTISING TEXT 
   doc.setFontSize(10);
   doc.setFont(undefined, 'italic');
-  const adText = 'Your trusted partner for quick, flexible loans. We are always ready to help you with business, emergencies, and education financing.';
+  const adText = 'Your trusted partner for quick, flexible emergency funds. We are always ready to help you with business, emergencies, and education financing.';
   const splitAd = doc.splitTextToSize(adText, pageWidth - 30);
   doc.text(splitAd, pageWidth / 2, y, { align: 'center' });
   y += splitAd.length * 5 + 6;
 
-  // 4. CONTACT LOANS OFFICER - Auto-filled from officer code
+  // 4. CONTACT - Only for guaranteed loans with officer
+if (loanData?.loan_type === 'guaranteed' && officer && officer.name) {
   doc.setFontSize(11);
   doc.setFont(undefined, 'bold');
-  if (officer && officer.name) {
-    doc.text(`CONTACT LOANS OFFICER: ${officer.name} - ${officer.phone || 'N/A'}`, 14, y);
-    y += 12;
-  }
+  doc.text(`Contact loans officer: ${officer.name} - ${officer.phone || 'N/A'}`, 14, y);
+  y += 12;
+}
 
-  // 5. AGREEMENT BODY
-  doc.setFont(undefined, 'bold');
-  doc.setFontSize(12);
-  doc.text('LOAN AGREEMENT', 14, y);
-  y += 10;
+// 5. AGREEMENT BODY
+doc.setFont(undefined, 'bold');
+doc.setFontSize(12);
+const agreementTitle = loanData?.loan_type === 'collateral-backed' 
+  ? 'SELLING AGREEMENT' 
+  : 'LOAN AGREEMENT';
+doc.text(agreementTitle, 14, y);
+y += 10;
 
   doc.setFont(undefined, 'normal');
   doc.setFontSize(11);
 
-  if (loanData.isGuaranteed) {
-    const p1 = `This agreement is made between Loans Officer ${officer?.name || 'Loans Officer'} and Borrower ${loanData.loanName} for a Loan amount of UGX ${loanData.loanAmount}.`;
-    const p2 = `Purpose: ${loanData.loanPurpose}`;
-    const p3 = `Loan guaranteed by: ${officer?.name || 'Loans Officer'}`;
+ if (loanData?.loan_type === 'guaranteed') {
+  const borrowerName = loanData?.loan_name || '____';
+  const loanAmount = fmtUGX(loanData?.amount);
+  const loanPurpose = loanData?.loan_purpose || '____';
+  
+  const p1 = `This loan agreement is made between Class One Group, represented by ${officer?.name || 'the loans officer'}, and Borrower ${borrowerName} for a principal amount of ${loanAmount}.`;
+  const p2 = P`urpose of loan: ${loanPurpose}.`;
+  const p3 = `The borrower agrees to repay the loan as per the terms set by Class One Group.`;
 
-    doc.text(doc.splitTextToSize(p1, 180), 14, y); y += lineHeight * 2;
-    doc.text(doc.splitTextToSize(p2, 180), 14, y); y += lineHeight;
-    doc.text(p3, 14, y); y += lineHeight * 2;
-  } else {
-    const p1 = `I, ${loanData.loanName}, of ${loanData.loanPhone || '-'}, do hereby declare that I am the rightful owner of ${loanData.collateral} with Serial No. ${loanData.serialNo || 'N/A'}.`;
-    const p2 = `I have offered this item as collateral security for a loan of UGX ${loanData.loanAmount}.`;
-    const p3 = `Failure to repay may forfeit ownership.`;
+  doc.text(doc.splitTextToSize(p1, 180), 14, y); y += lineHeight * 2;
+  doc.text(doc.splitTextToSize(p2, 180), 14, y); y += lineHeight;
+  doc.text(p3, 14, y); y += lineHeight * 2;
+} else {
+  const sellerName = loanData?.loan_name || loanData?.user_name || '____';
+  const sellerAddress = loanData?.loan_phone ||  loanData?.loan_email || '____';
+  const itemName = loanData?.collateral || '____';
+  const serialNo = loanData?.serial_number ||  loanData?.serialNumber || '';
+  const saleAmount = loanData?.amount || 0;
+  const buyerName = 'Class One Group';
+  
+  let p1 = `I, ${sellerName}, of ${sellerAddress}, do hereby declare that I am the rightful owner of ${itemName}`;
+  if (String(serialNo).trim() !== '') {
+    p1 += ` with Serial No. ${serialNo} `;
+  }
+  p1 += '.';
+  
+ const p2 = `I have sold this item to ${buyerName} at a price of ${fmtUGX(saleAmount)}.`;
+  const p3 = `In case of any doubts about the item, I am ready to face the courts of law.`;
 
-    doc.text(doc.splitTextToSize(p1, 180), 14, y); y += lineHeight * 3;
-    doc.text(doc.splitTextToSize(p2, 180), 14, y); y += lineHeight * 2;
-    doc.text(doc.splitTextToSize(p3, 180), 14, y); y += lineHeight * 2;
+  doc.text(doc.splitTextToSize(p1, 180), 14, y); y += lineHeight * 3;
+  doc.text(doc.splitTextToSize(p2, 180), 14, y); y += lineHeight * 2;
+  doc.text(doc.splitTextToSize(p3, 180), 14, y); y += lineHeight * 2;
+}
 
     // If there's a collateral image, insert it
     if (loanData.collateralImage) {
@@ -139,7 +164,6 @@ export const exportLoanAgreementPDF = (loanData, officer, options = { download: 
       } catch (imgErr) {
         console.warn('Failed to add collateral image to PDF', imgErr);
       }
-    }
   }
   // 6. SIGNATURES
   y += 10;
@@ -150,7 +174,10 @@ export const exportLoanAgreementPDF = (loanData, officer, options = { download: 
   doc.text('Officer Signature: ____', 110, y);
 
   if (options.download !== false) {
-    doc.save(`Loan_Agreement_${loanData.loanName.replace(/\s/g, '_')}-${new Date().toISOString().split('T')[0]}.pdf`);
+    const loanName = loanData?.loanName || 'Loan'; 
+const safeFileName = loanName.toString().replace(/\s/g, '_').replace(/[^\w-]/g, ''); 
+const date = new Date().toISOString().split('T')[0];
+doc.save(`Loan_Agreement_${safeFileName}-${date}.pdf`);
   }
 
   return doc;
