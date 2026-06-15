@@ -787,12 +787,12 @@ const ShopPage = () => {
       </div>
 
       <Dialog open={addProductOpen} onOpenChange={setAddProductOpen}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto flex flex-col">
           <DialogHeader>
             <DialogTitle>List a new product</DialogTitle>
             <DialogDescription>Members can publish items for sale by selecting a category and entering product details.</DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleAddProduct} className="space-y-4">
+          <form onSubmit={handleAddProduct} className="space-y-4 flex-1">
             <div>
               <Label htmlFor="product-title" className="text-sm font-medium text-slate-700">Product title</Label>
               <Input
@@ -896,11 +896,12 @@ const ShopPage = () => {
           }
           setQuickLoanOpen(open);
         }}>
-        <DialogContent className="sm:max-w-lg max-h- overflow-y-auto">
+        <DialogContent className="sm:max-w-lg max-h-[80vh] flex flex-col overflow-hidden">
           <DialogHeader>
             <DialogTitle>Request a quick loan</DialogTitle>
             <DialogDescription>Fill in your contact details and we will follow up with loan terms.</DialogDescription>
           </DialogHeader>
+          <div className="overflow-y-auto flex-1 px-1">
           {loanRequestSubmitted ? (
             <div className="space-y-4">
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
@@ -1025,16 +1026,17 @@ const ShopPage = () => {
               <Button type="submit" className="w-full">Submit Request</Button>
             </form>
           )}
+          </div>
         </DialogContent>
       </Dialog>
 
       <Dialog open={purchaseOpen} onOpenChange={setPurchaseOpen}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto flex flex-col">
           <DialogHeader>
             <DialogTitle>Purchase request</DialogTitle>
             <DialogDescription>Send your contact details so the seller can follow up.</DialogDescription>
           </DialogHeader>
-          <form onSubmit={handlePurchaseRequest} className="space-y-4">
+          <form onSubmit={handlePurchaseRequest} className="space-y-4 flex-1">
             <div className="text-sm text-[#4B5A45]">
               <p className="font-semibold text-[#172B12]">Product</p>
               <p>{purchaseProduct?.title}</p>
