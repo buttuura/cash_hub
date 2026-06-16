@@ -68,13 +68,6 @@ YEAR_END_DATE = "2026-12-20"
 
 # Create the main app
 app = FastAPI(title="Class One Savings API")
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 api_router = APIRouter(prefix="/api")
 
 # ==================== PYDANTIC MODELS ====================
@@ -1202,30 +1195,49 @@ async def request_loan(loan: LoanRequest, user: dict = Depends(get_current_user)
     return loan_doc
 
 @api_router.post("/quick-loans/request")
-async def request_quick_loan(loan: QuickLoanRequest, user: Optional[dict] = Depends(get_current_user_optional)):
-    if loan.amount <= 0:
+async def request_quick_loan(
+    loan_name: str = Form(...),
+    loan_email: Optional[str] = Form(None),
+    loan_phone: Optional[str] = Form(None),
+    amount: float = Form(...),
+    purpose: Optional[str] = Form(None),
+    collateral: Optional[str] = Form(None),
+    is_guaranteed: bool = Form(...),
+    officer_code: Optional[str] = Form(None),
+    officer_name: Optional[str] = Form(None),
+    serial_number: Optional[str] = Form(None),
+    collateral_image: Optional[UploadFile] = File(None),
+    user: Optional[dict] = Depends(get_current_user_optional),
+):
+    if amount <= 0:
         raise HTTPException(status_code=400, detail="Quick loan amount must be positive")
 
-    if loan.is_guaranteed and not loan.officer_code:
+    if is_guaranteed and not officer_code:
         raise HTTPException(status_code=400, detail="Please select a loans officer for a guaranteed quick loan")
 
-    if not loan.is_guaranteed and not loan.collateral:
+    if not is_guaranteed and not collateral:
         raise HTTPException(status_code=400, detail="Please provide collateral details for a collateral-backed quick loan")
+
+    collateral_image_url = None
+    if collateral_image and collateral_image.filename:
+        upload_result = await upload_to_cloudinary(collateral_image)
+        collateral_image_url = upload_result.get("secure_url") or upload_result.get("url")
 
     loan_doc = {
         "user_id": user["id"] if user else None,
-        "user_name": user["name"] if user else loan.loan_name,
-        "user_email": user.get("email") if user else loan.loan_email,
-        "loan_name": loan.loan_name,
-        "loan_email": loan.loan_email,
-        "loan_phone": loan.loan_phone,
-        "amount": loan.amount,
-        "purpose": loan.purpose,
-        "collateral": loan.collateral,
-        "is_guaranteed": loan.is_guaranteed,
-        "officer_code": loan.officer_code,
-        "officer_name": loan.officer_name,
-        "collateral_image": loan.collateral_image,
+        "user_name": user["name"] if user else loan_name,
+        "user_email": user.get("email") if user else (loan_email.strip() if loan_email else None),
+        "loan_name": loan_name,
+        "loan_email": loan_email.strip() if loan_email else None,
+        "loan_phone": loan_phone.strip() if loan_phone else None,
+        "amount": amount,
+        "purpose": purpose.strip() if purpose else None,
+        "collateral": collateral.strip() if collateral else None,
+        "is_guaranteed": is_guaranteed,
+        "officer_code": officer_code.strip() if officer_code else None,
+        "officer_name": officer_name.strip() if officer_name else None,
+        "serial_number": serial_number.strip() if serial_number else None,
+        "collateral_image": collateral_image_url,
         "status": "pending_treasurer",
         "created_at": datetime.now(timezone.utc).isoformat(),
         "approved_at": None,
@@ -2129,11 +2141,21 @@ async def shutdown_db_client():
 
 # CORS middleware
 import os 
-CORS_ORIGINS = os.environ.get("CORS_ORIGINS", "http://localhost:3000").split(",")
+CORS_ORIGINS = os.environ.get(
+    "CORS_ORIGINS",
+    "http://localhost:3000,https://cash-hub.onrender.com"
+).split(",")
+CORS_ORIGINS = [origin.strip() for origin in CORS_ORIGINS if origin.strip()]
+allow_credentials = True
+allow_origins = CORS_ORIGINS
+if "*" in CORS_ORIGINS:
+    allow_origins = ["*"]
+    allow_credentials = False
+
 app.add_middleware(
     CORSMiddleware,
-    allow_credentials=True,
-    allow_origins=CORS_ORIGINS,
+    allow_credentials=allow_credentials,
+    allow_origins=allow_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
