@@ -408,55 +408,69 @@ const ShopPage = () => {
   };
 
   const handleRequestQuickLoan = async (e) => {
-    e.preventDefault();
-    if (!loanName.trim() || !loanEmail.trim() || !loanAmount.trim()) {
-      toast.error('Please fill your name, email and loan amount');
-      return;
+  e.preventDefault();
+  if (!loanName.trim() || !loanEmail.trim() || !loanAmount.trim()) {
+    toast.error('Please fill your name, email and loan amount');
+    return;
+  }
+
+  if (Number(loanAmount) <= 0) {
+    toast.error('Loan amount must be greater than 0');
+    return;
+  }
+
+  const officer = OFFICERS.find(o => o.code === officerCode) || null;
+
+  if (loanIsGuaranteed && !officer) {
+    toast.error('Please enter a valid officer code for guaranteed loan');
+    return;
+  }
+
+  if (!loanIsGuaranteed && !collateral.trim()) {
+    toast.error('Please provide collateral details for collateral-backed loan');
+    return;
+  }
+
+  try {
+    const formData = new FormData();
+    formData.append('loan_name', loanName.trim());
+    formData.append('loan_email', loanEmail.trim());
+    formData.append('loan_phone', loanPhone.trim());
+    formData.append('amount', String(Number(loanAmount))); // FormData needs strings
+    formData.append('purpose', loanPurpose.trim());
+    formData.append('collateral', collateral.trim());
+    formData.append('is_guaranteed', String(loanIsGuaranteed));
+    formData.append('officer_code', officerCode || '');
+    formData.append('officer_name', officer?.name || '');
+    formData.append('serial_number', serialNumber || '');
+    
+    // Only send file for collateral-backed
+    if (!loanIsGuaranteed && collateralImage) {
+      formData.append('collateral_image', collateralImage);
     }
 
-    const officer = OFFICERS.find(o => o.code === officerCode) || null;
+    const headers = isAuthenticated 
+      ? { Authorization: `Bearer ${localStorage.getItem('access_token')}` } 
+      : {};
 
-    // If loan is guaranteed, officer is required
-    if (loanIsGuaranteed && !officer) {
-      toast.error('Please select a loans officer for a guaranteed loan');
-      return;
-    }
+    const response = await axios.post(`${API_URL}/api/quick-loans/request`, formData, {
+      headers,
+    });
 
-    // If loan is collateral-based we require collateral description (image optional)
-    if (!loanIsGuaranteed && !collateral.trim()) {
-      toast.error('Please provide collateral details for a collateral-backed loan');
-      return;
-    }
-
-    try {
-      const requestPayload = {
-        loan_name: loanName.trim(),
-        loan_email: loanEmail.trim(),
-        loan_phone: loanPhone.trim(),
-        amount: Number(loanAmount),
-        purpose: loanPurpose.trim(),
-        collateral: collateral.trim() || null,
-        is_guaranteed: loanIsGuaranteed,
-        officer_code: officerCode || null,
-        officer_name: officer?.name || null,
-        collateral_image: collateralImage || null,
-      };
-
-      const headers = isAuthenticated ? { Authorization: `Bearer ${localStorage.getItem('access_token')}` } : {};
-      const response = await axios.post(`${API_URL}/api/quick-loans/request`, requestPayload, {
-        headers,
-      });
-
-      setLoanRequestSubmitted(true);
-      setLoanRequestData(response.data);
-
-      toast.success('Quick loan request submitted to the treasurer for approval. You can download the agreement below.');
-    } catch (error) {
-      console.error('Failed to submit quick loan request:', error);
-      const message = error.response?.data?.detail || 'Failed to submit quick loan request. Please try again.';
-      toast.error(message);
-    }
-  };
+    setLoanRequestSubmitted(true);
+    setLoanRequestData(response.data);
+    toast.success('Quick loan request submitted to the treasurer for approval!');
+  } catch (error) {
+    console.error('Failed to submit quick loan request:', error);
+    const errorDetail = error.response?.data?.detail;
+    const message = typeof errorDetail === 'string' 
+      ? errorDetail 
+      : Array.isArray(errorDetail) 
+        ? errorDetail.map(e => e.msg).join(', ')
+        : 'Failed to submit quick loan request. Please try again.';
+    toast.error(message);
+  }
+};
 
   const handleOpenPurchase = (product) => {
     setPurchaseProduct(product);
