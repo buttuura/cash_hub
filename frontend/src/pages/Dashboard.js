@@ -665,10 +665,10 @@ const Dashboard = () => {
               ))}
             </div>
 
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3">
               <div className="flex items-center gap-2">
                 <div className="text-right">
-                  <p className="text-sm font-semibold text-[#1E231F]">{user?.name}</p>
+                  <p className="text-sm font-semibold text-[#1E231F] leading-tight">{user?.name}</p>
                   {user?.member_code && (
                     <button
                       type="button"
@@ -681,23 +681,13 @@ const Dashboard = () => {
                           toast.error('Failed to copy member code');
                         }
                       }}
-                      className="inline-flex items-center gap-1 text-xs font-mono font-semibold text-[#2C5530] bg-[#ECF8E9] border border-[#2C5530]/20 rounded-full px-2 py-0.5 hover:bg-[#2C5530]/10"
+                      className="inline-flex items-center gap-1 text-[10px] font-mono font-semibold text-[#2C5530] bg-[#ECF8E9] border border-[#2C5530]/20 rounded-full px-1.5 py-0.5 hover:bg-[#2C5530]/10 leading-none"
                       title="Copy member code"
                     >
                       {user.member_code}
-                      {copiedMemberCode ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                      {copiedMemberCode ? <Check className="w-2.5 h-2.5" /> : <Copy className="w-2.5 h-2.5" />}
                     </button>
                   )}
-                  <Badge
-                    className={
-                      user?.membership_type === 'premium'
-                        ? 'bg-[hsl(142, 30%, 92%)] text-[#2C5530] text-xs'
-                        : 'bg-[#5C665D]/10 text-[#5C665D] text-xs'
-                    }
-                  >
-                    {user?.membership_type === 'premium' && <Crown className="w-3 h-3 mr-1" />}
-                    {user?.membership_type}
-                  </Badge>
                 </div>
               </div>
               <Button
@@ -721,7 +711,7 @@ const Dashboard = () => {
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
                 className="md:hidden p-2 text-[#5C665D]"
               >
-                {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+                {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
               </button>
             </div>
           </div>
@@ -1302,6 +1292,33 @@ const Dashboard = () => {
                 )}
               </div>
             </div>
+
+            {user?.member_code && (
+              <Card className="bg-[#ECF8E9] border border-[#2C5530]/20">
+                <CardContent className="p-4 flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-[#1E231F]">My Member Code</p>
+                    <p className="text-xs text-[#5C665D]">Use this as officer/member code for quick loans.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        await navigator.clipboard.writeText(user.member_code);
+                        setCopiedMemberCode(true);
+                        setTimeout(() => setCopiedMemberCode(false), 1500);
+                      } catch {
+                        toast.error('Failed to copy member code');
+                      }
+                    }}
+                    className="inline-flex items-center gap-2 rounded-full border border-[#2C5530]/30 bg-white px-3 py-1.5 text-sm font-mono font-semibold text-[#2C5530] hover:bg-[#2C5530]/10"
+                  >
+                    <span>{user.member_code}</span>
+                    {copiedMemberCode ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                  </button>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Loans awaiting MY guarantor approval */}
             {pendingGuarantorLoans.length > 0 && (
