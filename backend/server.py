@@ -622,6 +622,7 @@ async def register(user_data: UserCreate):
         "national_id": national_id,
         "role": "member",
         "membership_type": "ordinary",
+        "member_code": user_doc.get("member_code"),
         "access_token": access_token,
         "refresh_token": refresh_token
     }
@@ -656,13 +657,17 @@ async def login(credentials: UserLogin):
         "membership_type": user.get("membership_type", "ordinary"),
         "total_savings": user.get("total_savings", 0),
         "development_fund": user.get("development_fund", 0),
+        "member_code": user.get("member_code"),
         "access_token": access_token,
         "refresh_token": refresh_token
     }
 
 @api_router.get("/auth/me")
 async def get_me(user: dict = Depends(get_current_user)):
-    return user
+    code = await get_or_create_user_member_code(user)
+    data = dict(user)
+    data["member_code"] = code
+    return data
 
 @api_router.post("/auth/logout")
 async def logout():

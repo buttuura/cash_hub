@@ -46,6 +46,8 @@ import {
   BarChart3,
   MessageCircle,
   ShoppingCart,
+  Copy,
+  Check,
 } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
 import {
@@ -99,6 +101,7 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [copiedMemberCode, setCopiedMemberCode] = useState(false);
 
   // Form states
   const [depositAmount, setDepositAmount] = useState('500');
@@ -666,10 +669,29 @@ const Dashboard = () => {
               <div className="hidden sm:flex items-center gap-2">
                 <div className="text-right">
                   <p className="text-sm font-semibold text-[#1E231F]">{user?.name}</p>
+                  {user?.member_code && (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(user.member_code);
+                          setCopiedMemberCode(true);
+                          setTimeout(() => setCopiedMemberCode(false), 1500);
+                        } catch {
+                          toast.error('Failed to copy member code');
+                        }
+                      }}
+                      className="inline-flex items-center gap-1 text-xs font-mono font-semibold text-[#2C5530] bg-[#ECF8E9] border border-[#2C5530]/20 rounded-full px-2 py-0.5 hover:bg-[#2C5530]/10"
+                      title="Copy member code"
+                    >
+                      {user.member_code}
+                      {copiedMemberCode ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                    </button>
+                  )}
                   <Badge
                     className={
                       user?.membership_type === 'premium'
-                        ? 'bg-[#2C5530]/10 text-[#2C5530] text-xs'
+                        ? 'bg-[hsl(142, 30%, 92%)] text-[#2C5530] text-xs'
                         : 'bg-[#5C665D]/10 text-[#5C665D] text-xs'
                     }
                   >
