@@ -134,11 +134,10 @@ const ShopPage = () => {
   const [validOfficerCodes, setValidOfficerCodes] = useState([]);
   const [loanRequestSubmitted, setLoanRequestSubmitted] = useState(false);
   useEffect(() => {
-  setLoanIsGuaranteed(loanType === 'guaranteed');
-}, [loanType]);
+    setLoanIsGuaranteed(loanType === 'guaranteed');
+  }, [loanType]);
   useEffect(() => {
     if (!quickLoanOpen) return;
-    setLoadingValidCodes(true);
     let cancelled = false;
     axios.get(`${API_URL}/api/quick-loans/valid-codes`).then((res) => {
       if (cancelled) return;
@@ -147,8 +146,6 @@ const ShopPage = () => {
     }).catch(() => {
       if (cancelled) return;
       setValidOfficerCodes([]);
-    }).finally(() => {
-      if (!cancelled) setLoadingValidCodes(false);
     });
     return () => { cancelled = true; };
   }, [quickLoanOpen]);
