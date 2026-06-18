@@ -127,6 +127,7 @@ const ShopPage = () => {
   const [loanIsGuaranteed, setLoanIsGuaranteed] = useState(true);
   const [loanType, setLoanType] = useState('guaranteed'); 
   const [serialNumber, setSerialNumber] = useState('');
+  const [buyerName, setBuyerName] = useState('');
   const [collateralImage, setCollateralImage] = useState(null);
   const [collateralImagePreview, setCollateralImagePreview] = useState('');
   const [officerCode, setOfficerCode] = useState('');
@@ -155,10 +156,13 @@ const ShopPage = () => {
     window.localStorage.setItem('cash_hub_orders', JSON.stringify(orders));
   };
 
-  const handleDownloadLoanAgreement = () => {
+  const handleDownloadLoanAgreement = async () => {
     if (!loanRequestData) return;
     const officer = OFFICERS.find((o) => o.code === loanRequestData.officerCode) || null;
-    exportLoanAgreementPDF(loanRequestData, officer, { download: true });
+    await exportLoanAgreementPDF(loanRequestData, officer, {
+      download: true,
+      collateralImage: collateralImagePreview,
+    });
   };
 
   const resetQuickLoanDialogState = () => {
@@ -170,6 +174,8 @@ const ShopPage = () => {
     setLoanAmount('');
     setLoanPurpose('');
     setCollateral('');
+    setSerialNumber('');
+    setBuyerName('');
     setCollateralImage(null);
     setCollateralImagePreview('');
     setOfficerCode('');
@@ -443,6 +449,7 @@ const ShopPage = () => {
     formData.append('officer_code', officerCode || '');
     formData.append('officer_name', officer?.name || '');
     formData.append('serial_number', serialNumber || '');
+    formData.append('buyer_name', buyerName.trim());
     
     // Only send file for collateral-backed
     if (!loanIsGuaranteed && collateralImage) {
@@ -968,22 +975,27 @@ const ShopPage = () => {
                 </div>
               </div>
 
-              <div>
+              <div className="space-y-2">
                 <Label htmlFor="loan-name" className="text-sm font-medium text-slate-700">Full name</Label>
                 <Input id="loan-name" value={loanName} onChange={(e) => setLoanName(e.target.value)} placeholder="Your name" required />
               </div>
               
-              <div>
+              <div className="space-y-2">
                 <Label htmlFor="loan-email" className="text-sm font-medium text-slate-700">Email</Label>
                 <Input id="loan-email" type="email" value={loanEmail} onChange={(e) => setLoanEmail(e.target.value)} placeholder="you@example.com" required />
               </div>
               
-              <div>
+              <div className="space-y-2">
                 <Label htmlFor="loan-phone" className="text-sm font-medium text-slate-700">Phone number</Label>
                 <Input id="loan-phone" value={loanPhone} onChange={(e) => setLoanPhone(e.target.value)} placeholder="07XXXXXXXX" required />
               </div>
               
-              <div>
+              <div className="space-y-2">
+                <Label htmlFor="buyer-name" className="text-sm font-medium text-slate-700">Buyer Name</Label>
+                <Input id="buyer-name" value={buyerName} onChange={(e) => setBuyerName(e.target.value)} placeholder="Enter buyer's full name" />
+              </div>
+              
+              <div className="space-y-2">
                 <Label htmlFor="loan-amount" className="text-sm font-medium text-slate-700">
                   {loanType === 'guaranteed' ? 'Loan amount (UGX)' : 'Selling Price (UGX)'}
                 </Label>
@@ -992,11 +1004,11 @@ const ShopPage = () => {
 
               {loanType === 'guaranteed' && (
                 <>
-                  <div>
+                  <div className="space-y-2">
                     <Label htmlFor="loan-purpose" className="text-sm font-medium text-slate-700">Loan purpose</Label>
                     <Textarea id="loan-purpose" value={loanPurpose} onChange={(e) => setLoanPurpose(e.target.value)} placeholder="Tell us why you need this loan" required />
                   </div>
-                  <div>
+                  <div className="space-y-2">
                     <Label htmlFor="officer-code" className="text-sm font-medium text-slate-700">Officer Code</Label>
                     <Input id="officer-code" value={officerCode} onChange={(e) => setOfficerCode(e.target.value)} placeholder="Enter officer code" required />
                   </div>
@@ -1005,15 +1017,15 @@ const ShopPage = () => {
 
               {loanType === 'collateral-backed' && (
                 <>
-                  <div>
+                  <div className="space-y-2">
                     <Label htmlFor="loan-collateral" className="text-sm font-medium text-slate-700">Item Name</Label>
-                    <Input id="loan-collateral" value={collateral} onChange={(e) => setCollateral(e.target.value)} placeholder="e.g. iPhone 13, HP Laptop" required />
+                    <Textarea id="loan-collateral" value={collateral} onChange={(e) => setCollateral(e.target.value)} placeholder="e.g. iPhone 13, HP Laptop" required rows={2} />
                   </div>
-                  <div>
+                  <div className="space-y-2">
                     <Label htmlFor="serial-number" className="text-sm font-medium text-slate-700">Serial Number</Label>
                     <Input id="serial-number" value={serialNumber} onChange={(e) => setSerialNumber(e.target.value)} placeholder="Serial/IMEI" />
                   </div>
-                  <div>
+                  <div className="space-y-2">
                     <Label htmlFor="collateral-image" className="text-sm font-medium text-slate-700">Item Photo</Label>
                     <Input 
                       id="collateral-image" 
@@ -1056,19 +1068,19 @@ const ShopPage = () => {
               <p>{purchaseProduct?.title}</p>
               <p className="text-xs text-[#6B7C61]">Seller: {purchaseProduct?.sellerName}</p>
             </div>
-            <div>
+            <div className="space-y-2">
               <Label htmlFor="purchase-name" className="text-sm font-medium text-slate-700">Your name</Label>
               <Input id="purchase-name" value={purchaseName} onChange={(event) => setPurchaseName(event.target.value)} placeholder="Your name" />
             </div>
-            <div>
+            <div className="space-y-2">
               <Label htmlFor="purchase-email" className="text-sm font-medium text-slate-700">Email</Label>
               <Input id="purchase-email" value={purchaseEmail} onChange={(event) => setPurchaseEmail(event.target.value)} placeholder="you@example.com" />
             </div>
-            <div>
+            <div className="space-y-2">
               <Label htmlFor="purchase-phone" className="text-sm font-medium text-slate-700">Phone number</Label>
               <Input id="purchase-phone" value={purchasePhone} onChange={(event) => setPurchasePhone(event.target.value)} placeholder="e.g. 0771 234567" required />
             </div>
-            <div>
+            <div className="space-y-2">
               <Label htmlFor="purchase-note" className="text-sm font-medium text-slate-700">Message</Label>
               <Textarea id="purchase-note" value={purchaseNote} onChange={(event) => setPurchaseNote(event.target.value)} placeholder="Write a short message to the seller" rows={4} />
             </div>

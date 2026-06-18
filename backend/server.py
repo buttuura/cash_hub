@@ -111,6 +111,7 @@ class QuickLoanRequest(BaseModel):
     officer_code: Optional[str] = None
     officer_name: Optional[str] = None
     collateral_image: Optional[str] = None
+    member_code: Optional[str] = None
 
 class WithdrawalRequest(BaseModel):
     amount: float
@@ -314,6 +315,32 @@ def normalize_phone(phone: str) -> Optional[str]:
     if len(digits) > 9:
         digits = digits[-9:]
     return digits if len(digits) == 9 else None
+
+
+def generate_member_code(name: Optional[str], phone: str) -> str:
+    name_part = ""
+    if name:
+        parts = name.strip().split()
+        first = parts[0] if parts else ""
+        name_part = first[:3].lower() if first else ""
+    digits = re.sub(r"\D", "", (phone or ""))
+    phone_part = digits[-4:] if len(digits) >= 4 else digits
+    return f"{name_part}{phone_part}"
+
+async def get_or_create_user_member_code(user: Optional[dict]) -> Optional[str]:
+    if not user:
+        return None
+    if user.get("member_code"):
+        return user["member_code"]
+    code = generate_member_code(user.get("name"), user.get("phone", ""))
+    try:
+        await db.users.update_one(
+            {"_id": ObjectId(user["id"])},
+            {"$set": {"member_code": code}},
+        )
+    except Exception:
+        pass
+    return code
 
 
 async def migrate_normalized_phone() -> None:
@@ -571,6 +598,7 @@ async def register(user_data: UserCreate):
         "guarantees_given": 0,
         "max_guarantees": 2,
         "leaving_requested": False,
+        "member_code": generate_member_code(user_data.name, phone),
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     if email:
@@ -1208,6 +1236,7 @@ async def request_quick_loan(
     serial_number: Optional[str] = Form(None),
     collateral_image: Optional[UploadFile] = File(None),
     user: Optional[dict] = Depends(get_current_user_optional),
+    buyer_name: Optional[str] = Form(None),
 ):
     if amount <= 0:
         raise HTTPException(status_code=400, detail="Quick loan amount must be positive")
@@ -1237,6 +1266,7 @@ async def request_quick_loan(
         "officer_code": officer_code.strip() if officer_code else None,
         "officer_name": officer_name.strip() if officer_name else None,
         "serial_number": serial_number.strip() if serial_number else None,
+        "buyer_name": buyer_name.strip() if buyer_name else None,
         "collateral_image": collateral_image_url,
         "status": "pending_treasurer",
         "created_at": datetime.now(timezone.utc).isoformat(),
