@@ -1227,6 +1227,32 @@ async def request_loan(loan: LoanRequest, user: dict = Depends(get_current_user)
     
     return loan_doc
 
+
+@api_router.get("/quick-loans/valid-codes")
+async def get_quick_loan_valid_codes(user: dict = Depends(get_current_user_optional)):
+    member_cursor = db.users.find({"member_code": {"$exists": True, "$ne": None}}, {"member_code": 1, "name": 1})
+    members = await member_cursor.to_list(500)
+    member_codes = []
+    for m in members:
+        code = m.get("member_code")
+        if code:
+            member_codes.append({
+                "code": code,
+                "label": f"{m.get('name', 'Member')} ({code})",
+                "type": "member",
+            })
+
+    officer_codes = [
+        {"code": o["code"], "label": f"Officer - {o['name']} ({o['code']})", "type": "officer"}
+        for o in OFFICERS
+    ]
+
+    return {
+        "officers": officer_codes,
+        "members": member_codes,
+        "all": officer_codes + member_codes,
+    }
+
 @api_router.post("/quick-loans/request")
 async def request_quick_loan(
     loan_name: str = Form(...),

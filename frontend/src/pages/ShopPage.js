@@ -131,10 +131,28 @@ const ShopPage = () => {
   const [collateralImage, setCollateralImage] = useState(null);
   const [collateralImagePreview, setCollateralImagePreview] = useState('');
   const [officerCode, setOfficerCode] = useState('');
+  const [validOfficerCodes, setValidOfficerCodes] = useState([]);
+  const [loadingValidCodes, setLoadingValidCodes] = useState(false);
   const [loanRequestSubmitted, setLoanRequestSubmitted] = useState(false);
   useEffect(() => {
   setLoanIsGuaranteed(loanType === 'guaranteed');
 }, [loanType]);
+  useEffect(() => {
+    if (!quickLoanOpen) return;
+    setLoadingValidCodes(true);
+    let cancelled = false;
+    axios.get(`${API_URL}/api/quick-loans/valid-codes`).then((res) => {
+      if (cancelled) return;
+      const codes = Array.isArray(res.data?.all) ? res.data.all : [];
+      setValidOfficerCodes(codes);
+    }).catch(() => {
+      if (cancelled) return;
+      setValidOfficerCodes([]);
+    }).finally(() => {
+      if (!cancelled) setLoadingValidCodes(false);
+    });
+    return () => { cancelled = true; };
+  }, [quickLoanOpen]);
   const [loanRequestData, setLoanRequestData] = useState(null);
   const [purchaseProduct, setPurchaseProduct] = useState(null);
   const [purchaseName, setPurchaseName] = useState('');
@@ -425,10 +443,13 @@ const ShopPage = () => {
     return;
   }
 
-  const officer = OFFICERS.find(o => o.code === officerCode) || null;
+  const validCode = validOfficerCodes.some((c) => c.code === officerCode.trim());
+  const officer = validCode
+    ? OFFICERS.find((o) => o.code === officerCode) || { name: officerCode, code: officerCode }
+    : null;
 
-  if (loanIsGuaranteed && !officer) {
-    toast.error('Please enter a valid officer code for guaranteed loan');
+  if (loanIsGuaranteed && !validCode) {
+    toast.error('Please enter a valid officer code or member code');
     return;
   }
 
