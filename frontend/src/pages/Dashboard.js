@@ -666,7 +666,7 @@ const Dashboard = () => {
             </div>
 
             <div className="flex items-center gap-4">
-              <div className="hidden sm:flex items-center gap-2">
+              <div className="flex items-center gap-2">
                 <div className="text-right">
                   <p className="text-sm font-semibold text-[#1E231F]">{user?.name}</p>
                   {user?.member_code && (
