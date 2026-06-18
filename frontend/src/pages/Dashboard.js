@@ -131,6 +131,11 @@ const Dashboard = () => {
   const [pettyCashDialogOpen, setPettyCashDialogOpen] = useState(false);
 
   const fetchData = useCallback(async () => {
+    const now = Date.now();
+    if (fetchData._cache && (now - fetchData._cache.ts < 15000)) {
+      setLoading(false);
+      return;
+    }
     try {
       const headers = getAuthHeaders();
       const [statsRes, rulesRes, financialsRes, depositsRes, loansRes, withdrawalsRes, membersRes] = await Promise.all([
@@ -161,6 +166,7 @@ const Dashboard = () => {
       } else {
         setQuickLoans([]);
       }
+      fetchData._cache = { ts: now };
     } catch (err) {
       console.error('Failed to fetch data:', err);
       toast.error('Failed to load data');
@@ -1293,8 +1299,7 @@ const Dashboard = () => {
               </div>
             </div>
 
-            {user?.member_code && (
-              <Card className="bg-[#ECF8E9] border border-[#2C5530]/20">
+            {user?.member_code && (              <Card className="bg-[#ECF8E9] border border-[#2C5530]/20">
                 <CardContent className="p-4 flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <p className="text-sm font-semibold text-[#1E231F]">My Member Code</p>

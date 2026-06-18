@@ -132,7 +132,6 @@ const ShopPage = () => {
   const [collateralImagePreview, setCollateralImagePreview] = useState('');
   const [officerCode, setOfficerCode] = useState('');
   const [validOfficerCodes, setValidOfficerCodes] = useState([]);
-  const [loadingValidCodes, setLoadingValidCodes] = useState(false);
   const [loanRequestSubmitted, setLoanRequestSubmitted] = useState(false);
   useEffect(() => {
   setLoanIsGuaranteed(loanType === 'guaranteed');
@@ -443,7 +442,11 @@ const ShopPage = () => {
     return;
   }
 
-  const validCode = validOfficerCodes.some((c) => c.code === officerCode.trim());
+  const validCode = officerCode.trim()
+    ? (validOfficerCodes.length > 0
+        ? validOfficerCodes.some((c) => c.code === officerCode.trim())
+        : OFFICERS.some((o) => o.code === officerCode.trim()))
+    : false;
   const officer = validCode
     ? OFFICERS.find((o) => o.code === officerCode) || { name: officerCode, code: officerCode }
     : null;
