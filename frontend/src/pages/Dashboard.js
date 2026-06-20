@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import axios from 'axios';
@@ -112,7 +112,7 @@ const Dashboard = () => {
   const [loanGuarantor, setLoanGuarantor] = useState('');
   const [loanReason, setLoanReason] = useState('');
   const [withdrawalAmount, setWithdrawalAmount] = useState('');
-  const [withdrawalType, setWithdrawalType] = useState('savings');
+const [withdrawalType, setWithdrawalType] = useState('savings');
   const [withdrawalReason, setWithdrawalReason] = useState('');
   const [newGroupBalance, setNewGroupBalance] = useState('');
   const [balanceReason, setBalanceReason] = useState('');
@@ -122,6 +122,8 @@ const Dashboard = () => {
   const [pettyCashCategory, setPettyCashCategory] = useState('general');
   const [myProducts, setMyProducts] = useState([]);
   const [orders, setOrders] = useState([]);
+
+  const audioRef = useRef(null);
 
   // Dialog states
   const [depositDialogOpen, setDepositDialogOpen] = useState(false);
@@ -212,6 +214,26 @@ const Dashboard = () => {
     setOrders(loadOrdersFromStorage());
   }, []);
 
+  const sellerOrders = user?.name
+    ? orders.filter((order) => (order.sellerName || '').toLowerCase() === user.name.toLowerCase())
+    : orders;
+
+  const pendingOrdersCount = sellerOrders?.filter((o) => o.status === 'pending').length || 0;
+
+  useEffect(() => {
+    if (pendingOrdersCount > 0) {
+      if (audioRef.current) {
+        audioRef.current.loop = true;
+        audioRef.current.play().catch(() => {});
+      }
+    } else {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+      }
+    }
+  }, [pendingOrdersCount, user?.name, orders]);
+
   useEffect(() => {
     fetchData();
   }, [fetchData]);
@@ -231,10 +253,6 @@ const Dashboard = () => {
     saveOrdersToStorage(updated);
     toast.success(`Order ${status === 'approved' ? 'approved' : 'rejected'} successfully.`);
   };
-
-  const sellerOrders = user?.name
-    ? orders.filter((order) => (order.sellerName || '').toLowerCase() === user.name.toLowerCase())
-    : orders;
 
   const getImageUrl = (imageUrl) => {
     if (!imageUrl) return null;
@@ -637,8 +655,9 @@ const Dashboard = () => {
   }
 
   return (
-    <div className="min-h-screen bg-[#FAFAF8]">
-      <Toaster position="top-right" richColors />
+<div className="min-h-screen bg-[#FAFAF8]">
+       <Toaster position="top-right" richColors />
+       <audio ref={audioRef} src="/images/app_icons/cart_images/order_ring_tone.m4a" preload="auto" />
       
       {/* Navigation */}
       <nav className="sticky top-0 z-50 backdrop-blur-xl bg-white/90 border-b border-[#E8EBE8]">
