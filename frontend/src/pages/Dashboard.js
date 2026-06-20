@@ -1653,14 +1653,33 @@ const Dashboard = () => {
                     No order requests found yet. Buyers can place orders from the shop page, and they will appear here for review.
                   </div>
                 ) : (
-                  sellerOrders.map((order) => (
+sellerOrders.map((order) => (
                     <div key={order.id} className="rounded-3xl border border-[#E8EBE8] bg-white p-6 shadow-sm">
                       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                         <div className="space-y-2">
                           <p className="text-xs uppercase tracking-[0.25em] text-[#2B6F38]">Request</p>
-                          <h3 className="text-lg font-semibold text-[#172B12]">{order.productTitle}</h3>
-                          <p className="text-sm text-[#4B5A45]">UGX {Number(order.productPrice || 0).toLocaleString()}</p>
-                          <p className="text-sm text-[#4B5A45]">Buyer: <span className="font-semibold text-[#172B12]">{order.buyerName}</span></p>
+                          {order.products && Array.isArray(order.products) && order.products.length > 0 ? (
+                            <>
+                              <h3 className="text-lg font-semibold text-[#172B12]">
+                                {order.products.map(p => `${p.title} x${p.quantity}`).join(', ')}
+                              </h3>
+                              <div className="mt-1">
+                                {order.products.map((p, idx) => (
+                                  <p key={idx} className="text-xs text-[#4B5A45]">
+                                    {p.title}: UGX {Number(p.price || 0).toLocaleString()} × {p.quantity} = UGX {(p.price * p.quantity).toLocaleString()}
+                                  </p>
+                                ))}
+                                <p className="text-sm font-medium text-[#172B12] mt-1">Total: UGX {Number(order.total || order.products.reduce((sum, p) => sum + p.price * p.quantity, 0) || 0).toLocaleString()}</p>
+                              </div>
+                              <p className="text-sm text-[#4B5A45]">Buyer: <span className="font-semibold text-[#172B12]">{order.buyerName}</span></p>
+                            </>
+                          ) : (
+                            <>
+                              <h3 className="text-lg font-semibold text-[#172B12]">{order.productTitle || (order.products?.[0]?.title)}</h3>
+                              <p className="text-sm text-[#4B5A45]">UGX {Number(order.productPrice || order.products?.[0]?.price || 0).toLocaleString()}</p>
+                              <p className="text-sm text-[#4B5A45]">Buyer: <span className="font-semibold text-[#172B12]">{order.buyerName}</span></p>
+                            </>
+                          )}
                           <p className="text-sm text-[#4B5A45]">Phone: <a className="text-[#172B12] underline" href={`tel:${order.buyerPhone}`}>{order.buyerPhone}</a></p>
                           {order.buyerEmail && (
                             <p className="text-sm text-[#4B5A45]">Email: <a className="text-[#172B12] underline" href={`mailto:${order.buyerEmail}`}>{order.buyerEmail}</a></p>
@@ -1669,7 +1688,7 @@ const Dashboard = () => {
                             {order.buyerPhone && (
                               <a
                                 className="inline-flex items-center rounded-full border border-[#2C5530] px-3 py-1 text-sm text-[#2C5530] hover:bg-[#2C5530]/5"
-                                href={buildWhatsAppUrl(order.buyerPhone, `Hello ${order.buyerName}, your order request for ${order.productTitle} is being reviewed.`)}
+                                href={buildWhatsAppUrl(order.buyerPhone, `Hello ${order.buyerName}, your order request is being reviewed.`)}
                                 target="_blank"
                                 rel="noreferrer"
                               >

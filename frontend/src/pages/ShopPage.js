@@ -10,7 +10,7 @@ import { Label } from '../components/ui/label';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '../components/ui/dialog';
 import { Badge } from '../components/ui/badge';
 import { Toaster, toast } from 'sonner';
-import { ShoppingCart, FastForward, Cpu, Sparkles, Plus, ShoppingBag, HardHat, PenTool } from 'lucide-react';
+import { ShoppingCart, FastForward, Cpu, Sparkles, ShoppingBag, HardHat, PenTool, Shirt, HeartPulse, Home, BookOpen, Dumbbell, Gamepad2, Briefcase, Menu, X, Search } from 'lucide-react';
 import { exportLoanAgreementPDF } from '../utils/pdfExport';
 import { OFFICERS } from '../data/officers';
 
@@ -20,6 +20,13 @@ const ICON_MAP = {
   'construction-materials': HardHat,
   'graphic-material': PenTool,
   'electronics': Cpu,
+  'clothing': Shirt,
+  'health-beauty': HeartPulse,
+  'home-garden': Home,
+  'books': BookOpen,
+  'sports': Dumbbell,
+  'toys': Gamepad2,
+  'services': Briefcase,
   'default': Sparkles,
 };
 
@@ -50,6 +57,41 @@ const DEFAULT_CATEGORIES = [
     id: 'electronics',
     name: 'Electronics',
     description: 'Gadgets, accessories and tech items available from members.',
+  },
+  {
+    id: 'clothing',
+    name: 'Clothing',
+    description: 'Apparel, shoes and fashion accessories from community sellers.',
+  },
+  {
+    id: 'health-beauty',
+    name: 'Health & Beauty',
+    description: 'Personal care, cosmetics, and wellness products.',
+  },
+  {
+    id: 'home-garden',
+    name: 'Home & Garden',
+    description: 'Furniture, decor, and gardening supplies.',
+  },
+  {
+    id: 'books',
+    name: 'Books',
+    description: 'Educational materials, novels and study resources.',
+  },
+  {
+    id: 'sports',
+    name: 'Sports',
+    description: 'Sports equipment, fitness gear and outdoor items.',
+  },
+  {
+    id: 'toys',
+    name: 'Toys',
+    description: 'Games, toys and kids entertainment products.',
+  },
+  {
+    id: 'services',
+    name: 'Services',
+    description: 'Professional services offered by group members.',
   },
 ];
 
@@ -139,23 +181,38 @@ const ShopPage = () => {
   useEffect(() => {
     if (!quickLoanOpen) return;
     let cancelled = false;
-    axios.get(`${API_URL}/api/quick-loans/valid-codes`).then((res) => {
-      if (cancelled) return;
-      const codes = Array.isArray(res.data?.all) ? res.data.all : [];
-      setValidOfficerCodes(codes);
-    }).catch(() => {
-      if (cancelled) return;
-      setValidOfficerCodes([]);
-    });
+    (async () => {
+      try {
+        const res = await axios.get(`${API_URL}/api/quick-loans/valid-codes`);
+        if (!cancelled && Array.isArray(res.data?.all)) {
+          setValidOfficerCodes(res.data.all);
+        }
+      } catch {
+        if (!cancelled) setValidOfficerCodes([]);
+      }
+    })();
     return () => { cancelled = true; };
   }, [quickLoanOpen]);
   const [loanRequestData, setLoanRequestData] = useState(null);
   const [purchaseProduct, setPurchaseProduct] = useState(null);
+  const [cart, setCart] = useState(() => {
+    try {
+      return JSON.parse(window.localStorage.getItem('cash_hub_cart') || '[]');
+    } catch {
+      return [];
+    }
+  });
+  const [cartOpen, setCartOpen] = useState(false);
   const [purchaseName, setPurchaseName] = useState('');
   const [purchaseEmail, setPurchaseEmail] = useState('');
   const [purchasePhone, setPurchasePhone] = useState('');
   const [purchaseNote, setPurchaseNote] = useState('');
+  const [cartBuyerName, setCartBuyerName] = useState('');
+  const [cartBuyerEmail, setCartBuyerEmail] = useState('');
+  const [cartBuyerPhone, setCartBuyerPhone] = useState('');
+  const [cartBuyerNote, setCartBuyerNote] = useState('');
   const [orderSubmitting, setOrderSubmitting] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const loadOrderRequests = () => {
     try {
@@ -168,6 +225,113 @@ const ShopPage = () => {
 
   const saveOrderRequests = (orders) => {
     window.localStorage.setItem('cash_hub_orders', JSON.stringify(orders));
+  };
+
+  const saveCart = (items) => {
+    window.localStorage.setItem('cash_hub_cart', JSON.stringify(items));
+  };
+
+  const addToCart = (product) => {
+    if (!isAuthenticated) {
+      toast.error('Please log in to add items to cart');
+      navigate('/login');
+      return;
+    }
+    setCart(prev => {
+      const existing = prev.find(item => item.productId === product.id);
+      let newCart;
+      if (existing) {
+        newCart = prev.map(item =>
+          item.productId === product.id
+            ? { ...item, quantity: item.quantity + 1 }
+            : item
+        );
+      } else {
+        newCart = [...prev, { productId: product.id, quantity: 1, product }];
+      }
+      saveCart(newCart);
+      return newCart;
+    });
+    toast.success(`${product.title} added to cart`);
+  };
+
+  const removeFromCart = (productId) => {
+    setCart(prev => {
+      const newCart = prev.filter(item => item.productId !== productId);
+      saveCart(newCart);
+      return newCart;
+    });
+  };
+
+  const updateCartQuantity = (productId, quantity) => {
+    if (quantity <= 0) {
+      removeFromCart(productId);
+      return;
+    }
+    setCart(prev => {
+      const newCart = prev.map(item =>
+        item.productId === productId ? { ...item, quantity } : item
+      );
+      saveCart(newCart);
+      return newCart;
+    });
+  };
+
+  const getCartTotal = () => {
+    return cart.reduce((total, item) => total + item.product.price * item.quantity, 0);
+  };
+
+  const getCartItemsBySeller = () => {
+    const sellers = {};
+    cart.forEach(item => {
+      const seller = item.product.sellerName || item.product.seller_name || 'Member';
+      if (!sellers[seller]) {
+        sellers[seller] = [];
+      }
+      sellers[seller].push(item);
+    });
+    return sellers;
+  };
+
+  const handleCartCheckout = async () => {
+    if (!cartBuyerName.trim() || !cartBuyerPhone.trim()) {
+      toast.error('Please enter your name and phone number');
+      return;
+    }
+
+    setOrderSubmitting(true);
+    const sellersMap = getCartItemsBySeller();
+
+    Object.entries(sellersMap).forEach(([seller, items]) => {
+      const total = items.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
+
+      const order = {
+        id: `order-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        products: items.map(i => ({ productId: i.productId, quantity: i.quantity, title: i.product.title, price: i.product.price })),
+        sellerName: seller,
+        buyerId: user?.id || null,
+        buyerName: cartBuyerName.trim(),
+        buyerEmail: cartBuyerEmail.trim(),
+        buyerPhone: cartBuyerPhone.trim(),
+        note: cartBuyerNote.trim(),
+        total: total,
+        status: 'pending',
+        createdAt: new Date().toISOString(),
+      };
+
+      const existingOrders = loadOrderRequests();
+      saveOrderRequests([order, ...existingOrders]);
+    });
+
+    setCart([]);
+    saveCart([]);
+    setCartBuyerName('');
+    setCartBuyerEmail('');
+    setCartBuyerPhone('');
+    setCartBuyerNote('');
+    setOrderSubmitting(false);
+    setCartOpen(false);
+    toast.success(`Orders sent to ${Object.keys(sellersMap).length} seller(s). They will contact you by phone.`);
   };
 
   const handleDownloadLoanAgreement = async () => {
@@ -301,16 +465,24 @@ const ShopPage = () => {
     return acc;
   }, {});
 
-  const visibleProducts = products.filter((product) => {
-    const matchesCategory = selectedCategory === 'all' || product.category === selectedCategory;
-    const normalizedSearch = searchQuery.trim().toLowerCase();
-    const matchesSearch =
-      !normalizedSearch ||
-      product.title.toLowerCase().includes(normalizedSearch) ||
-      product.description?.toLowerCase().includes(normalizedSearch) ||
-      (product.sellerName || product.seller_name || '').toLowerCase().includes(normalizedSearch);
-    return matchesCategory && matchesSearch;
-  });
+  const recentProducts = products
+    .sort((a, b) => new Date(b.createdAt || b.created_at) - new Date(a.createdAt || a.created_at))
+    .slice(0, 20)
+    .filter((product) => product.category !== 'quick-loan');
+
+  const visibleProducts = products
+    .sort((a, b) => new Date(b.createdAt || b.created_at) - new Date(a.createdAt || a.created_at))
+    .slice(0, 20)
+    .filter((product) => {
+      const matchesCategory = selectedCategory === 'all' || product.category === selectedCategory;
+      const normalizedSearch = searchQuery.trim().toLowerCase();
+      const matchesSearch =
+        !normalizedSearch ||
+        product.title.toLowerCase().includes(normalizedSearch) ||
+        product.description?.toLowerCase().includes(normalizedSearch) ||
+        (product.sellerName || product.seller_name || '').toLowerCase().includes(normalizedSearch);
+      return matchesCategory && matchesSearch;
+    });
 
   const handleSelectCategory = (categoryId) => {
     setSelectedCategory(categoryId);
@@ -439,17 +611,10 @@ const ShopPage = () => {
     return;
   }
 
-  const validCode = officerCode.trim()
-    ? (validOfficerCodes.length > 0
-        ? validOfficerCodes.some((c) => c.code === officerCode.trim())
-        : OFFICERS.some((o) => o.code === officerCode.trim()))
-    : false;
-  const officer = validCode
-    ? OFFICERS.find((o) => o.code === officerCode) || { name: officerCode, code: officerCode }
-    : null;
+  const officer = OFFICERS.find(o => o.code === officerCode) || null;
 
-  if (loanIsGuaranteed && !validCode) {
-    toast.error('Please enter a valid officer code or member code');
+  if (loanIsGuaranteed && !officer) {
+    toast.error('Please enter a valid officer code for guaranteed loan');
     return;
   }
 
@@ -470,7 +635,6 @@ const ShopPage = () => {
     formData.append('officer_code', officerCode || '');
     formData.append('officer_name', officer?.name || '');
     formData.append('serial_number', serialNumber || '');
-    formData.append('buyer_name', buyerName.trim());
     
     // Only send file for collateral-backed
     if (!loanIsGuaranteed && collateralImage) {
@@ -540,291 +704,419 @@ const ShopPage = () => {
   return (
     <div className="min-h-screen bg-[#F7FAF3] px-4 py-8 sm:px-6 lg:px-8">
       <Toaster position="top-right" />
+      
+{/* Top Navigation Bar */}
+       <nav className="sticky top-0 z-40 bg-white/90 backdrop-blur border-b border-slate-200 mb-6">
+         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+           {/* Mobile top bar - hamburger on left, cart on right */}
+           <div className="flex md:hidden items-center justify-between py-2">
+             <button
+               type="button"
+               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+               className="p-2 text-[#172B12]"
+             >
+               {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+             </button>
+             <Button
+               onClick={() => setCartOpen(true)}
+               className="bg-white text-[#172B12] border border-[#172B12] hover:bg-[#ECF8E9] relative"
+             >
+               <ShoppingCart className="h-4 w-4 mr-2" />
+               Cart ({cart.length})
+             </Button>
+           </div>
+           
+           {/* Desktop/Tablet: Navigation */}
+           <div className="hidden md:flex items-center justify-between h-16">
+             {/* Left section - All Categories with side nav */}
+             <div className="flex flex-col">
+               <div className="flex items-center gap-2">
+                 <div className="relative">
+                   <button
+                     type="button"
+                     onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                     className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-sm font-medium transition ${selectedCategory === 'all' ? 'bg-[#172B12] text-white' : 'bg-white text-[#172B12] border border-slate-200 hover:bg-[#ECF8E9]'}`}
+                   >
+                     <Menu className="h-4 w-4" />
+                     All Categories
+                   </button>
+                   
+                   {/* Side navigation sheet for all categories */}
+                   {mobileMenuOpen && (
+                     <div className="absolute left-0 top-full mt-2 w-80 max-h-96 bg-white border border-slate-200 rounded-lg shadow-lg p-4 overflow-y-auto">
+                       <div className="flex flex-col gap-2">
+                         <button
+                           type="button"
+                           onClick={() => { handleSelectCategory('all'); setMobileMenuOpen(false); }}
+                           className={`px-3 py-2 rounded-full text-sm font-medium text-left transition ${selectedCategory === 'all' ? 'bg-[#172B12] text-white' : 'bg-white text-[#172B12] border border-slate-200 hover:bg-[#ECF8E9]'}`}
+                         >
+                           All Categories
+                         </button>
+                         {categories.filter(c => c.id !== 'quick-loan').map((category) => {
+                           const Icon = ICON_MAP[category.id] || ICON_MAP.default;
+                           return (
+                             <button
+                               key={category.id}
+                               type="button"
+                               onClick={() => { handleSelectCategory(category.id); setMobileMenuOpen(false); }}
+                               className={`flex items-center gap-2 px-3 py-2 rounded-full text-sm font-medium text-left transition ${selectedCategory === category.id ? 'bg-[#172B12] text-white' : 'bg-white text-[#172B12] border border-slate-200 hover:bg-[#ECF8E9]'}`}
+                             >
+                               <Icon className="h-4 w-4" />
+                               {category.name}
+                             </button>
+                           );
+                         })}
+                       </div>
+                     </div>
+                   )}
+                 </div>
+                 
+                 {/* Show only first 5 popular categories inline */}
+                 {categories.filter(c => c.id !== 'quick-loan').slice(0, 5).map((category) => {
+                   const Icon = ICON_MAP[category.id] || ICON_MAP.default;
+                   return (
+                     <button
+                       key={category.id}
+                       type="button"
+                       onClick={() => handleSelectCategory(category.id)}
+                       className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition ${selectedCategory === category.id ? 'bg-[#172B12] text-white' : 'bg-white text-[#172B12] border border-slate-200 hover:bg-[#ECF8E9]'}`}
+                     >
+                       <Icon className="h-4 w-4" />
+                       {category.name}
+                     </button>
+                   );
+                 })}
+               </div>
+               
+               {/* Search bar below categories */}
+               <div className="flex items-center gap-2 mt-3">
+                 <Input
+                   value={searchQuery}
+                   onChange={(event) => setSearchQuery(event.target.value)}
+                   placeholder="Search products, sellers, or descriptions"
+                   className="w-64 rounded-full border border-slate-300 bg-[#F7FAF3] px-4 py-2 text-sm focus:border-[#2B6F38] focus:ring-2 focus:ring-[#2B6F38]/20"
+                 />
+                 <Button
+                   type="button"
+                   onClick={() => setSearchQuery(searchQuery)}
+                   className="bg-[#172B12] text-white hover:bg-[#0f2409] rounded-full px-4"
+                 >
+                   <Search className="h-4 w-4" />
+                 </Button>
+               </div>
+             </div>
+             
+             {/* Cart button - on the right for desktop */}
+             <div className="flex items-center gap-2">
+               <Button
+                 onClick={() => setCartOpen(true)}
+                 className="bg-white text-[#172B12] border border-[#172B12] hover:bg-[#ECF8E9] relative"
+               >
+                 <ShoppingCart className="h-4 w-4 mr-2" />
+                 Cart ({cart.length})
+               </Button>
+             </div>
+           </div>
+           
+           {/* Mobile: Search and category dropdown - scrollable */}
+           {mobileMenuOpen && (
+             <div className="md:hidden pb-4 space-y-4 overflow-y-auto max-h-96 w-full">
+               <div className="flex items-center gap-2">
+                 <Input
+                   value={searchQuery}
+                   onChange={(event) => setSearchQuery(event.target.value)}
+                   placeholder="Search products, sellers, or descriptions"
+                   className="flex-1 rounded-full border border-slate-300 bg-[#F7FAF3] px-4 py-2 text-sm focus:border-[#2B6F38] focus:ring-2 focus:ring-[#2B6F38]/20"
+                 />
+                 <Button
+                   type="button"
+                   onClick={() => setSearchQuery(searchQuery)}
+                   className="bg-[#172B12] text-white hover:bg-[#0f2409] rounded-full px-4"
+                 >
+                   <Search className="h-4 w-4" />
+                 </Button>
+               </div>
+               <div className="flex flex-col gap-2 max-h-64 overflow-y-auto">
+                 <button
+                   type="button"
+                   onClick={() => { handleSelectCategory('all'); setMobileMenuOpen(false); }}
+                   className={`px-3 py-2 rounded-full text-sm font-medium text-left transition ${selectedCategory === 'all' ? 'bg-[#172B12] text-white' : 'bg-white text-[#172B12] border border-slate-200 hover:bg-[#ECF8E9]'}`}
+                 >
+                   All Categories
+                 </button>
+                 {categories.filter(c => c.id !== 'quick-loan').map((category) => {
+                   const Icon = ICON_MAP[category.id] || ICON_MAP.default;
+                   return (
+                     <button
+                       key={category.id}
+                       type="button"
+                       onClick={() => { handleSelectCategory(category.id); setMobileMenuOpen(false); }}
+                       className={`flex items-center gap-2 px-3 py-2 rounded-full text-sm font-medium text-left transition ${selectedCategory === category.id ? 'bg-[#172B12] text-white' : 'bg-white text-[#172B12] border border-slate-200 hover:bg-[#ECF8E9]'}`}
+                     >
+                       <Icon className="h-4 w-4" />
+                       {category.name}
+                     </button>
+                   );
+                 })}
+               </div>
+             </div>
+           )}
+         </div>
+       </nav>
+
       <div className="mx-auto max-w-7xl space-y-10">
-        <section className="grid gap-8 lg:grid-cols-[1.45fr_0.95fr]">
-          <div className="relative overflow-hidden rounded-[32px] border border-[#D8E4D3] bg-gradient-to-br from-[#F5FBF2] via-white to-[#EFF6ED] p-10 shadow-sm">
-            <div className="space-y-8">
-              <div className="max-w-3xl space-y-6">
-                <p className="text-sm uppercase tracking-[0.3em] text-[#2B6F38] font-semibold">Group marketplace</p>
-                <h1 className="text-5xl font-semibold tracking-tight text-[#172B12]">Buy, sell and access fast member loans in one place.</h1>
-                <p className="text-base leading-8 text-[#4B5A45]">
-                  Discover trusted seller listings from our community, place purchase requests, or request a quick loan when cash is needed fast.
-                </p>
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-1">
-                <Button
-                  onClick={() => navigate(isAuthenticated ? '/dashboard' : '/login')}
-                  className="min-w-[160px] bg-[#172B12] text-white hover:bg-[#0f2409]"
-                >
-                  Go to dashboard
-                </Button>
-              </div>
-
-              <div className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-[#4B5A45]">Search the marketplace</p>
-                    <h2 className="text-xl font-semibold text-[#172B12]">Find products from members</h2>
-                  </div>
-                  <Badge variant="secondary">{visibleProducts.length} matches</Badge>
-                </div>
-                <div className="mt-5">
-                  <Input
-                    value={searchQuery}
-                    onChange={(event) => setSearchQuery(event.target.value)}
-                    placeholder="Search products, sellers, or descriptions"
-                    className="w-full rounded-3xl border border-slate-300 bg-[#F7FAF3] px-4 py-3 text-sm text-slate-700 shadow-sm focus:border-[#2B6F38] focus:ring-2 focus:ring-[#2B6F38]/20"
-                  />
-                </div>
-              </div>
-            </div>
-            <div className="pointer-events-none absolute right-6 top-6 hidden h-32 w-32 rounded-full bg-[#D8E4D3]/60 blur-2xl md:block" />
-          </div>
-
-          <aside className="space-y-6">
-            <Card className="border border-slate-200 bg-white">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-xl">
-                  <Sparkles className="h-5 w-5 text-[#2B6F38]" /> Quick loan service
-                </CardTitle>
-                <CardDescription>
-                  Fast funding for urgent buyer needs, even before registration.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-[#4B5A45]">
-                  Request a quick loan to cover urgent purchases or keep your business moving while you wait for buyer payments.
-                </p>
-              </CardContent>
-              <CardFooter>
-                <Button onClick={() => setQuickLoanOpen(true)} className="bg-[#172B12] text-white hover:bg-[#0f2409]">Request quick loan</Button>
-              </CardFooter>
-            </Card>
-
-            <Card className="border border-slate-200 bg-white">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-xl">
-                  <ShoppingCart className="h-5 w-5 text-[#2B6F38]" /> Sell products
-                </CardTitle>
-                <CardDescription>
-                  List your products and reach buyers across the group marketplace.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-[#4B5A45]">
-                  Create a listing quickly and keep your inventory visible to the community.
-                </p>
-              </CardContent>
-              <CardFooter>
-                <Button
-                  onClick={() => {
-                    if (!isAuthenticated) {
-                      navigate('/login');
-                    } else {
-                      setAddProductOpen(true);
-                    }
-                  }}
-                  className="bg-[#172B12] text-white hover:bg-[#0f2409]"
-                >
-                  {isAuthenticated ? 'List a product' : 'Login to sell'}
-                </Button>
-              </CardFooter>
-            </Card>
-
-            <Card className="border border-slate-200 bg-white">
-              <CardHeader>
-                <CardTitle className="text-lg">Popular categories</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {categories.slice(0, 4).map((category) => {
-                    const Icon = ICON_MAP[category.id] || ICON_MAP.default;
-                    const count = products.filter((product) => product.category === category.id).length;
-                    return (
-                      <button
-                        key={category.id}
-                        type="button"
-                        onClick={() => handleSelectCategory(category.id)}
-                        className="flex w-full items-center justify-between rounded-3xl border border-slate-200 bg-[#F7FAF3] px-4 py-3 text-left text-sm font-medium text-[#1B3A16] hover:border-[#2B6F38]/70"
-                      >
-                        <span className="flex items-center gap-3">
-                          <Icon className="h-4 w-4 text-[#2B6F38]" />
-                          {category.name}
-                        </span>
-                        <Badge variant="secondary">{category.id === 'quick-loan' ? 'Service' : `${count}`}</Badge>
-                      </button>
-                    );
-                  })}
-                </div>
-              </CardContent>
-            </Card>
-          </aside>
-        </section>
-
-        <section className="grid gap-6 lg:grid-cols-[1.3fr_0.95fr]">
-          <div className="space-y-6">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-sm uppercase tracking-[0.3em] text-[#2B6F38] font-semibold">Explore by category</p>
-                <h2 className="text-3xl font-semibold text-[#172B12]">Shop by collection</h2>
-              </div>
-              {isAdmin && (
-                <Button onClick={() => setAddCategoryOpen(true)} className="bg-[#172B12] text-white hover:bg-[#0f2409]">
-                  <Plus className="mr-2 h-4 w-4" /> Add category
-                </Button>
-              )}
+        <div className="relative z-10 overflow-hidden rounded-[32px] border border-[#D8E4D3] p-10 shadow-sm" style={{ backgroundImage: "url('/hero_bg_img.jpeg')", backgroundSize: "cover", backgroundPosition: "center", backgroundColor: "#F5FBF2" }}>
+          <div className="absolute inset-0 bg-black/20 rounded-[32px]" />
+          <div className="relative space-y-8">
+            <div className="max-w-3xl space-y-6">
+              <p className="text-sm uppercase tracking-[0.3em] text-[#D8E4D3] font-semibold">Group marketplace</p>
+              <h1 className="text-5xl font-semibold tracking-tight text-white drop-shadow-lg">Buy, sell and access fast member loans in one place.</h1>
+              <p className="text-base leading-8 text-white drop-shadow-md">
+                Discover trusted seller listings from our community, place purchase requests, or request a quick loan when cash is needed fast.
+              </p>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              <button
-                type="button"
-                onClick={() => handleSelectCategory('all')}
-                className={`rounded-[28px] border px-6 py-5 text-left transition ${selectedCategory === 'all' ? 'border-[#2B6F38] bg-[#ECF8E9]' : 'border-slate-200 bg-white hover:border-[#2B6F38]/60'}`}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Button
+                onClick={() => navigate(isAuthenticated ? '/dashboard' : '/login')}
+                className="min-w-[160px] bg-[#172B12] text-white hover:bg-[#0f2409]"
               >
-                <p className="text-sm font-semibold text-[#1B3A16]">All categories</p>
-                <p className="mt-2 text-xs text-[#4B5A45]">{products.length} listings available</p>
-              </button>
-
-              {categories.map((category) => {
-                const Icon = ICON_MAP[category.id] || ICON_MAP.default;
-                const count = products.filter((product) => product.category === category.id).length;
-                return (
-                  <button
-                    key={category.id}
-                    type="button"
-                    onClick={() => handleSelectCategory(category.id)}
-                    className={`rounded-[28px] border px-6 py-5 text-left transition ${selectedCategory === category.id ? 'border-[#2B6F38] bg-[#ECF8E9]' : 'border-slate-200 bg-white hover:border-[#2B6F38]/60'}`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <Icon className="h-5 w-5 text-[#2B6F38]" />
-                      <span className="font-semibold text-[#1B3A16]">{category.name}</span>
-                    </div>
-                    <p className="mt-2 text-xs text-[#4B5A45]">{category.id === 'quick-loan' ? 'Quick loan service' : `${count} products`}</p>
-                  </button>
-                );
-              })}
+                Go to dashboard
+              </Button>
+              <Button
+                onClick={() => setCartOpen(true)}
+                className="min-w-[160px] bg-white text-[#172B12] border border-[#172B12] hover:bg-[#ECF8E9] relative"
+              >
+                <ShoppingCart className="h-4 w-4 mr-2" />
+                Cart ({cart.length})
+              </Button>
             </div>
           </div>
+          <div className="pointer-events-none absolute right-6 top-6 hidden h-32 w-32 rounded-full bg-[#D8E4D3]/60 blur-2xl md:block" />
+        </div>
 
-          <Card className="border border-slate-200 bg-white p-6 shadow-sm">
-            <CardHeader>
-              <CardTitle className="text-lg">How it works</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-5 text-sm text-[#4B5A45]">
-              <div className="space-y-3 rounded-3xl border border-slate-200 bg-[#F7FAF3] p-4">
-                <p className="font-semibold text-[#172B12]">Search and choose</p>
-                <p>Use the search bar and category cards to find the products you need.</p>
-              </div>
-              <div className="space-y-3 rounded-3xl border border-slate-200 bg-[#F7FAF3] p-4">
-                <p className="font-semibold text-[#172B12]">Contact the seller</p>
-                <p>Submit a purchase request and the seller will contact you by phone.</p>
-              </div>
-              <div className="space-y-3 rounded-3xl border border-slate-200 bg-[#F7FAF3] p-4">
-                <p className="font-semibold text-[#172B12]">Need money now?</p>
-                <p>Request a quick loan and submit your request to the treasurer for approval. You can download the agreement manually after submitting.</p>
-              </div>
-            </CardContent>
-          </Card>
-        </section>
+        <Card className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-xl">
+              <Sparkles className="h-5 w-5 text-[#2B6F38]" /> Quick loan service
+            </CardTitle>
+            <CardDescription>
+              Fast funding for urgent buyer needs, even before registration.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-[#4B5A45]">
+              Request a quick loan to cover urgent purchases or keep your business moving while you wait for buyer payments.
+            </p>
+          </CardContent>
+          <CardFooter>
+            <Button onClick={() => setQuickLoanOpen(true)} className="bg-[#172B12] text-white hover:bg-[#0f2409]">Request quick loan</Button>
+          </CardFooter>
+        </Card>
+
+        <Card className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
+          <CardHeader>
+            <CardTitle className="text-lg">Browse by category</CardTitle>
+            <CardDescription>Small product previews grouped by category. Scroll sideways to view more items.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-5">
+              {categories
+                .filter((category) => category.id !== 'quick-loan')
+                .map((category) => {
+                  const categoryProducts = products.filter((product) => product.category === category.id);
+                  const visibleProducts = categoryProducts.slice(0, 6);
+                  const Icon = ICON_MAP[category.id] || ICON_MAP.default;
+
+                  return (
+                    <div key={category.id} className="space-y-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <Icon className="h-4 w-4 shrink-0 text-[#2B6F38]" />
+                          <p className="truncate text-sm font-semibold text-[#1B3A16]">{category.name}</p>
+                        </div>
+                        <Badge variant="secondary">{categoryProducts.length}</Badge>
+                      </div>
+
+                      {categoryProducts.length === 0 ? (
+                        <div className="rounded-3xl border border-dashed border-slate-200 bg-[#F7FAF3] px-4 py-5 text-sm text-[#4B5A45]">
+                          No products in this category yet.
+                        </div>
+                      ) : (
+                        <>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                const row = event.currentTarget.closest('[data-product-row]');
+                                row?.scrollBy({ left: -360, behavior: 'smooth' });
+                              }}
+                              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-lg font-semibold text-[#172B12] hover:bg-[#ECF8E9]"
+                              aria-label={`Scroll ${category.name} products left`}
+                            >
+                              ‹
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                const row = event.currentTarget.closest('[data-product-row]');
+                                row?.scrollBy({ left: 360, behavior: 'smooth' });
+                              }}
+                              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-lg font-semibold text-[#172B12] hover:bg-[#ECF8E9]"
+                              aria-label={`Scroll ${category.name} products right`}
+                            >
+                              ›
+                            </button>
+                          </div>
+
+                          <div
+                            data-product-row
+                            className="flex snap-x snap-mandatory gap-3 overflow-x-auto scroll-smooth pb-2"
+                          >
+                            {visibleProducts.map((product) => (
+                              <button
+                                key={product.id}
+                                type="button"
+                                onClick={() => handleOpenPurchase(product)}
+                                className="snap-start shrink-0 rounded-3xl border border-slate-200 bg-white p-3 text-left shadow-sm transition hover:border-[#2B6F38]/70"
+                                style={{ width: '132px' }}
+                              >
+                                {product.image_url ? (
+                                  <div className="overflow-hidden rounded-2xl bg-[#F4F8EF]">
+                                    <img
+                                      src={getImageUrl(product.image_url)}
+                                      alt={product.title}
+                                      className="h-20 w-full object-cover"
+                                    />
+                                  </div>
+                                ) : (
+                                  <div className="mb-3 flex h-20 items-center justify-center rounded-2xl bg-[#F4F8EF] text-xs font-medium text-[#4B5A45]">
+                                    No image
+                                  </div>
+                                )}
+                                <p className="mt-2 line-clamp-2 text-xs font-semibold leading-4 text-[#172B12]">{product.title}</p>
+                                <p className="mt-1 text-xs font-semibold text-[#2B6F38]">UGX {Number(product.price).toLocaleString()}</p>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    addToCart(product);
+                                  }}
+                                  className="mt-1 text-xs text-[#172B12] hover:text-[#2B6F38]"
+                                >
+                                  Add to Cart
+                                </button>
+                              </button>
+                            ))}
+
+                            {categoryProducts.length > 6 && (
+                              <button
+                                type="button"
+                                onClick={() => handleSelectCategory(category.id)}
+                                className="snap-start flex h-full min-h-[124px] shrink-0 items-center justify-center rounded-3xl border border-[#2B6F38]/30 bg-[#ECF8E9] px-4 text-center text-sm font-semibold text-[#172B12] hover:bg-[#2B6F38] hover:text-white"
+                                style={{ width: '132px' }}
+                              >
+                                See more
+                              </button>
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-xl">
+              <ShoppingCart className="h-5 w-5 text-[#2B6F38]" /> Sell products
+            </CardTitle>
+            <CardDescription>
+              List your products and reach buyers across the group marketplace.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-[#4B5A45]">
+              Create a listing quickly and keep your inventory visible to the community.
+            </p>
+          </CardContent>
+          <CardFooter>
+            <Button
+              onClick={() => {
+                if (!isAuthenticated) {
+                  navigate('/login');
+                } else {
+                  setAddProductOpen(true);
+                }
+              }}
+              className="bg-[#172B12] text-white hover:bg-[#0f2409]"
+            >
+              {isAuthenticated ? 'List a product' : 'Login to sell'}
+            </Button>
+          </CardFooter>
+        </Card>
 
         <section className="space-y-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-3xl font-semibold text-[#172B12]">{selectedCategory === 'all' ? 'Latest marketplace items' : categoryMap[selectedCategory]?.name || 'Category'}</h2>
+              <h2 className="text-3xl font-semibold text-[#172B12]">New Products on Market</h2>
               <p className="text-sm text-[#4B5A45]">
-                {selectedCategory === 'all'
-                  ? 'Browse the latest listings from group members across every category.'
-                  : categoryMap[selectedCategory]?.description}
+                Latest products added by group members. Showing up to 20 most recent items.
               </p>
-            </div>
-            <div className="flex flex-wrap gap-3">
-              {isAuthenticated && selectedCategory !== 'quick-loan' && (
-                <Button onClick={() => setAddProductOpen(true)} className="bg-[#172B12] text-white hover:bg-[#0f2409]">
-                  Add product in {categoryMap[selectedCategory]?.name || 'category'}
-                </Button>
-              )}
-              <Button onClick={() => handleSelectCategory('all')} className="bg-[#172B12] text-white hover:bg-[#0f2409]">Show all</Button>
             </div>
           </div>
 
-          {selectedCategory === 'quick-loan' ? (
-            <Card className="border border-slate-200 bg-white">
-              <CardContent>
-                <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-                  <div>
-                    <h3 className="text-xl font-semibold text-[#172B12]">Quick loans for everyone</h3>
-                    <p className="mt-3 text-sm text-[#4B5A45]">
-                      Non-members can request a quick loan, and group members can promote this service as part of the marketplace offering.
-                    </p>
-                    <ul className="mt-4 space-y-3 text-sm text-[#4B5A45]">
-                      <li>• No registration required for initial loan requests.</li>
-                      <li>• Simple application form and fast review.</li>
-                      <li>• Loans are handled by the group as a service.</li>
-                    </ul>
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {recentProducts.length === 0 ? (
+              <Card className="border border-slate-200 bg-white shadow-sm">
+                <CardContent>
+                  <p className="text-sm text-[#4B5A45]">No products have been listed yet. Members can add products from their dashboard.</p>
+                </CardContent>
+              </Card>
+            ) : recentProducts.map((product) => (
+              <Card key={product.id} className="border border-slate-200 bg-white shadow-sm">
+                {product.image_url && (
+                  <div className="overflow-hidden rounded-t-[32px] bg-[#F4F8EF]">
+                    <img
+                      src={getImageUrl(product.image_url)}
+                      alt={product.title}
+                      className="h-56 w-full object-cover"
+                    />
                   </div>
-                  <div className="rounded-3xl border border-slate-200 bg-[#ECF8E9] p-6">
-                    <div className="flex items-center gap-3 text-[#2B6F38]">
-                      <FastForward className="h-5 w-5" />
-                      <span className="text-lg font-semibold">Start a loan request</span>
+                )}
+                <CardHeader className="space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <CardTitle className="text-lg">{product.title}</CardTitle>
+                      <CardDescription>{product.description}</CardDescription>
                     </div>
-                    <p className="mt-3 text-sm text-[#4B5A45]">Submit your details and we will reach out with terms and next steps.</p>
-                    <Button className="mt-5 w-full bg-[#172B12] text-white hover:bg-[#0f2409]" onClick={() => setQuickLoanOpen(true)}>
-                      Request quick loan
-                    </Button>
+                    <div className="text-right">
+                      <p className="text-sm text-[#4B5A45]">Price</p>
+                      <p className="text-xl font-semibold text-[#172B12]">UGX {Number(product.price).toLocaleString()}</p>
+                    </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {visibleProducts.length === 0 ? (
-                <Card className="border border-slate-200 bg-white shadow-sm">
-                  <CardContent>
-                    <p className="text-sm text-[#4B5A45]">No items have been listed in this category yet. Members can add a new product from the button above.</p>
-                  </CardContent>
-                </Card>
-              ) : visibleProducts.map((product) => (
-                <Card key={product.id} className="border border-slate-200 bg-white shadow-sm">
-                  {product.image_url && (
-                    <div className="overflow-hidden rounded-t-[32px] bg-[#F4F8EF]">
-                      <img
-                        src={getImageUrl(product.image_url)}
-                        alt={product.title}
-                        className="h-56 w-full object-cover"
-                      />
-                    </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-2 text-sm text-[#4B5A45]">
+                    <p>Seller: <span className="font-medium text-[#172B12]">{product.sellerName || product.seller_name || 'Member'}</span></p>
+                    <p className="text-xs text-[#6B7C61]">{new Date(product.createdAt || product.created_at).toLocaleDateString()}</p>
+                  </div>
+                </CardContent>
+                <CardFooter className="flex flex-wrap gap-3 border-t border-slate-200 pt-4">
+                  <Button size="sm" onClick={() => addToCart(product)} className="bg-[#172B12] text-white hover:bg-[#0f2409]">Add to Cart</Button>
+                  <Button size="sm" onClick={() => handleOpenPurchase(product)} className="bg-white text-[#172B12] border border-[#172B12] hover:bg-[#ECF8E9]">Buy now</Button>
+                  {isAuthenticated ? (
+                    <Badge variant="secondary">Member buyer</Badge>
+                  ) : (
+                    <Button size="sm" onClick={() => navigate('/login')} className="bg-[#172B12] text-white hover:bg-[#0f2409]">Login to buy</Button>
                   )}
-                  <CardHeader className="space-y-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <CardTitle className="text-lg">{product.title}</CardTitle>
-                        <CardDescription>{product.description}</CardDescription>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm text-[#4B5A45]">Price</p>
-                        <p className="text-xl font-semibold text-[#172B12]">UGX {Number(product.price).toLocaleString()}</p>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-2 text-sm text-[#4B5A45]">
-                      <p>Seller: <span className="font-medium text-[#172B12]">{product.sellerName || product.seller_name || 'Member'}</span></p>
-                      <p className="text-xs text-[#6B7C61]">{new Date(product.createdAt || product.created_at).toLocaleDateString()}</p>
-                    </div>
-                  </CardContent>
-                  <CardFooter className="flex flex-wrap gap-3 border-t border-slate-200 pt-4">
-                    <Button size="sm" onClick={() => handleOpenPurchase(product)} className="bg-[#172B12] text-white hover:bg-[#0f2409]">Buy now</Button>
-                    {isAuthenticated ? (
-                      <Badge variant="secondary">Member buyer</Badge>
-                    ) : (
-                      <Button size="sm" onClick={() => navigate('/login')} className="bg-[#172B12] text-white hover:bg-[#0f2409]">Login to buy</Button>
-                    )}
-                  </CardFooter>
-                </Card>
-              ))}
-            </div>
-          )}
+                </CardFooter>
+              </Card>
+            ))}
+          </div>
         </section>
       </div>
 
@@ -1109,6 +1401,79 @@ const ShopPage = () => {
               {orderSubmitting ? 'Sending request...' : 'Send purchase request'}
             </Button>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={cartOpen} onOpenChange={setCartOpen}>
+        <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Shopping Cart</DialogTitle>
+            <DialogDescription>Review your cart and checkout. Orders will be sent to each seller separately.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 flex-1">
+            {cart.length === 0 ? (
+              <p className="text-sm text-[#4B5A45]">Your cart is empty. Add products to get started.</p>
+            ) : (
+              <>
+                <div className="space-y-4">
+                  {Object.entries(getCartItemsBySeller()).map(([seller, items]) => (
+                    <div key={seller} className="rounded-lg border border-slate-200 p-3">
+                      <p className="text-sm font-semibold text-[#172B12]">Seller: {seller}</p>
+                      <p className="text-xs text-[#6B7C61] mb-2">Total: UGX {items.reduce((sum, item) => sum + item.product.price * item.quantity, 0).toLocaleString()}</p>
+                      {items.map(item => (
+                        <div key={item.productId} className="flex items-center justify-between py-2 border-t border-slate-100">
+                          <div className="flex-1">
+                            <p className="text-sm font-medium text-[#172B12]">{item.product.title}</p>
+                            <p className="text-xs text-[#4B5A45]">UGX {Number(item.product.price).toLocaleString()} x {item.quantity}</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => updateCartQuantity(item.productId, item.quantity - 1)}
+                              className="px-2 py-1 text-xs border border-slate-300 rounded"
+                            >-</button>
+                            <span className="text-xs px-2">{item.quantity}</span>
+                            <button
+                              type="button"
+                              onClick={() => updateCartQuantity(item.productId, item.quantity + 1)}
+                              className="px-2 py-1 text-xs border border-slate-300 rounded"
+                            >+</button>
+                            <button
+                              type="button"
+                              onClick={() => removeFromCart(item.productId)}
+                              className="ml-2 text-xs text-red-600 hover:text-red-800"
+                            >Remove</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+                <div className="border-t border-slate-200 pt-4">
+                  <p className="text-lg font-semibold text-[#172B12]">Grand Total: UGX {getCartTotal().toLocaleString()}</p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="cart-name" className="text-sm font-medium text-slate-700">Your name</Label>
+                  <Input id="cart-name" value={cartBuyerName} onChange={(event) => setCartBuyerName(event.target.value)} placeholder="Your name" />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="cart-email" className="text-sm font-medium text-slate-700">Email</Label>
+                  <Input id="cart-email" value={cartBuyerEmail} onChange={(event) => setCartBuyerEmail(event.target.value)} placeholder="you@example.com" />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="cart-phone" className="text-sm font-medium text-slate-700">Phone number</Label>
+                  <Input id="cart-phone" value={cartBuyerPhone} onChange={(event) => setCartBuyerPhone(event.target.value)} placeholder="e.g. 0771 234567" required />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="cart-note" className="text-sm font-medium text-slate-700">Message to sellers</Label>
+                  <Textarea id="cart-note" value={cartBuyerNote} onChange={(event) => setCartBuyerNote(event.target.value)} placeholder="Write a message to all sellers" rows={3} />
+                </div>
+                <Button onClick={handleCartCheckout} className="bg-[#172B12] text-white hover:bg-[#0f2409]" disabled={cart.length === 0}>
+                  {orderSubmitting ? 'Sending requests...' : `Send orders to ${Object.keys(getCartItemsBySeller()).length} seller(s)`}
+                </Button>
+              </>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </div>

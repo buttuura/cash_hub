@@ -503,7 +503,7 @@ async def check_and_create_auto_loan(member_id: str) -> dict:
         "deposit_type": "savings",
         "status": "approved",
         "created_at": {"$gte": month_start.isoformat()}
-    })
+    }) 
     
     if savings_deposit:
         return {"auto_loan_created": False, "reason": "Member already deposited this month"}
