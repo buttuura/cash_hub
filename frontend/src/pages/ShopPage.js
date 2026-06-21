@@ -140,6 +140,12 @@ const slugify = (value) =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/(^-|-$)/g, '');
 
+const extractPersonName = (label) => {
+  if (!label) return 'Member';
+  const match = label.match(/^(?:Officer\s*-\s*)?(.+?)\s*\(/);
+  return match ? match[1].trim() : label;
+};
+
 const ShopPage = () => {
   const navigate = useNavigate();
   const { user, isAuthenticated, isAdmin } = useAuth();
@@ -331,7 +337,8 @@ const ShopPage = () => {
 
   const handleDownloadLoanAgreement = async () => {
     if (!loanRequestData) return;
-    const officer = OFFICERS.find((o) => o.code === loanRequestData.officerCode) || null;
+    const officer = OFFICERS.find((o) => o.code === loanRequestData.officerCode)
+      || (loanRequestData.officer_name ? { name: loanRequestData.officer_name, code: loanRequestData.officerCode } : null);
     await exportLoanAgreementPDF(loanRequestData, officer, {
       download: true,
       collateralImage: collateralImagePreview,
@@ -606,7 +613,13 @@ const ShopPage = () => {
     return;
   }
 
-  const officer = OFFICERS.find(o => o.code === officerCode) || null;
+  const validEntry = validOfficerCodes.find(v => v.code === officerCode) || null;
+  const staticOfficer = OFFICERS.find(o => o.code === officerCode) || null;
+  const officer = validEntry
+    ? { name: extractPersonName(validEntry.label), code: validEntry.code }
+    : staticOfficer
+      ? { name: staticOfficer.name, code: staticOfficer.code }
+      : null;
 
   if (loanIsGuaranteed && !officer) {
     toast.error('Please enter a valid officer code for guaranteed loan');
@@ -630,6 +643,7 @@ const ShopPage = () => {
     formData.append('officer_code', officerCode || '');
     formData.append('officer_name', officer?.name || '');
     formData.append('serial_number', serialNumber || '');
+    formData.append('buyer_name', buyerName.trim() || '');
     
     // Only send file for collateral-backed
     if (!loanIsGuaranteed && collateralImage) {
