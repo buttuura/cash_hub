@@ -149,6 +149,24 @@ class ProductCreate(BaseModel):
     category: str
     image_url: Optional[str] = None
 
+class OrderCreate(BaseModel):
+    products: Optional[List[dict]] = None
+    productId: Optional[str] = None
+    productTitle: Optional[str] = None
+    productPrice: Optional[float] = None
+    sellerName: str
+    buyerId: Optional[str] = None
+    buyerName: Optional[str] = None
+    buyerEmail: Optional[str] = None
+    buyerPhone: Optional[str] = None
+    note: Optional[str] = None
+    total: Optional[float] = None
+    status: str = "pending"
+
+class OrderStatusUpdate(BaseModel):
+    status: str
+    notes: Optional[str] = None
+
 # ==================== PASSWORD HASHING ====================
 
 def hash_password(password: str) -> str:
@@ -746,6 +764,85 @@ async def list_products():
         product.pop("_id", None)
     return products
 
+@api_router.post("/orders")
+async def create_order(order: OrderCreate, user: Optional[dict] = Depends(get_current_user_optional)):
+    order_doc = {
+        "products": order.products,
+        "productId": order.productId,
+        "productTitle": order.productTitle,
+        "productPrice": order.productPrice,
+        "sellerName": order.sellerName,
+        "buyerId": order.buyerId,
+        "buyerName": order.buyerName,
+        "buyerEmail": order.buyerEmail,
+        "buyerPhone": order.buyerPhone,
+        "note": order.note,
+        "total": order.total,
+        "status": order.status,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    if user:
+        order_doc["buyerId"] = user["id"]
+        order_doc["created_by"] = user["id"]
+        if not order_doc.get("buyerName"):
+            order_doc["buyerName"] = user["name"]
+
+    result = await db.orders.insert_one(order_doc)
+    order_doc["id"] = str(result.inserted_id)
+    order_doc.pop("_id", None)
+    return order_doc
+
+@api_router.get("/orders")
+async def get_orders(user: Optional[dict] = Depends(get_current_user_optional)):
+    if not user:
+        return []
+
+    if user.get("role") in ["admin", "super_admin", "treasurer"]:
+        orders = await db.orders.find({}).sort("created_at", -1).to_list(1000)
+    else:
+        orders = await db.orders.find({
+            "$or": [
+                {"buyerId": user["id"]},
+                {"sellerName": user["name"]}
+            ]
+        }).sort("created_at", -1).to_list(1000)
+
+    for order in orders:
+        order["id"] = str(order["_id"])
+        order.pop("_id", None)
+    return orders
+
+@api_router.patch("/orders/{order_id}/status")
+async def update_order_status(order_id: str, data: OrderStatusUpdate, user: Optional[dict] = Depends(get_current_user_optional)):
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    order = await db.orders.find_one({"_id": ObjectId(order_id)})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    is_admin = user.get("role") in ["admin", "super_admin", "treasurer"]
+    is_seller = order.get("sellerName", "").lower() == user.get("name", "").lower()
+
+    if not is_admin and not is_seller:
+        raise HTTPException(status_code=403, detail="You can only update your own orders")
+
+    allowed_statuses = ["pending", "approved", "rejected"]
+    if data.status not in allowed_statuses:
+        raise HTTPException(status_code=400, detail=f"Status must be one of: {', '.join(allowed_statuses)}")
+
+    update_fields = {"status": data.status}
+    if data.notes:
+        update_fields["note"] = data.notes
+
+    await db.orders.update_one(
+        {"_id": ObjectId(order_id)},
+        {"$set": update_fields}
+    )
+
+    return {"message": f"Order {data.status}"}
+
 @api_router.post("/uploads")
 async def upload_media(
     file: UploadFile = File(...),
@@ -1231,7 +1328,7 @@ async def request_loan(loan: LoanRequest, user: dict = Depends(get_current_user)
 @api_router.get("/quick-loans/valid-codes")
 async def get_quick_loan_valid_codes(user: dict = Depends(get_current_user_optional)):
     member_cursor = db.users.find({"member_code": {"$exists": True, "$ne": None}}, {"member_code": 1, "name": 1})
-    members = await member_cursor.to_list(500)
+    members = await member_cursor.to_list(10000)
     member_codes = []
     for m in members:
         code = m.get("member_code")
@@ -1273,10 +1370,17 @@ async def request_quick_loan(
         raise HTTPException(status_code=400, detail="Quick loan amount must be positive")
 
     if is_guaranteed and not officer_code:
-        raise HTTPException(status_code=400, detail="Please select a loans officer for a guaranteed quick loan")
+        raise HTTPException(status_code=400, detail="Please select a loans officer or member code for a guaranteed quick loan")
 
     if not is_guaranteed and not collateral:
         raise HTTPException(status_code=400, detail="Please provide collateral details for a collateral-backed quick loan")
+
+    if is_guaranteed and officer_code:
+        code = officer_code.strip()
+        officer_match = next((o for o in OFFICERS if o["code"] == code), None)
+        member_match = await db.users.find_one({"member_code": code})
+        if not officer_match and not member_match:
+            raise HTTPException(status_code=400, detail="Invalid officer or member code. Please select a valid code from the list")
 
     collateral_image_url = None
     if collateral_image and collateral_image.filename:

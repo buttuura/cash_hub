@@ -197,22 +197,17 @@ const [withdrawalType, setWithdrawalType] = useState('savings');
     }
   }, [getAuthHeaders]);
 
-  const loadOrdersFromStorage = () => {
+  const fetchOrders = useCallback(async () => {
     try {
-      return JSON.parse(window.localStorage.getItem('cash_hub_orders') || '[]');
-    } catch (error) {
-      console.warn('Unable to load shop orders:', error);
-      return [];
+      const response = await axios.get(`${API_URL}/api/orders`, {
+        headers: getAuthHeaders(),
+      });
+      setOrders(response.data);
+    } catch (err) {
+      console.warn('Unable to load orders:', err);
+      setOrders([]);
     }
-  };
-
-  const saveOrdersToStorage = (orders) => {
-    window.localStorage.setItem('cash_hub_orders', JSON.stringify(orders));
-  };
-
-  const fetchOrders = useCallback(() => {
-    setOrders(loadOrdersFromStorage());
-  }, []);
+  }, [getAuthHeaders]);
 
   const sellerOrders = user?.name
     ? orders.filter((order) => (order.sellerName || '').toLowerCase() === user.name.toLowerCase())
@@ -245,13 +240,24 @@ const [withdrawalType, setWithdrawalType] = useState('savings');
     }
   }, [activeTab, fetchMyProducts, fetchOrders]);
 
-  const handleOrderStatusChange = (orderId, status) => {
-    const updated = orders.map((order) =>
-      order.id === orderId ? { ...order, status } : order
-    );
-    setOrders(updated);
-    saveOrdersToStorage(updated);
-    toast.success(`Order ${status === 'approved' ? 'approved' : 'rejected'} successfully.`);
+  const handleOrderStatusChange = async (orderId, status) => {
+    try {
+      await axios.patch(`${API_URL}/api/orders/${orderId}/status`, {
+        status,
+        notes: '',
+      }, {
+        headers: getAuthHeaders(),
+      });
+      setOrders((prev) =>
+        prev.map((order) =>
+          order.id === orderId ? { ...order, status } : order
+        )
+      );
+      toast.success(`Order ${status === 'approved' ? 'approved' : 'rejected'} successfully.`);
+    } catch (err) {
+      console.error('Failed to update order status:', err);
+      toast.error(err.response?.data?.detail || 'Failed to update order status');
+    }
   };
 
   const getImageUrl = (imageUrl) => {

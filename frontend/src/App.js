@@ -5,6 +5,7 @@ import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import Dashboard from './pages/Dashboard';
 import ShopPage from './pages/ShopPage';
+import CategoryPage from './pages/CategoryPage';
 import './App.css';
 
 // Protected Route Component
@@ -72,6 +73,7 @@ function AppRoutes() {
       />
       <Route path="/" element={<ShopPage />} />
       <Route path="/shop" element={<ShopPage />} />
+      <Route path="/category/:categoryId" element={<CategoryPage />} />
       <Route
         path="/dashboard"
         element={

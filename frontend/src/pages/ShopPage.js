@@ -15,7 +15,6 @@ import { exportLoanAgreementPDF } from '../utils/pdfExport';
 import { OFFICERS } from '../data/officers';
 
 const ICON_MAP = {
-  'quick-loan': FastForward,
   'food': ShoppingBag,
   'construction-materials': HardHat,
   'graphic-material': PenTool,
@@ -33,11 +32,6 @@ const ICON_MAP = {
 const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
 
 const DEFAULT_CATEGORIES = [
-  {
-    id: 'quick-loan',
-    name: 'Quick Loan',
-    description: 'Fast loan service for people who are not yet registered with us.',
-  },
   {
     id: 'food',
     name: 'Food',
@@ -150,7 +144,7 @@ const ShopPage = () => {
   const navigate = useNavigate();
   const { user, isAuthenticated, isAdmin } = useAuth();
   const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
-  const [selectedCategory, setSelectedCategory] = useState('quick-loan');
+  const [selectedCategory, setSelectedCategory] = useState('food');
   const [products, setProducts] = useState(DEFAULT_PRODUCTS);
   const [addCategoryOpen, setAddCategoryOpen] = useState(false);
   const [addProductOpen, setAddProductOpen] = useState(false);
@@ -220,19 +214,6 @@ const ShopPage = () => {
   const [orderSubmitting, setOrderSubmitting] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  const loadOrderRequests = () => {
-    try {
-      return JSON.parse(window.localStorage.getItem('cash_hub_orders') || '[]');
-    } catch (error) {
-      console.warn('Failed to load order requests', error);
-      return [];
-    }
-   };
-
-  const saveOrderRequests = (orders) => {
-    window.localStorage.setItem('cash_hub_orders', JSON.stringify(orders));
-  };
-
   const saveCart = (items) => {
     window.localStorage.setItem('cash_hub_cart', JSON.stringify(items));
   };
@@ -294,6 +275,12 @@ const ShopPage = () => {
     return sellers;
   };
 
+  const submitOrder = async (orderData) => {
+    const headers = { Authorization: `Bearer ${localStorage.getItem('access_token')}` };
+    const response = await axios.post(`${API_URL}/api/orders`, orderData, { headers });
+    return response.data;
+  };
+
   const handleCartCheckout = async () => {
     if (!cartBuyerName.trim() || !cartBuyerPhone.trim()) {
       toast.error('Please enter your name and phone number');
@@ -303,36 +290,37 @@ const ShopPage = () => {
     setOrderSubmitting(true);
     const sellersMap = getCartItemsBySeller();
 
-    Object.entries(sellersMap).forEach(([seller, items]) => {
-      const total = items.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
+    try {
+      await Promise.all(
+        Object.entries(sellersMap).map(([seller, items]) => {
+          const total = items.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
+          return submitOrder({
+            products: items.map(i => ({ productId: i.productId, quantity: i.quantity, title: i.product.title, price: i.product.price })),
+            sellerName: seller,
+            buyerName: cartBuyerName.trim(),
+            buyerEmail: cartBuyerEmail.trim(),
+            buyerPhone: cartBuyerPhone.trim(),
+            note: cartBuyerNote.trim(),
+            total: total,
+            status: 'pending',
+          });
+        })
+      );
 
-      const order = {
-        id: `order-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        products: items.map(i => ({ productId: i.productId, quantity: i.quantity, title: i.product.title, price: i.product.price })),
-        sellerName: seller,
-        buyerId: user?.id || null,
-        buyerName: cartBuyerName.trim(),
-        buyerEmail: cartBuyerEmail.trim(),
-        buyerPhone: cartBuyerPhone.trim(),
-        note: cartBuyerNote.trim(),
-        total: total,
-        status: 'pending',
-        createdAt: new Date().toISOString(),
-      };
-
-      const existingOrders = loadOrderRequests();
-      saveOrderRequests([order, ...existingOrders]);
-    });
-
-    setCart([]);
-    saveCart([]);
-    setCartBuyerName('');
-    setCartBuyerEmail('');
-    setCartBuyerPhone('');
-    setCartBuyerNote('');
-    setOrderSubmitting(false);
-    setCartOpen(false);
-    toast.success(`Orders sent to ${Object.keys(sellersMap).length} seller(s). They will contact you by phone.`);
+      setCart([]);
+      saveCart([]);
+      setCartBuyerName('');
+      setCartBuyerEmail('');
+      setCartBuyerPhone('');
+      setCartBuyerNote('');
+      setCartOpen(false);
+      toast.success(`Orders sent to ${Object.keys(sellersMap).length} seller(s). They will contact you by phone.`);
+    } catch (error) {
+      console.error('Failed to submit orders:', error);
+      toast.error(error.response?.data?.detail || 'Failed to submit orders');
+    } finally {
+      setOrderSubmitting(false);
+    }
   };
 
   const handleDownloadLoanAgreement = async () => {
@@ -361,7 +349,7 @@ const ShopPage = () => {
     setOfficerCode('');
   };
 
-  const handlePurchaseRequest = (e) => {
+  const handlePurchaseRequest = async (e) => {
     e.preventDefault();
 
     if (!purchaseName.trim() || !purchasePhone.trim()) {
@@ -374,32 +362,31 @@ const ShopPage = () => {
       return;
     }
 
-    const order = {
-      id: `order-${Date.now()}`,
-      productId: purchaseProduct.id,
-      productTitle: purchaseProduct.title,
-      productPrice: purchaseProduct.price,
-      sellerName: purchaseProduct.sellerName || purchaseProduct.seller_name || 'Member',
-      buyerId: user?.id || null,
-      buyerName: purchaseName.trim(),
-      buyerEmail: purchaseEmail.trim(),
-      buyerPhone: purchasePhone.trim(),
-      note: purchaseNote.trim(),
-      status: 'pending',
-      createdAt: new Date().toISOString(),
-    };
-
-    setOrderSubmitting(true);
-    const existingOrders = loadOrderRequests();
-    saveOrderRequests([order, ...existingOrders]);
-    setOrderSubmitting(false);
-
-    toast.success('Order request sent. The seller will contact you by phone.');
-    setPurchaseOpen(false);
-    setPurchaseName('');
-    setPurchaseEmail('');
-    setPurchasePhone('');
-    setPurchaseNote('');
+    try {
+      setOrderSubmitting(true);
+      await submitOrder({
+        productId: purchaseProduct.id,
+        productTitle: purchaseProduct.title,
+        productPrice: purchaseProduct.price,
+        sellerName: purchaseProduct.sellerName || purchaseProduct.seller_name || 'Member',
+        buyerName: purchaseName.trim(),
+        buyerEmail: purchaseEmail.trim(),
+        buyerPhone: purchasePhone.trim(),
+        note: purchaseNote.trim(),
+        status: 'pending',
+      });
+      toast.success('Order request sent. The seller will contact you by phone.');
+      setPurchaseOpen(false);
+      setPurchaseName('');
+      setPurchaseEmail('');
+      setPurchasePhone('');
+      setPurchaseNote('');
+    } catch (error) {
+      console.error('Failed to submit purchase request:', error);
+      toast.error(error.response?.data?.detail || 'Failed to submit request');
+    } finally {
+      setOrderSubmitting(false);
+    }
   };
 
   const getImageUrl = (imageUrl) => {
@@ -468,13 +455,12 @@ const ShopPage = () => {
   }, {});
 
   const recentProducts = products
-    .sort((a, b) => new Date(b.createdAt || b.created_at) - new Date(a.createdAt || a.created_at))
-    .slice(0, 20)
-    .filter((product) => product.category !== 'quick-loan');
+    .sort((a, b) => new Date(b.createdAt || b.created_at) - new Date(a.createdAt || b.created_at))
+    .slice(0, 20);
 
   const visibleProducts = products
     .sort((a, b) => new Date(b.createdAt || b.created_at) - new Date(a.createdAt || a.created_at))
-    .slice(0, 20)
+    .slice(0, 100)
     .filter((product) => {
       const matchesCategory = selectedCategory === 'all' || product.category === selectedCategory;
       const normalizedSearch = searchQuery.trim().toLowerCase();
@@ -486,11 +472,8 @@ const ShopPage = () => {
       return matchesCategory && matchesSearch;
     });
 
-  const handleSelectCategory = (categoryId) => {
+  const applyCategoryFilter = (categoryId) => {
     setSelectedCategory(categoryId);
-    if (categoryId === 'quick-loan') {
-      setQuickLoanOpen(true);
-    }
   };
 
   const handleAddCategory = (e) => {
@@ -753,41 +736,34 @@ const ShopPage = () => {
                    {/* Side navigation sheet for all categories */}
                    {mobileMenuOpen && (
                      <div className="absolute left-0 top-full mt-2 w-80 max-h-96 bg-white border border-slate-200 rounded-lg shadow-lg p-4 overflow-y-auto">
-                       <div className="flex flex-col gap-2">
-                         <button
-                           type="button"
-                           onClick={() => { handleSelectCategory('all'); setMobileMenuOpen(false); }}
-                           className={`px-3 py-2 rounded-full text-sm font-medium text-left transition ${selectedCategory === 'all' ? 'bg-[#172B12] text-white' : 'bg-white text-[#172B12] border border-slate-200 hover:bg-[#ECF8E9]'}`}
-                         >
-                           All Categories
-                         </button>
-                         {categories.filter(c => c.id !== 'quick-loan').map((category) => {
-                           const Icon = ICON_MAP[category.id] || ICON_MAP.default;
-                           return (
-                             <button
-                               key={category.id}
-                               type="button"
-                               onClick={() => { handleSelectCategory(category.id); setMobileMenuOpen(false); }}
-                               className={`flex items-center gap-2 px-3 py-2 rounded-full text-sm font-medium text-left transition ${selectedCategory === category.id ? 'bg-[#172B12] text-white' : 'bg-white text-[#172B12] border border-slate-200 hover:bg-[#ECF8E9]'}`}
-                             >
-                               <Icon className="h-4 w-4" />
-                               {category.name}
-                             </button>
-                           );
-                         })}
-                       </div>
+                         <div className="flex flex-col gap-2">
+                           {categories.map((category) => {
+                             const Icon = ICON_MAP[category.id] || Sparkles;
+                             return (
+                               <button
+                                 key={category.id}
+                                 type="button"
+                                 onClick={() => { navigate(`/category/${category.id}`); setMobileMenuOpen(false); }}
+                                 className={`flex items-center gap-2 px-3 py-2 rounded-full text-sm font-medium text-left transition ${selectedCategory === category.id ? 'bg-[#172B12] text-white' : 'bg-white text-[#172B12] border border-slate-200 hover:bg-[#ECF8E9]'}`}
+                               >
+                                 <Icon className="h-4 w-4" />
+                                 {category.name}
+                               </button>
+                             );
+                           })}
+                         </div>
                      </div>
                    )}
                  </div>
                  
                  {/* Show only first 5 popular categories inline */}
-                 {categories.filter(c => c.id !== 'quick-loan').slice(0, 5).map((category) => {
-                   const Icon = ICON_MAP[category.id] || ICON_MAP.default;
+                  {categories.slice(0, 5).map((category) => {
+                    const Icon = ICON_MAP[category.id] || Sparkles;
                    return (
                      <button
                        key={category.id}
                        type="button"
-                       onClick={() => handleSelectCategory(category.id)}
+                       onClick={() => applyCategoryFilter(category.id)}
                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition ${selectedCategory === category.id ? 'bg-[#172B12] text-white' : 'bg-white text-[#172B12] border border-slate-200 hover:bg-[#ECF8E9]'}`}
                      >
                        <Icon className="h-4 w-4" />
@@ -846,20 +822,20 @@ const ShopPage = () => {
                  </Button>
                </div>
                <div className="flex flex-col gap-2 max-h-64 overflow-y-auto">
-                 <button
-                   type="button"
-                   onClick={() => { handleSelectCategory('all'); setMobileMenuOpen(false); }}
-                   className={`px-3 py-2 rounded-full text-sm font-medium text-left transition ${selectedCategory === 'all' ? 'bg-[#172B12] text-white' : 'bg-white text-[#172B12] border border-slate-200 hover:bg-[#ECF8E9]'}`}
-                 >
-                   All Categories
-                 </button>
-                 {categories.filter(c => c.id !== 'quick-loan').map((category) => {
-                   const Icon = ICON_MAP[category.id] || ICON_MAP.default;
-                   return (
-                     <button
-                       key={category.id}
-                       type="button"
-                       onClick={() => { handleSelectCategory(category.id); setMobileMenuOpen(false); }}
+                           <button
+                             type="button"
+                             onClick={() => { setSelectedCategory('all'); setSearchQuery(''); setMobileMenuOpen(false); }}
+                             className={`px-3 py-2 rounded-full text-sm font-medium text-left transition bg-white text-[#172B12] border border-slate-200 hover:bg-[#ECF8E9]`}
+                           >
+                             All Categories
+                           </button>
+                  {categories.map((category) => {
+                     const Icon = ICON_MAP[category.id] || Sparkles;
+                    return (
+                      <button
+                        key={category.id}
+                        type="button"
+                                                onClick={() => { applyCategoryFilter(category.id); setMobileMenuOpen(false); }}
                        className={`flex items-center gap-2 px-3 py-2 rounded-full text-sm font-medium text-left transition ${selectedCategory === category.id ? 'bg-[#172B12] text-white' : 'bg-white text-[#172B12] border border-slate-200 hover:bg-[#ECF8E9]'}`}
                      >
                        <Icon className="h-4 w-4" />
@@ -923,6 +899,58 @@ const ShopPage = () => {
           </CardFooter>
         </Card>
 
+        {(selectedCategory !== 'all' || searchQuery.trim()) && (
+          <Card className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
+            <CardHeader>
+              <CardTitle className="text-lg">
+                {searchQuery.trim() ? `Search results for "${searchQuery.trim()}"` : (categories.find(c => c.id === selectedCategory)?.name || 'Products')}
+              </CardTitle>
+              <CardDescription>
+                {visibleProducts.length === 0 ? 'No products match your search or category.' : `${visibleProducts.length} product(s) found.`}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {visibleProducts.length === 0 ? (
+                <p className="text-sm text-[#4B5A45]">Try a different keyword or browse by category above.</p>
+              ) : (
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                  {visibleProducts.map((product) => (
+                    <Card key={product.id} className="border border-slate-200 bg-white shadow-sm">
+                      {product.image_url && (
+                        <div className="overflow-hidden rounded-t-[32px] bg-[#F4F8EF]">
+                          <img src={getImageUrl(product.image_url)} alt={product.title} className="h-56 w-full object-cover" />
+                        </div>
+                      )}
+                      <CardHeader className="space-y-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <CardTitle className="text-lg">{product.title}</CardTitle>
+                            <CardDescription>{product.description}</CardDescription>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-sm text-[#4B5A45]">Price</p>
+                            <p className="text-xl font-semibold text-[#172B12]">UGX {Number(product.price).toLocaleString()}</p>
+                          </div>
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-2 text-sm text-[#4B5A45]">
+                          <p>Seller: <span className="font-medium text-[#172B12]">{product.sellerName || product.seller_name || 'Member'}</span></p>
+                          <p className="text-xs text-[#6B7C61]">{new Date(product.createdAt || product.created_at).toLocaleDateString()}</p>
+                        </div>
+                      </CardContent>
+                      <CardFooter className="flex flex-wrap gap-3 border-t border-slate-200 pt-4">
+                        <Button size="sm" onClick={() => addToCart(product)} className="bg-[#172B12] text-white hover:bg-[#0f2409]">Add to Cart</Button>
+                        <Button size="sm" onClick={() => handleOpenPurchase(product)} className="bg-white text-[#172B12] border border-[#172B12] hover:bg-[#ECF8E9]">Buy now</Button>
+                      </CardFooter>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
         <Card className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
           <CardHeader>
             <CardTitle className="text-lg">Browse by category</CardTitle>
@@ -930,12 +958,11 @@ const ShopPage = () => {
           </CardHeader>
           <CardContent>
             <div className="space-y-5">
-              {categories
-                .filter((category) => category.id !== 'quick-loan')
-                .map((category) => {
+               {categories
+                 .map((category) => {
                   const categoryProducts = products.filter((product) => product.category === category.id);
                   const visibleProducts = categoryProducts.slice(0, 6);
-                  const Icon = ICON_MAP[category.id] || ICON_MAP.default;
+                  const Icon = ICON_MAP[category.id] || Sparkles;
 
                   return (
                     <div key={category.id} className="space-y-3">
@@ -1021,7 +1048,7 @@ const ShopPage = () => {
                             {categoryProducts.length > 6 && (
                               <button
                                 type="button"
-                                onClick={() => handleSelectCategory(category.id)}
+                                onClick={() => navigate(`/category/${category.id}`)}
                                 className="snap-start flex h-full min-h-[124px] shrink-0 items-center justify-center rounded-3xl border border-[#2B6F38]/30 bg-[#ECF8E9] px-4 text-center text-sm font-semibold text-[#172B12] hover:bg-[#2B6F38] hover:text-white"
                                 style={{ width: '132px' }}
                               >
@@ -1162,7 +1189,7 @@ const ShopPage = () => {
                 className="mt-2 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-[#2B6F38] focus:ring-2 focus:ring-[#2B6F38]/20 disabled:opacity-50"
                 disabled={uploadingProduct}
               >
-                {categories.filter((category) => category.id !== 'quick-loan').map((category) => (
+                 {categories.map((category) => (
                   <option key={category.id} value={category.id}>{category.name}</option>
                 ))}
               </select>
