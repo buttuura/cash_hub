@@ -232,11 +232,6 @@ const ShopPage = () => {
   };
 
   const addToCart = (product) => {
-    if (!isAuthenticated) {
-      toast.error('Please log in to add items to cart');
-      navigate('/login');
-      return;
-    }
     setCart(prev => {
       const existing = prev.find(item => item.productId === product.id);
       let newCart;
@@ -1108,11 +1103,7 @@ const ShopPage = () => {
                 <CardFooter className="flex flex-wrap gap-3 border-t border-slate-200 pt-4">
                   <Button size="sm" onClick={() => addToCart(product)} className="bg-[#172B12] text-white hover:bg-[#0f2409]">Add to Cart</Button>
                   <Button size="sm" onClick={() => handleOpenPurchase(product)} className="bg-white text-[#172B12] border border-[#172B12] hover:bg-[#ECF8E9]">Buy now</Button>
-                  {isAuthenticated ? (
-                    <Badge variant="secondary">Member buyer</Badge>
-                  ) : (
-                    <Button size="sm" onClick={() => navigate('/login')} className="bg-[#172B12] text-white hover:bg-[#0f2409]">Login to buy</Button>
-                  )}
+                  <Button size="sm" onClick={() => setCartOpen(true)} className="bg-[#172B12] text-white hover:bg-[#0f2409]">View cart</Button>
                 </CardFooter>
               </Card>
             ))}
