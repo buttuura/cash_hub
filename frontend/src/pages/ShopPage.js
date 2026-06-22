@@ -698,25 +698,25 @@ const ShopPage = () => {
       <Toaster position="top-right" />
       
 {/* Top Navigation Bar */}
-       <nav className="sticky top-0 z-40 bg-white/90 backdrop-blur border-b border-slate-200 mb-6">
-         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-           {/* Mobile top bar - hamburger on left, cart on right */}
-           <div className="flex md:hidden items-center justify-between py-2">
-             <button
-               type="button"
-               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-               className="p-2 text-[#172B12]"
-             >
-               {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
-             </button>
-             <Button
-               onClick={() => setCartOpen(true)}
-               className="bg-white text-[#172B12] border border-[#172B12] hover:bg-[#ECF8E9] relative"
-             >
-               <ShoppingCart className="h-4 w-4 mr-2" />
-               Cart ({cart.length})
-             </Button>
-           </div>
+        <nav className="sticky top-0 z-40 backdrop-blur border-b border-slate-200 mb-6">
+          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+            {/* Mobile top bar - hamburger on left, cart on right */}
+            <div className="flex md:hidden items-center justify-between py-2">
+              <button
+                type="button"
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className="p-2 text-[#172B12]"
+              >
+                {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+              </button>
+              <Button
+                onClick={() => setCartOpen(true)}
+                className="bg-white text-[#172B12] border border-[#172B12] hover:bg-[#ECF8E9] relative"
+              >
+                <ShoppingCart className="h-4 w-4 mr-2" />
+                Cart ({cart.length})
+              </Button>
+            </div>
            
            {/* Desktop/Tablet: Navigation */}
            <div className="hidden md:flex items-center justify-between h-16">
@@ -757,36 +757,36 @@ const ShopPage = () => {
                  </div>
                  
                  {/* Show only first 5 popular categories inline */}
-                  {categories.slice(0, 5).map((category) => {
-                    const Icon = ICON_MAP[category.id] || Sparkles;
-                   return (
-                     <button
-                       key={category.id}
-                       type="button"
-                       onClick={() => applyCategoryFilter(category.id)}
-                       className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition ${selectedCategory === category.id ? 'bg-[#172B12] text-white' : 'bg-white text-[#172B12] border border-slate-200 hover:bg-[#ECF8E9]'}`}
-                     >
-                       <Icon className="h-4 w-4" />
-                       {category.name}
-                     </button>
-                   );
-                 })}
+{categories.slice(0, 5).map((category) => {
+                     const Icon = ICON_MAP[category.id] || Sparkles;
+                    return (
+                      <button
+                        key={category.id}
+                        type="button"
+                        onClick={() => { navigate(`/category/${category.id}`); }}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition ${selectedCategory === category.id ? 'bg-[#172B12] text-white' : 'bg-white text-[#172B12] border border-slate-200 hover:bg-[#ECF8E9]'}`}
+                      >
+                        <Icon className="h-4 w-4" />
+                        {category.name}
+                      </button>
+                    );
+                  })}
                </div>
                
-               {/* Search bar below categories */}
-               <div className="flex items-center gap-2 mt-3">
-                 <Input
-                   value={searchQuery}
-                   onChange={(event) => setSearchQuery(event.target.value)}
-                   placeholder="Search products, sellers, or descriptions"
-                   className="w-64 rounded-full border border-slate-300 bg-[#F7FAF3] px-4 py-2 text-sm focus:border-[#2B6F38] focus:ring-2 focus:ring-[#2B6F38]/20"
-                 />
-                 <Button
-                   type="button"
-                   onClick={() => setSearchQuery(searchQuery)}
-                   className="bg-[#172B12] text-white hover:bg-[#0f2409] rounded-full px-4"
-                 >
-                   <Search className="h-4 w-4" />
+{/* Search bar below categories */}
+                <div className="flex items-center gap-2 mt-3">
+                  <Input
+                    value={searchQuery}
+                    onChange={(event) => setSearchQuery(event.target.value)}
+                    placeholder="Search products, sellers, or descriptions"
+                    className="w-64 rounded-full border border-slate-300 bg-[#F7FAF3] px-4 py-2 text-sm focus:border-[#2B6F38] focus:ring-2 focus:ring-[#2B6F38]/20"
+                  />
+                  <Button
+                    type="button"
+                    onClick={() => { if (searchQuery.trim()) navigate(`/category/all?search=${encodeURIComponent(searchQuery.trim())}`); }}
+                    className="bg-[#172B12] text-white hover:bg-[#0f2409] rounded-full px-4"
+                  >
+                    <Search className="h-4 w-4" />
                  </Button>
                </div>
              </div>
@@ -803,47 +803,47 @@ const ShopPage = () => {
              </div>
            </div>
            
-           {/* Mobile: Search and category dropdown - scrollable */}
-           {mobileMenuOpen && (
-             <div className="md:hidden pb-4 space-y-4 overflow-y-auto max-h-96 w-full">
-               <div className="flex items-center gap-2">
-                 <Input
-                   value={searchQuery}
-                   onChange={(event) => setSearchQuery(event.target.value)}
-                   placeholder="Search products, sellers, or descriptions"
-                   className="flex-1 rounded-full border border-slate-300 bg-[#F7FAF3] px-4 py-2 text-sm focus:border-[#2B6F38] focus:ring-2 focus:ring-[#2B6F38]/20"
-                 />
-                 <Button
-                   type="button"
-                   onClick={() => setSearchQuery(searchQuery)}
-                   className="bg-[#172B12] text-white hover:bg-[#0f2409] rounded-full px-4"
-                 >
-                   <Search className="h-4 w-4" />
-                 </Button>
-               </div>
-               <div className="flex flex-col gap-2 max-h-64 overflow-y-auto">
-                           <button
-                             type="button"
-                             onClick={() => { setSelectedCategory('all'); setSearchQuery(''); setMobileMenuOpen(false); }}
-                             className={`px-3 py-2 rounded-full text-sm font-medium text-left transition bg-white text-[#172B12] border border-slate-200 hover:bg-[#ECF8E9]`}
-                           >
-                             All Categories
-                           </button>
-                  {categories.map((category) => {
-                     const Icon = ICON_MAP[category.id] || Sparkles;
-                    return (
-                      <button
-                        key={category.id}
-                        type="button"
-                                                onClick={() => { applyCategoryFilter(category.id); setMobileMenuOpen(false); }}
-                       className={`flex items-center gap-2 px-3 py-2 rounded-full text-sm font-medium text-left transition ${selectedCategory === category.id ? 'bg-[#172B12] text-white' : 'bg-white text-[#172B12] border border-slate-200 hover:bg-[#ECF8E9]'}`}
-                     >
-                       <Icon className="h-4 w-4" />
-                       {category.name}
-                     </button>
-                   );
-                 })}
-               </div>
+{/* Mobile: Search and category dropdown - scrollable */}
+            {mobileMenuOpen && (
+              <div className="md:hidden pb-4 space-y-4 overflow-y-auto max-h-96 w-full">
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={searchQuery}
+                    onChange={(event) => setSearchQuery(event.target.value)}
+                    placeholder="Search products, sellers, or descriptions"
+                    className="flex-1 rounded-full border border-slate-300 bg-[#F7FAF3] px-4 py-2 text-sm focus:border-[#2B6F38] focus:ring-2 focus:ring-[#2B6F38]/20"
+                  />
+                  <Button
+                    type="button"
+                    onClick={() => { if (searchQuery.trim()) navigate(`/category/all?search=${encodeURIComponent(searchQuery.trim())}`); }}
+                    className="bg-[#172B12] text-white hover:bg-[#0f2409] rounded-full px-4"
+                  >
+                    <Search className="h-4 w-4" />
+                  </Button>
+                </div>
+                <div className="flex flex-col gap-2 max-h-64 overflow-y-auto">
+                              <button
+                                type="button"
+                                onClick={() => { navigate('/'); setMobileMenuOpen(false); }}
+                                className={`px-3 py-2 rounded-full text-sm font-medium text-left transition bg-white text-[#172B12] border border-slate-200 hover:bg-[#ECF8E9]`}
+                              >
+                                All Categories
+                              </button>
+                    {categories.map((category) => {
+                       const Icon = ICON_MAP[category.id] || Sparkles;
+                      return (
+                        <button
+                         key={category.id}
+                         type="button"
+                         onClick={() => { navigate(`/category/${category.id}`); setMobileMenuOpen(false); }}
+                         className={`flex items-center gap-2 px-3 py-2 rounded-full text-sm font-medium text-left transition ${selectedCategory === category.id ? 'bg-[#172B12] text-white' : 'bg-white text-[#172B12] border border-slate-200 hover:bg-[#ECF8E9]'}`}
+                       >
+                         <Icon className="h-4 w-4" />
+                         {category.name}
+                       </button>
+                     );
+                   })}
+                </div>
              </div>
            )}
          </div>
@@ -869,11 +869,11 @@ const ShopPage = () => {
                 Go to dashboard
               </Button>
               <Button
-                onClick={() => setCartOpen(true)}
+                onClick={() => setQuickLoanOpen(true)}
                 className="min-w-[160px] bg-white text-[#172B12] border border-[#172B12] hover:bg-[#ECF8E9] relative"
               >
-                <ShoppingCart className="h-4 w-4 mr-2" />
-                Cart ({cart.length})
+                <FastForward className="h-4 w-4 mr-2" />
+                Quick Loan
               </Button>
             </div>
           </div>
@@ -898,59 +898,7 @@ const ShopPage = () => {
             <Button onClick={() => setQuickLoanOpen(true)} className="bg-[#172B12] text-white hover:bg-[#0f2409]">Request quick loan</Button>
           </CardFooter>
         </Card>
-
-        {(selectedCategory !== 'all' || searchQuery.trim()) && (
-          <Card className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
-            <CardHeader>
-              <CardTitle className="text-lg">
-                {searchQuery.trim() ? `Search results for "${searchQuery.trim()}"` : (categories.find(c => c.id === selectedCategory)?.name || 'Products')}
-              </CardTitle>
-              <CardDescription>
-                {visibleProducts.length === 0 ? 'No products match your search or category.' : `${visibleProducts.length} product(s) found.`}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {visibleProducts.length === 0 ? (
-                <p className="text-sm text-[#4B5A45]">Try a different keyword or browse by category above.</p>
-              ) : (
-                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                  {visibleProducts.map((product) => (
-                    <Card key={product.id} className="border border-slate-200 bg-white shadow-sm">
-                      {product.image_url && (
-                        <div className="overflow-hidden rounded-t-[32px] bg-[#F4F8EF]">
-                          <img src={getImageUrl(product.image_url)} alt={product.title} className="h-56 w-full object-cover" />
-                        </div>
-                      )}
-                      <CardHeader className="space-y-3">
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <CardTitle className="text-lg">{product.title}</CardTitle>
-                            <CardDescription>{product.description}</CardDescription>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-sm text-[#4B5A45]">Price</p>
-                            <p className="text-xl font-semibold text-[#172B12]">UGX {Number(product.price).toLocaleString()}</p>
-                          </div>
-                        </div>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="space-y-2 text-sm text-[#4B5A45]">
-                          <p>Seller: <span className="font-medium text-[#172B12]">{product.sellerName || product.seller_name || 'Member'}</span></p>
-                          <p className="text-xs text-[#6B7C61]">{new Date(product.createdAt || product.created_at).toLocaleDateString()}</p>
-                        </div>
-                      </CardContent>
-                      <CardFooter className="flex flex-wrap gap-3 border-t border-slate-200 pt-4">
-                        <Button size="sm" onClick={() => addToCart(product)} className="bg-[#172B12] text-white hover:bg-[#0f2409]">Add to Cart</Button>
-                        <Button size="sm" onClick={() => handleOpenPurchase(product)} className="bg-white text-[#172B12] border border-[#172B12] hover:bg-[#ECF8E9]">Buy now</Button>
-                      </CardFooter>
-                    </Card>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
-
+        
         <Card className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
           <CardHeader>
             <CardTitle className="text-lg">Browse by category</CardTitle>

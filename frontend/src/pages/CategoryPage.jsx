@@ -1,16 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '../components/ui/card';
-import { Badge } from '../components/ui/badge';
 import { Toaster, toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../components/ui/dialog';
 import { Input } from '../components/ui/input';
 import { Textarea } from '../components/ui/textarea';
 import { Label } from '../components/ui/label';
-import { ShoppingCart, Search, Menu, X, FastForward, Sparkles } from 'lucide-react';
+import { ShoppingCart, Search, Menu, X, Sparkles } from 'lucide-react';
 import { exportLoanAgreementPDF } from '../utils/pdfExport';
 import { OFFICERS } from '../data/officers';
 
@@ -54,12 +53,16 @@ const extractPersonName = (label) => {
 const CategoryPage = () => {
   const { categoryId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const initialSearch = searchParams.get('search') || '';
   const { user, isAuthenticated } = useAuth();
   const [categories] = useState(DEFAULT_CATEGORIES);
   const [products, setProducts] = useState([]);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(initialSearch);
   const [displayCount, setDisplayCount] = useState(PRODUCTS_PER_PAGE);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState(categoryId || 'all');
   const [cart, setCart] = useState(() => {
     try { return JSON.parse(window.localStorage.getItem('cash_hub_cart') || '[]'); }
     catch { return []; }
@@ -109,7 +112,12 @@ const CategoryPage = () => {
     fetchProducts();
   }, []);
 
-  useEffect(() => { setDisplayCount(PRODUCTS_PER_PAGE); setSearchQuery(''); }, [categoryId]);
+  useEffect(() => {
+    const urlSearch = searchParams.get('search') || '';
+    setDisplayCount(PRODUCTS_PER_PAGE);
+    setSearchQuery(urlSearch);
+    setSelectedCategory(categoryId || 'all');
+  }, [categoryId, location.search]);
 
   const saveCart = (items) => { window.localStorage.setItem('cash_hub_cart', JSON.stringify(items)); };
 
@@ -257,39 +265,128 @@ const CategoryPage = () => {
   const visibleProducts = filteredProducts.slice(0, displayCount);
   const hasMore = displayCount < filteredProducts.length;
 
-  return (
+  const handleSearch = () => {
+    if (searchQuery.trim()) {
+      navigate(`/category/all?search=${encodeURIComponent(searchQuery.trim())}`, { replace: true });
+    }
+  };
+
+  useEffect(() => {
+    const handleKeyPress = (e) => {
+      if (e.key === 'Enter' && searchQuery.trim()) {
+        handleSearch();
+      }
+    };
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, [searchQuery, navigate]);
+
+return (
     <div className="min-h-screen bg-[#F7FAF3] px-4 py-8 sm:px-6 lg:px-8">
       <Toaster position="top-right" />
 
-      <nav className="sticky top-0 z-40 bg-white/90 backdrop-blur border-b border-slate-200 mb-6">
+      <nav className="sticky top-0 z-40 backdrop-blur border-b border-slate-200 mb-6">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="flex md:hidden items-center justify-between py-2">
-            <button type="button" onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="p-2 text-[#172B12]">{mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}</button>
-            <Button onClick={() => setCartOpen(true)} className="bg-white text-[#172B12] border border-[#172B12] hover:bg-[#ECF8E9] relative"><ShoppingCart className="h-4 w-4 mr-2" />Cart ({cart.length})</Button>
-          </div>
           <div className="hidden md:flex items-center justify-between h-16">
-            <div className="flex items-center gap-4">
-              <Button onClick={() => navigate('/')} className="bg-white text-[#172B12] border border-slate-200 hover:bg-[#ECF8E9]">← Shop</Button>
-              <h2 className="text-lg font-semibold text-[#172B12]">{category?.name || 'Category'}</h2>
-              <Badge variant="secondary">{filteredProducts.length} items</Badge>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="relative">
-                <Input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search..." className="w-64 rounded-full border border-slate-300 bg-[#F7FAF3] px-4 py-2 text-sm" />
+            <div className="flex flex-col">
+              <div className="flex items-center gap-2">
+                <Button onClick={() => navigate('/')} className="bg-white text-[#172B12] border border-slate-200 hover:bg-[#ECF8E9]">Shop</Button>
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                    className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-sm font-medium transition ${selectedCategory === 'all' ? 'bg-[#172B12] text-white' : 'bg-white text-[#172B12] border border-slate-200 hover:bg-[#ECF8E9]'}`}
+                  >
+                    <Menu className="h-4 w-4" />
+                    All Categories
+                  </button>
+                  
+                  {mobileMenuOpen && (
+                    <div className="absolute left-0 top-full mt-2 w-80 max-h-96 bg-white border border-slate-200 rounded-lg shadow-lg p-4 overflow-y-auto">
+                      <div className="flex flex-col gap-2">
+                        {categories.map((cat) => {
+                          const Icon = ICON_MAP[cat.id] || Sparkles;
+                          return (
+                            <button
+                              key={cat.id}
+                              type="button"
+                              onClick={() => { navigate(`/category/${cat.id}`); setMobileMenuOpen(false); }}
+                              className={`flex items-center gap-2 px-3 py-2 rounded-full text-sm font-medium text-left transition ${categoryId === cat.id ? 'bg-[#172B12] text-white' : 'bg-white text-[#172B12] border border-slate-200 hover:bg-[#ECF8E9]'}`}
+                            >
+                              <Icon className="h-4 w-4" />
+                              {cat.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+                
+                {categories.slice(0, 5).map((cat) => {
+                  const Icon = ICON_MAP[cat.id] || Sparkles;
+                  return (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => { navigate(`/category/${cat.id}`); }}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition ${categoryId === cat.id ? 'bg-[#172B12] text-white' : 'bg-white text-[#172B12] border border-slate-200 hover:bg-[#ECF8E9]'}`}
+                    >
+                      <Icon className="h-4 w-4" />
+                      {cat.name}
+                    </button>
+                  );
+                })}
               </div>
-              <Button onClick={() => setCartOpen(true)} className="bg-white text-[#172B12] border border-[#172B12] hover:bg-[#ECF8E9] relative"><ShoppingCart className="h-4 w-4 mr-2" />Cart ({cart.length})</Button>
+              
+              <div className="flex items-center gap-2 mt-3">
+                <Input
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search products..."
+                  className="w-64 rounded-full border border-slate-300 bg-[#F7FAF3] px-4 py-2 text-sm focus:border-[#2B6F38] focus:ring-2 focus:ring-[#2B6F38]/20"
+                />
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <Button onClick={() => setCartOpen(true)} className="bg-white text-[#172B12] border border-[#172B12] hover:bg-[#ECF8E9] relative">
+                <ShoppingCart className="h-4 w-4 mr-2" />
+                Cart ({cart.length})
+              </Button>
             </div>
           </div>
+          
+          <div className="flex md:hidden items-center justify-between py-2">
+            <button type="button" onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="p-2 text-[#172B12]">
+              {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+            </button>
+            <Button onClick={() => navigate('/')} className="bg-white text-[#172B12] border border-slate-200 hover:bg-[#ECF8E9]">Shop</Button>
+            <Button onClick={() => setCartOpen(true)} className="bg-white text-[#172B12] border border-[#172B12] hover:bg-[#ECF8E9] relative">
+              <ShoppingCart className="h-4 w-4 mr-2" />
+              Cart ({cart.length})
+            </Button>
+          </div>
+          
           {mobileMenuOpen && (
-            <div className="md:hidden pb-4 space-y-4">
-              <Input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search..." className="rounded-full border border-slate-300 bg-[#F7FAF3] px-4 py-2 text-sm" />
+            <div className="md:hidden pb-4 space-y-4 overflow-y-auto max-h-96 w-full">
+              <Input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search products..."
+                className="rounded-full border border-slate-300 bg-[#F7FAF3] px-4 py-2 text-sm"
+              />
               <div className="flex flex-col gap-2 max-h-64 overflow-y-auto">
-                <button type="button" onClick={() => { navigate('/'); setMobileMenuOpen(false); }} className="px-3 py-2 rounded-full text-sm font-medium text-left bg-[#172B12] text-white">Shop Home</button>
-                {categories.map(c => (
-                  <button key={c.id} type="button" onClick={() => { navigate(`/category/${c.id}`); setMobileMenuOpen(false); }} className={`px-3 py-2 rounded-full text-sm font-medium text-left ${c.id === categoryId ? 'bg-[#172B12] text-white' : 'bg-white text-[#172B12] border border-slate-200'}`}>
-                    {c.name}
-                  </button>
-                ))}
+                <button type="button" onClick={() => { navigate('/'); setMobileMenuOpen(false); }} className="px-3 py-2 rounded-full text-sm font-medium text-left bg-white text-[#172B12] border border-slate-200 hover:bg-[#ECF8E9]">Shop</button>
+                {categories.map(cat => {
+                  const Icon = ICON_MAP[cat.id] || Sparkles;
+                  return (
+                    <button key={cat.id} type="button" onClick={() => { navigate(`/category/${cat.id}`); setMobileMenuOpen(false); }} className={`flex items-center gap-2 px-3 py-2 rounded-full text-sm font-medium text-left ${cat.id === categoryId ? 'bg-[#172B12] text-white' : 'bg-white text-[#172B12] border border-slate-200 hover:bg-[#ECF8E9]'}`}>
+                      <Icon className="h-4 w-4" />
+                      {cat.name}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -298,13 +395,22 @@ const CategoryPage = () => {
 
       <div className="mx-auto max-w-7xl space-y-6">
         <div>
-          <h1 className="text-3xl font-semibold text-[#172B12]">{category?.name || 'All Products'}</h1>
-          <p className="text-sm text-[#4B5A45]">Showing {Math.min(displayCount, filteredProducts.length)} of {filteredProducts.length} products</p>
+          <h1 className="text-3xl font-semibold text-[#172B12]">
+            {categoryId === 'all' && searchQuery.trim()
+              ? `Search results for "${searchQuery.trim()}"`
+              : category?.name || 'All Products'}
+          </h1>
         </div>
 
         {filteredProducts.length === 0 ? (
           <Card className="rounded-[32px] border border-slate-200 bg-white p-12 text-center">
-            <CardContent><p className="text-sm text-[#4B5A45]">No products found in this category.</p></CardContent>
+            <CardContent>
+              <p className="text-sm text-[#4B5A45]">
+                {categoryId === 'all' && searchQuery.trim()
+                  ? 'No products match your search. Try a different keyword.'
+                  : 'No products found in this category.'}
+              </p>
+            </CardContent>
           </Card>
         ) : (
           <>
