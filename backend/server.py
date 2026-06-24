@@ -2341,6 +2341,7 @@ if static_dir.exists():
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
     
+    @app.head("/{full_path:path}")
     @app.get("/{full_path:path}")
     async def serve_frontend(full_path: str):
         if full_path.startswith("api"):
