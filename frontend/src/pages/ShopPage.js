@@ -1008,16 +1008,24 @@ const ShopPage = () => {
                                    )}
                                    <p className="mt-2 line-clamp-2 text-xs font-semibold leading-4 text-[#172B12]">{product.title}</p>
                                    <p className="mt-1 text-xs font-semibold text-[#2B6F38]">UGX {Number(product.price).toLocaleString()}</p>
-                                   <button
-                                     type="button"
-                                     onClick={(e) => {
-                                       e.stopPropagation();
-                                       addToCart(product);
-                                     }}
-                                     className="mt-1 text-xs text-[#172B12] hover:text-[#2B6F38]"
-                                   >
-                                     Add to Cart
-</button>
+                                    <div
+                                      role="button"
+                                      tabIndex={0}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        addToCart(product);
+                                      }}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter' || e.key === ' ') {
+                                          e.preventDefault();
+                                          e.stopPropagation();
+                                          addToCart(product);
+                                        }
+                                      }}
+                                      className="mt-1 inline-block cursor-pointer text-xs text-[#172B12] hover:text-[#2B6F38]"
+                                    >
+                                      Add to Cart
+</div>
                                   </button>
                                 );
                               })}
