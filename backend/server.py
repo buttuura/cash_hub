@@ -4,10 +4,10 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Depends, Form, File, UploadFile
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from bson import ObjectId
 import os
@@ -68,8 +68,20 @@ YEAR_END_DATE = "2026-12-20"
 
 # Create the main app
 app = FastAPI(title="Class One Savings API")
+# Add CORS middleware - FIX for "blocked by CORS policy"
+from fastapi.middleware.cors import CORSMiddleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",  # React dev server
+        "https://c1group.site",   # Your production domain
+        "https://cash-hub.onrender.com"  # Your Render URL
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 api_router = APIRouter(prefix="/api")
-
 # ==================== PYDANTIC MODELS ====================
 
 class UserCreate(BaseModel):
@@ -2313,7 +2325,7 @@ async def shutdown_db_client():
 import os 
 CORS_ORIGINS = os.environ.get(
     "CORS_ORIGINS",
-    "http://localhost:3000,https://cash-hub.onrender.com"
+    "http://localhost:3000,https://cash-hub.onrender.com,https://cash-hub-api.onrender.com,https://c1group.site"
 ).split(",")
 CORS_ORIGINS = [origin.strip() for origin in CORS_ORIGINS if origin.strip()]
 allow_credentials = True

@@ -521,7 +521,7 @@ const ShopPage = () => {
       toast.error('Pick a valid category');
       return;
     }
-    const price = Number(newProductPrice);
+    const price = Number(newProductPrice) || 0;
     if (!price || price <= 0) {
       toast.error('Enter a valid price');
       return;
@@ -554,21 +554,25 @@ const ShopPage = () => {
         headers,
         withCredentials: true,
       });
+      console.log('Product upload response status:', response.status);
+      console.log('Product upload response data:', response.data);
 
+      const responseData = response.data || {};
       const newProduct = {
-        id: response.data.id || `prod-${Date.now()}`,
+        id: responseData.id || `prod-${Date.now()}`,
         category: newProductCategory,
-        title: response.data.title || newProductTitle.trim(),
-        description: response.data.description || newProductDescription.trim(),
-        price: response.data.price || price,
+        title: responseData.title || newProductTitle.trim(),
+        description: responseData.description || newProductDescription.trim(),
+        price: responseData.price || price,
         sellerName: user?.name || 'Member',
-        seller_name: user?.name || 'Member',
-        image_url: response.data.image_url,
-        image_urls: response.data.image_urls || [],
-        createdAt: response.data.created_at || new Date().toISOString(),
+seller_name: user?.name || 'Member',
+        image_url: responseData.image_url,
+        image_urls: responseData.image_urls || [],
+        createdAt: responseData.created_at || new Date().toISOString(),
       };
 
       setProducts([newProduct, ...products]);
+      console.log('Product added to state successfully');
 
       resetProductForm();
       toast.success('Product listed successfully');
@@ -576,7 +580,13 @@ const ShopPage = () => {
       setSelectedCategory(newProductCategory);
     } catch (error) {
       console.error('Failed to add product:', error);
-      const errorMessage = error.response?.data?.detail || 'Failed to list product. Please try again.';
+      console.error('Error response:', error.response?.data);
+      console.error('Error config:', error.config);
+if (error.response) {
+        console.error('Response status:', error.response.status);
+        console.error('Response headers:', error.response.headers);
+      }
+      const errorMessage = error.response?.data?.detail || error.message || 'Failed to list product. Please try again.';
       toast.error(errorMessage);
     } finally {
       setUploadingProduct(false);
