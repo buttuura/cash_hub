@@ -7,7 +7,7 @@ load_dotenv(ROOT_DIR / '.env')
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Depends, Form, File, UploadFile
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from motor.motor_asyncio import AsyncIOMotorClient
 from bson import ObjectId
 import os
@@ -69,13 +69,13 @@ YEAR_END_DATE = "2026-12-20"
 # Create the main app
 app = FastAPI(title="Class One Savings API")
 # Add CORS middleware - FIX for "blocked by CORS policy"
-from fastapi.middleware.cors import CORSMiddleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:3000",  # React dev server
-        "https://c1group.site",   # Your production domain
-        "https://cash-hub.onrender.com"  # Your Render URL
+        "http://localhost:3000",
+        "https://c1group.site",
+        "https://cash-hub.onrender.com",
+        "https://cash-hub-api.onrender.com",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -758,14 +758,15 @@ async def create_product(
         "category": category,
         "image_url": image_urls[0] if image_urls else None,
         "image_urls": image_urls,
-        "seller_id": user["id"],
-        "sellerName": user["name"],
-        "seller_name": user["name"],
+        "seller_id": user.get("id"),
+        "sellerName": user.get("name", user.get("full_name", "Member")),
+        "seller_name": user.get("name", user.get("full_name", "Member")),
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
 
     try:
         result = await db.products.insert_one(product_data)
+        logger.info(f"Product created: {title}")
     except Exception as e:
         logger.exception("Failed to save product")
         raise HTTPException(status_code=500, detail=f"Failed to save product: {str(e)}")
@@ -2317,30 +2318,30 @@ async def startup_event():
     
     logger.info("Application started successfully")
 
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.exception(f"Unhandled exception: {exc}")
+    origin = request.headers.get("origin", "")
+    allow_origin = origin if origin in [
+        "http://localhost:3000",
+        "https://c1group.site",
+        "https://cash-hub.onrender.com",
+        "https://cash-hub-api.onrender.com",
+    ] else "*"
+    return JSONResponse(
+        status_code=500,
+        content={"detail": str(exc)},
+        headers={
+            "Access-Control-Allow-Origin": allow_origin,
+            "Access-Control-Allow-Credentials": "true" if allow_origin != "*" else "false",
+            "Access-Control-Allow-Methods": "*",
+            "Access-Control-Allow-Headers": "*",
+        },
+    )
+
 @app.on_event("shutdown")
 async def shutdown_db_client():
     client.close()
-
-# CORS middleware
-import os 
-CORS_ORIGINS = os.environ.get(
-    "CORS_ORIGINS",
-    "http://localhost:3000,https://cash-hub.onrender.com,https://cash-hub-api.onrender.com,https://c1group.site"
-).split(",")
-CORS_ORIGINS = [origin.strip() for origin in CORS_ORIGINS if origin.strip()]
-allow_credentials = True
-allow_origins = CORS_ORIGINS
-if "*" in CORS_ORIGINS:
-    allow_origins = ["*"]
-    allow_credentials = False
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_credentials=allow_credentials,
-    allow_origins=allow_origins,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 # Include the API router
 app.include_router(api_router)
 
