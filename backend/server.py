@@ -727,20 +727,25 @@ async def create_product(
     description: Optional[str] = Form(None),
     price: float = Form(...),
     category: str = Form(...),
-    image: Optional[UploadFile] = File(None),
-    image_url: Optional[str] = Form(None),
     user: dict = Depends(get_current_user),
+    images: Optional[List[UploadFile]] = File(None),
 ):
-    if image:
-        upload_result = await upload_to_cloudinary(image)
-        image_url = upload_result.get("secure_url") or upload_result.get("url")
+    image_urls = []
+    if images:
+        for img in images:
+            if img and img.filename:
+                upload_result = await upload_to_cloudinary(img)
+                url = upload_result.get("secure_url") or upload_result.get("url")
+                if url:
+                    image_urls.append(url)
 
     product_data = {
         "title": title,
         "description": description,
         "price": price,
         "category": category,
-        "image_url": image_url,
+        "image_url": image_urls[0] if image_urls else None,
+        "image_urls": image_urls,
         "seller_id": user["id"],
         "sellerName": user["name"],
         "seller_name": user["name"],

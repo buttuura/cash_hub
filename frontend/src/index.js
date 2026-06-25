@@ -4,12 +4,13 @@ import "@/index.css";
 import App from "@/App";
 
 const root = ReactDOM.createRoot(document.getElementById("root"));
+
+// Render immediately for fast UI display
 root.render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>,
+  <App />
 );
 
+// Check auth in background
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js')

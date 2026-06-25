@@ -156,8 +156,7 @@ const ShopPage = () => {
   const [newProductDescription, setNewProductDescription] = useState('');
   const [newProductPrice, setNewProductPrice] = useState('');
   const [newProductCategory, setNewProductCategory] = useState('food');
-  const [newProductImage, setNewProductImage] = useState(null);
-  const [newProductImagePreview, setNewProductImagePreview] = useState('');
+  const [newProductImages, setNewProductImages] = useState([]);
   const [uploadingProduct, setUploadingProduct] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [loanName, setLoanName] = useState('');
@@ -213,6 +212,9 @@ const ShopPage = () => {
   const [cartBuyerNote, setCartBuyerNote] = useState('');
   const [orderSubmitting, setOrderSubmitting] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [galleryOpen, setGalleryOpen] = useState(false);
+  const [galleryImages, setGalleryImages] = useState([]);
+  const [galleryIndex, setGalleryIndex] = useState(0);
 
   const saveCart = (items) => {
     window.localStorage.setItem('cash_hub_cart', JSON.stringify(items));
@@ -532,29 +534,25 @@ const ShopPage = () => {
 
     setUploadingProduct(true);
     try {
-      // Create FormData for multipart upload
       const formData = new FormData();
       formData.append('title', newProductTitle.trim());
       formData.append('description', newProductDescription.trim());
       formData.append('price', price);
       formData.append('category', newProductCategory);
-      
-      // Add image if selected
-      if (newProductImage) {
-        formData.append('image', newProductImage);
-      }
 
-      // Get authorization token from localStorage
+      newProductImages.forEach((img) => {
+        formData.append(`images`, img);
+      });
+
       const authToken = localStorage.getItem('access_token');
       const headers = {};
       if (authToken) {
         headers['Authorization'] = `Bearer ${authToken}`;
       }
 
-      // Send to backend
       const response = await axios.post(`${API_URL}/api/products`, formData, {
         headers,
-        withCredentials: true, // Include cookies if available
+        withCredentials: true,
       });
 
       const newProduct = {
@@ -566,11 +564,12 @@ const ShopPage = () => {
         sellerName: user?.name || 'Member',
         seller_name: user?.name || 'Member',
         image_url: response.data.image_url,
+        image_urls: response.data.image_urls || [],
         createdAt: response.data.created_at || new Date().toISOString(),
       };
 
       setProducts([newProduct, ...products]);
-      
+
       resetProductForm();
       toast.success('Product listed successfully');
       setAddProductOpen(false);
@@ -658,30 +657,45 @@ const ShopPage = () => {
 
   const handleOpenPurchase = (product) => {
     setPurchaseProduct(product);
+    if (product.image_urls && product.image_urls.length > 0) {
+      setGalleryImages(product.image_urls.map(url => getImageUrl(url)));
+      setGalleryIndex(0);
+      setGalleryOpen(true);
+    }
     setPurchaseOpen(true);
   };
 
-  const handleImageSelect = (event) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      // Validate file type
+  const openImageGallery = (product) => {
+    const images = product.image_urls && product.image_urls.length > 0
+      ? product.image_urls.map(url => getImageUrl(url))
+      : product.image_url
+        ? [getImageUrl(product.image_url)]
+        : [];
+    setGalleryImages(images);
+    setGalleryIndex(0);
+    setGalleryOpen(true);
+  };
+
+  const handleImagesSelect = (event) => {
+    const files = Array.from(event.target.files || []);
+    const validFiles = files.filter(file => {
       if (!file.type.startsWith('image/')) {
-        toast.error('Please select a valid image file');
-        return;
+        toast.error('Please select only image files');
+        return false;
       }
-      // Validate file size (max 5MB)
       if (file.size > 5 * 1024 * 1024) {
-        toast.error('Image size must be less than 5MB');
-        return;
+        toast.error('Each image must be less than 5MB');
+        return false;
       }
-      setNewProductImage(file);
-      // Create preview
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setNewProductImagePreview(reader.result);
-      };
-      reader.readAsDataURL(file);
+      return true;
+    });
+    if (validFiles.length > 0) {
+      setNewProductImages(prev => [...prev, ...validFiles]);
     }
+  };
+
+  const removeProductImage = (index) => {
+    setNewProductImages(prev => prev.filter((_, i) => i !== index));
   };
 
   const resetProductForm = () => {
@@ -689,8 +703,7 @@ const ShopPage = () => {
     setNewProductDescription('');
     setNewProductPrice('');
     setNewProductCategory('food');
-    setNewProductImage(null);
-    setNewProductImagePreview('');
+    setNewProductImages([]);
   };
 
   return (
@@ -899,127 +912,142 @@ const ShopPage = () => {
           </CardFooter>
         </Card>
         
-        <Card className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
+<Card className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
           <CardHeader>
-            <CardTitle className="text-lg">Browse by category</CardTitle>
-            <CardDescription>Small product previews grouped by category. Scroll sideways to view more items.</CardDescription>
+            <CardTitle className="text-lg">Popular categories</CardTitle>
+            <CardDescription>Categories with newest uploads. Scroll horizontally to see more.</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-5">
-               {categories
-                 .map((category) => {
+              {categories
+                .map((category) => {
                   const categoryProducts = products.filter((product) => product.category === category.id);
-                  const visibleProducts = categoryProducts.slice(0, 6);
-                  const Icon = ICON_MAP[category.id] || Sparkles;
+                  return { category, categoryProducts };
+                })
+                .sort((a, b) => b.categoryProducts.length - a.categoryProducts.length)
+                .slice(0, 5)
+.map(({ category, categoryProducts }) => {
+                    const visibleProducts = categoryProducts.slice(0, 6);
+                    const Icon = ICON_MAP[category.id] || Sparkles;
 
-                  return (
-                    <div key={category.id} className="space-y-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="flex min-w-0 items-center gap-2">
-                          <Icon className="h-4 w-4 shrink-0 text-[#2B6F38]" />
-                          <p className="truncate text-sm font-semibold text-[#1B3A16]">{category.name}</p>
-                        </div>
-                        <Badge variant="secondary">{categoryProducts.length}</Badge>
-                      </div>
-
-                      {categoryProducts.length === 0 ? (
-                        <div className="rounded-3xl border border-dashed border-slate-200 bg-[#F7FAF3] px-4 py-5 text-sm text-[#4B5A45]">
-                          No products in this category yet.
-                        </div>
-                      ) : (
-                        <>
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={(event) => {
-                                const row = event.currentTarget.closest('[data-product-row]');
-                                row?.scrollBy({ left: -360, behavior: 'smooth' });
-                              }}
-                              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-lg font-semibold text-[#172B12] hover:bg-[#ECF8E9]"
-                              aria-label={`Scroll ${category.name} products left`}
-                            >
-                              ‹
-                            </button>
-                            <button
-                              type="button"
-                              onClick={(event) => {
-                                const row = event.currentTarget.closest('[data-product-row]');
-                                row?.scrollBy({ left: 360, behavior: 'smooth' });
-                              }}
-                              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-lg font-semibold text-[#172B12] hover:bg-[#ECF8E9]"
-                              aria-label={`Scroll ${category.name} products right`}
-                            >
-                              ›
-                            </button>
+                    return (
+                      <div key={category.id} className="space-y-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <Icon className="h-4 w-4 shrink-0 text-[#2B6F38]" />
+                            <p className="truncate text-sm font-semibold text-[#1B3A16]">{category.name}</p>
                           </div>
+                          <Badge variant="secondary">{categoryProducts.length}</Badge>
+                        </div>
 
-                          <div
-                            data-product-row
-                            className="flex snap-x snap-mandatory gap-3 overflow-x-auto scroll-smooth pb-2"
-                          >
-                            {visibleProducts.map((product) => (
+                        {categoryProducts.length === 0 ? (
+                          <div className="rounded-3xl border border-dashed border-slate-200 bg-[#F7FAF3] px-4 py-5 text-sm text-[#4B5A45]">
+                            No products in this category yet.
+                          </div>
+                        ) : (
+                          <div className="relative">
+                            <>
                               <button
-                                key={product.id}
                                 type="button"
-                                onClick={() => handleOpenPurchase(product)}
-                                className="snap-start shrink-0 rounded-3xl border border-slate-200 bg-white p-3 text-left shadow-sm transition hover:border-[#2B6F38]/70"
-                                style={{ width: '132px' }}
+                                onClick={() => {
+                                  const row = document.querySelector(`[data-popular-row="${category.id}"]`);
+                                  row?.scrollBy({ left: -360, behavior: 'smooth' });
+                                }}
+                                className="inline-flex md:hidden absolute left-0 top-1/2 -translate-y-1/2 z-10 h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-lg font-semibold text-[#172B12] hover:bg-[#ECF8E9] shadow-md"
+                                aria-label={`Scroll ${category.name} products left`}
                               >
-                                {product.image_url ? (
-                                  <div className="overflow-hidden rounded-2xl bg-[#F4F8EF]">
-                                    <img
-                                      src={getImageUrl(product.image_url)}
-                                      alt={product.title}
-                                      className="h-20 w-full object-cover"
-                                    />
-                                  </div>
-                                ) : (
-                                  <div className="mb-3 flex h-20 items-center justify-center rounded-2xl bg-[#F4F8EF] text-xs font-medium text-[#4B5A45]">
-                                    No image
-                                  </div>
-                                )}
-                                <p className="mt-2 line-clamp-2 text-xs font-semibold leading-4 text-[#172B12]">{product.title}</p>
-                                <p className="mt-1 text-xs font-semibold text-[#2B6F38]">UGX {Number(product.price).toLocaleString()}</p>
+                                ‹
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const row = document.querySelector(`[data-popular-row="${category.id}"]`);
+                                  row?.scrollBy({ left: 360, behavior: 'smooth' });
+                                }}
+                                className="inline-flex md:hidden absolute right-0 top-1/2 -translate-y-1/2 z-10 h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-lg font-semibold text-[#172B12] hover:bg-[#ECF8E9] shadow-md"
+                                aria-label={`Scroll ${category.name} products right`}
+                              >
+                                ›
+                              </button>
+                            </>
+                            <div
+                              data-popular-row={category.id}
+                              className="flex gap-3 overflow-x-auto scroll-smooth pb-2 px-10 hide-scrollbar"
+                            >
+                             {visibleProducts.map((product) => {
+                               const hasMultipleImages = product.image_urls && product.image_urls.length > 1;
+                               const displayImage = product.image_urls?.[0] || product.image_url;
+                               return (
+                                 <button
+                                   key={product.id}
+                                   type="button"
+                                   onClick={() => handleOpenPurchase(product)}
+                                   className="snap-start shrink-0 rounded-3xl border border-slate-200 bg-white p-3 text-left shadow-sm transition hover:border-[#2B6F38]/70 w-32"
+                                 >
+                                   {displayImage ? (
+                                     <div className="overflow-hidden rounded-2xl bg-[#F4F8EF] relative">
+                                       <img
+                                         src={getImageUrl(displayImage)}
+                                         alt={product.title}
+                                         className="h-20 w-full object-cover cursor-pointer"
+                                         onClick={(e) => {
+                                           e.stopPropagation();
+                                           openImageGallery(product);
+                                         }}
+                                       />
+                                       {hasMultipleImages && (
+                                         <span className="absolute bottom-1 right-1 bg-black/70 text-white text-[10px] px-1 rounded-full">
+                                           {product.image_urls.length}
+                                         </span>
+                                       )}
+                                     </div>
+                                   ) : (
+                                     <div className="mb-3 flex h-20 items-center justify-center rounded-2xl bg-[#F4F8EF] text-xs font-medium text-[#4B5A45]">
+                                       No image
+                                     </div>
+                                   )}
+                                   <p className="mt-2 line-clamp-2 text-xs font-semibold leading-4 text-[#172B12]">{product.title}</p>
+                                   <p className="mt-1 text-xs font-semibold text-[#2B6F38]">UGX {Number(product.price).toLocaleString()}</p>
+                                   <button
+                                     type="button"
+                                     onClick={(e) => {
+                                       e.stopPropagation();
+                                       addToCart(product);
+                                     }}
+                                     className="mt-1 text-xs text-[#172B12] hover:text-[#2B6F38]"
+                                   >
+                                     Add to Cart
+</button>
+                                  </button>
+                                );
+                              })}
+
+                              {categoryProducts.length > 6 && (
                                 <button
                                   type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    addToCart(product);
-                                  }}
-                                  className="mt-1 text-xs text-[#172B12] hover:text-[#2B6F38]"
+                                  onClick={() => navigate(`/category/${category.id}`)}
+                                  className="snap-start flex h-full min-h-[124px] shrink-0 items-center justify-center rounded-3xl border border-[#2B6F38]/30 bg-[#ECF8E9] px-4 text-center text-sm font-semibold text-[#172B12] hover:bg-[#2B6F38] hover:text-white w-32"
                                 >
-                                  Add to Cart
+                                  See more
                                 </button>
-                              </button>
-                            ))}
-
-                            {categoryProducts.length > 6 && (
-                              <button
-                                type="button"
-                                onClick={() => navigate(`/category/${category.id}`)}
-                                className="snap-start flex h-full min-h-[124px] shrink-0 items-center justify-center rounded-3xl border border-[#2B6F38]/30 bg-[#ECF8E9] px-4 text-center text-sm font-semibold text-[#172B12] hover:bg-[#2B6F38] hover:text-white"
-                                style={{ width: '132px' }}
-                              >
-                                See more
-                              </button>
-                            )}
+                              )}
+                            </div>
                           </div>
-                        </>
-                      )}
-                    </div>
-                  );
-                })}
-            </div>
-          </CardContent>
-        </Card>
+                        )}
+                      </div>
+                    );
+                  })}
+              </div>
+            </CardContent>
+          </Card>
 
-        <Card className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-xl">
-              <ShoppingCart className="h-5 w-5 text-[#2B6F38]" /> Sell products
-            </CardTitle>
-            <CardDescription>
-              List your products and reach buyers across the group marketplace.
+          <Card className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-xl">
+                <ShoppingCart className="h-5 w-5 text-[#2B6F38]" /> Sell products
+              </CardTitle>
+              <CardDescription>
+                List your products and reach buyers across the group marketplace.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -1060,42 +1088,52 @@ const ShopPage = () => {
                   <p className="text-sm text-[#4B5A45]">No products have been listed yet. Members can add products from their dashboard.</p>
                 </CardContent>
               </Card>
-            ) : recentProducts.map((product) => (
-              <Card key={product.id} className="border border-slate-200 bg-white shadow-sm">
-                {product.image_url && (
-                  <div className="overflow-hidden rounded-t-[32px] bg-[#F4F8EF]">
-                    <img
-                      src={getImageUrl(product.image_url)}
-                      alt={product.title}
-                      className="h-56 w-full object-cover"
-                    />
-                  </div>
-                )}
-                <CardHeader className="space-y-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <CardTitle className="text-lg">{product.title}</CardTitle>
-                      <CardDescription>{product.description}</CardDescription>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm text-[#4B5A45]">Price</p>
-                      <p className="text-xl font-semibold text-[#172B12]">UGX {Number(product.price).toLocaleString()}</p>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2 text-sm text-[#4B5A45]">
-                    <p>Seller: <span className="font-medium text-[#172B12]">{product.sellerName || product.seller_name || 'Member'}</span></p>
-                    <p className="text-xs text-[#6B7C61]">{new Date(product.createdAt || product.created_at).toLocaleDateString()}</p>
-                  </div>
-                </CardContent>
-                <CardFooter className="flex flex-wrap gap-3 border-t border-slate-200 pt-4">
-                  <Button size="sm" onClick={() => addToCart(product)} className="bg-[#172B12] text-white hover:bg-[#0f2409]">Add to Cart</Button>
-                  <Button size="sm" onClick={() => handleOpenPurchase(product)} className="bg-white text-[#172B12] border border-[#172B12] hover:bg-[#ECF8E9]">Buy now</Button>
-                  <Button size="sm" onClick={() => setCartOpen(true)} className="bg-[#172B12] text-white hover:bg-[#0f2409]">View cart</Button>
-                </CardFooter>
-              </Card>
-            ))}
+) : recentProducts.map((product) => {
+               const hasMultipleImages = product.image_urls && product.image_urls.length > 1;
+               const displayImage = product.image_urls?.[0] || product.image_url;
+               return (
+                 <Card key={product.id} className="border border-slate-200 bg-white shadow-sm">
+                   {displayImage && (
+                     <div className="overflow-hidden rounded-t-[32px] bg-[#F4F8EF] relative">
+                       <img
+                         src={getImageUrl(displayImage)}
+                         alt={product.title}
+                         className="h-56 w-full object-cover cursor-pointer"
+                         onClick={() => openImageGallery(product)}
+                       />
+                       {hasMultipleImages && (
+                         <span className="absolute bottom-2 right-2 bg-black/70 text-white text-xs px-2 py-1 rounded-full">
+                           {product.image_urls.length} images
+                         </span>
+                       )}
+                     </div>
+                   )}
+                   <CardHeader className="space-y-3">
+                     <div className="flex items-start justify-between gap-3">
+                       <div>
+                         <CardTitle className="text-lg">{product.title}</CardTitle>
+                         <CardDescription>{product.description}</CardDescription>
+                       </div>
+                       <div className="text-right">
+                         <p className="text-sm text-[#4B5A45]">Price</p>
+                         <p className="text-xl font-semibold text-[#172B12]">UGX {Number(product.price).toLocaleString()}</p>
+                       </div>
+                     </div>
+                   </CardHeader>
+                   <CardContent>
+                     <div className="space-y-2 text-sm text-[#4B5A45]">
+                       <p>Seller: <span className="font-medium text-[#172B12]">{product.sellerName || product.seller_name || 'Member'}</span></p>
+                       <p className="text-xs text-[#6B7C61]">{new Date(product.createdAt || product.created_at).toLocaleDateString()}</p>
+                     </div>
+                   </CardContent>
+                   <CardFooter className="flex flex-wrap gap-3 border-t border-slate-200 pt-4">
+                     <Button size="sm" onClick={() => addToCart(product)} className="bg-[#172B12] text-white hover:bg-[#0f2409]">Add to Cart</Button>
+                     <Button size="sm" onClick={() => handleOpenPurchase(product)} className="bg-white text-[#172B12] border border-[#172B12] hover:bg-[#ECF8E9]">Buy now</Button>
+                     <Button size="sm" onClick={() => setCartOpen(true)} className="bg-[#172B12] text-white hover:bg-[#0f2409]">View cart</Button>
+                   </CardFooter>
+                 </Card>
+               );
+             })}
           </div>
         </section>
       </div>
@@ -1153,46 +1191,46 @@ const ShopPage = () => {
                 disabled={uploadingProduct}
               />
             </div>
-            <div>
-              <Label htmlFor="product-image" className="text-sm font-medium text-slate-700">Product image</Label>
-              <div className="mt-2 space-y-3">
-                <input
-                  id="product-image"
-                  type="file"
-                  accept="image/*"
-                  onChange={handleImageSelect}
-                  disabled={uploadingProduct}
-                  className="block w-full text-sm text-slate-500
-                    file:mr-4 file:py-2 file:px-4
-                    file:rounded-lg file:border-0
-                    file:text-sm file:font-semibold
-                    file:bg-[#172B12] file:text-white
-                    hover:file:bg-[#0f2409]
-                    disabled:opacity-50"
-                />
-                <p className="text-xs text-[#4B5A45]">Max file size: 5MB. Supported formats: JPG, PNG, GIF, WebP</p>
-                {newProductImagePreview && (
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                    <img
-                      src={newProductImagePreview}
-                      alt="Preview"
-                      className="h-32 w-full rounded object-cover"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setNewProductImage(null);
-                        setNewProductImagePreview('');
-                      }}
-                      disabled={uploadingProduct}
-                      className="mt-2 text-xs text-red-600 hover:text-red-800 disabled:opacity-50"
-                    >
-                      Remove image
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
+<div>
+               <Label htmlFor="product-images" className="text-sm font-medium text-slate-700">Product images</Label>
+               <div className="mt-2 space-y-3">
+                 <input
+                   id="product-images"
+                   type="file"
+                   accept="image/*"
+                   multiple
+                   onChange={handleImagesSelect}
+                   disabled={uploadingProduct}
+                   className="block w-full text-sm text-slate-500
+                     file:mr-4 file:py-2 file:px-4
+                     file:rounded-lg file:border-0
+                     file:text-sm file:font-semibold
+                     file:bg-[#172B12] file:text-white
+                     hover:file:bg-[#0f2409]
+                     disabled:opacity-50"
+                 />
+                 <p className="text-xs text-[#4B5A45]">Max file size: 5MB each. Supported formats: JPG, PNG, GIF, WebP. Select multiple images by holding Ctrl/Cmd.</p>
+                 <div className="flex flex-wrap gap-2">
+                   {newProductImages.map((_, index) => (
+                     <div key={index} className="relative">
+                       <img
+                         src={URL.createObjectURL(newProductImages[index])}
+                         alt={`Preview ${index + 1}`}
+                         className="h-16 w-16 rounded object-cover border border-slate-200"
+                       />
+                       <button
+                         type="button"
+                         onClick={() => removeProductImage(index)}
+                         disabled={uploadingProduct}
+                         className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-red-500 text-white text-xs hover:bg-red-600 disabled:opacity-50"
+                       >
+                         ×
+                       </button>
+                     </div>
+                   ))}
+                 </div>
+               </div>
+             </div>
             <Button 
               type="submit" 
               className="bg-[#172B12] text-white hover:bg-[#0f2409] disabled:opacity-50"
@@ -1358,8 +1396,30 @@ const ShopPage = () => {
           <form onSubmit={handlePurchaseRequest} className="space-y-4 flex-1">
             <div className="text-sm text-[#4B5A45]">
               <p className="font-semibold text-[#172B12]">Product</p>
+              {purchaseProduct?.image_urls && purchaseProduct.image_urls.length > 0 ? (
+                <div className="mb-2">
+                  <img
+                    src={getImageUrl(purchaseProduct.image_urls[0])}
+                    alt={purchaseProduct.title}
+                    className="h-40 w-full object-cover rounded-lg cursor-pointer"
+                    onClick={() => openImageGallery(purchaseProduct)}
+                  />
+                  {purchaseProduct.image_urls.length > 1 && (
+                    <p className="text-xs text-[#2B6F38] mt-1 cursor-pointer hover:underline" onClick={() => openImageGallery(purchaseProduct)}>
+                      Click to view {purchaseProduct.image_urls.length} images
+                    </p>
+                  )}
+                </div>
+              ) : purchaseProduct?.image_url ? (
+                <img
+                  src={getImageUrl(purchaseProduct.image_url)}
+                  alt={purchaseProduct.title}
+                  className="h-40 w-full object-cover rounded-lg mb-2"
+                />
+              ) : null}
               <p>{purchaseProduct?.title}</p>
               <p className="text-xs text-[#6B7C61]">Seller: {purchaseProduct?.sellerName}</p>
+              <p className="text-xs font-semibold text-[#2B6F38]">UGX {Number(purchaseProduct?.price || 0).toLocaleString()}</p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="purchase-name" className="text-sm font-medium text-slate-700">Your name</Label>
@@ -1381,6 +1441,58 @@ const ShopPage = () => {
               {orderSubmitting ? 'Sending request...' : 'Send purchase request'}
             </Button>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={galleryOpen} onOpenChange={setGalleryOpen}>
+        <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Product Gallery</DialogTitle>
+            <DialogDescription>View all product images</DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 space-y-4">
+            {galleryImages.length > 0 && (
+              <div className="relative">
+                <img
+                  src={galleryImages[galleryIndex]}
+                  alt={`Product image ${galleryIndex + 1}`}
+                  className="w-full h-96 object-contain rounded-lg"
+                />
+                {galleryImages.length > 1 && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setGalleryIndex(prev => prev > 0 ? prev - 1 : galleryImages.length - 1)}
+                      className="absolute left-2 top-1/2 -translate-y-1/2 z-10 h-10 w-10 rounded-full bg-white/80 text-lg font-semibold text-[#172B12] hover:bg-white shadow-md"
+                    >
+                      ‹
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setGalleryIndex(prev => prev < galleryImages.length - 1 ? prev + 1 : 0)}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 z-10 h-10 w-10 rounded-full bg-white/80 text-lg font-semibold text-[#172B12] hover:bg-white shadow-md"
+                    >
+                      ›
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+            {galleryImages.length > 1 && (
+              <div className="flex gap-2 justify-center overflow-x-auto pb-2">
+                {galleryImages.map((img, index) => (
+                  <button
+                    key={index}
+                    type="button"
+                    onClick={() => setGalleryIndex(index)}
+                    className={`h-12 w-12 shrink-0 rounded-full border-2 overflow-hidden ${index === galleryIndex ? 'border-[#2B6F38]' : 'border-slate-200'}`}
+                  >
+                    <img src={img} alt={`Thumbnail ${index + 1}`} className="h-full w-full object-cover" />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
 

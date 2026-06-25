@@ -98,7 +98,7 @@ const Dashboard = () => {
   const [withdrawals, setWithdrawals] = useState([]);
   const [quickLoans, setQuickLoans] = useState([]);
   const [members, setMembers] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [dataLoading, setDataLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [copiedMemberCode, setCopiedMemberCode] = useState(false);
@@ -135,9 +135,10 @@ const [withdrawalType, setWithdrawalType] = useState('savings');
   const fetchData = useCallback(async () => {
     const now = Date.now();
     if (fetchData._cache && (now - fetchData._cache.ts < 15000)) {
-      setLoading(false);
+      setDataLoading(false);
       return;
     }
+    setDataLoading(true);
     try {
       const headers = getAuthHeaders();
       const [statsRes, rulesRes, financialsRes, depositsRes, loansRes, withdrawalsRes, membersRes] = await Promise.all([
@@ -173,7 +174,7 @@ const [withdrawalType, setWithdrawalType] = useState('savings');
       console.error('Failed to fetch data:', err);
       toast.error('Failed to load data');
     } finally {
-      setLoading(false);
+      setDataLoading(false);
     }
   }, [getAuthHeaders, isAdmin, isTreasurer]);
 
@@ -647,23 +648,21 @@ const [withdrawalType, setWithdrawalType] = useState('savings');
     return (m.total_savings || 0) >= loanAmountValue / 2;
   });
 
-  // Loans where current user is the selected guarantor and awaiting their approval
+// Loans where current user is the selected guarantor and awaiting their approval
   const pendingGuarantorLoans = loans.filter(l => 
     l.guarantor_id === user?.id && l.status === 'pending_guarantor'
   );
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-[#FAFAF8] flex items-center justify-center">
-        <div className="text-[#5C665D]">Loading...</div>
-      </div>
-    );
-  }
-
   return (
-<div className="min-h-screen bg-[#FAFAF8]">
-       <Toaster position="top-right" richColors />
-       <audio ref={audioRef} src="/images/app_icons/cart_images/order_ring_tone.m4a" preload="auto" />
+    <div className="min-h-screen bg-[#FAFAF8]">
+      <Toaster position="top-right" richColors />
+      <audio ref={audioRef} src="/images/app_icons/cart_images/order_ring_tone.m4a" preload="auto" />
+      
+      {dataLoading && (
+        <div className="fixed top-16 left-0 right-0 bg-[#E8B25C]/20 text-[#E8B25C] p-2 text-center text-sm z-40">
+          Loading data...
+        </div>
+      )}
       
       {/* Navigation */}
       <nav className="sticky top-0 z-50 backdrop-blur-xl bg-white/90 border-b border-[#E8EBE8]">
@@ -774,85 +773,85 @@ const [withdrawalType, setWithdrawalType] = useState('savings');
         )}
       </nav>
 
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Overview Tab */}
-        {activeTab === 'overview' && (
-          <div className="space-y-6 animate-fade-in">
-            {/* Stats Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
-              {/* Total Group Balance - Only Treasurer can edit */}
-              <Card className="md:col-span-2 lg:col-span-2 bg-[#2C5530] border-none shadow-lg" data-testid="total-balance-card">
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-white/70 text-sm font-medium uppercase tracking-wide">Total Group Balance</p>
-                      <p className="text-4xl font-extrabold text-white font-numbers mt-2">
-                        {formatCurrency(stats?.total_group_balance)}
-                      </p>
-                      <p className="text-white/70 text-sm mt-2">
-                        {stats?.total_members} members • Year ends {stats?.year_end_date}
-                      </p>
-                    </div>
-                    <div className="flex flex-col items-end gap-2">
-                      <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center">
-                        <Wallet className="w-8 h-8 text-white" />
-                      </div>
-                      {isAdmin && (
-                        <div className="flex flex-col gap-2 items-end">
-                          {isTreasurer && (
-                            <Dialog open={balanceDialogOpen} onOpenChange={setBalanceDialogOpen}>
-                              <DialogTrigger asChild>
-                                <Button size="sm" variant="secondary" className="text-xs">
-                                  Edit Balance
-                                </Button>
-                              </DialogTrigger>
-                              <DialogContent>
-                                <DialogHeader>
-                                  <DialogTitle>Update Group Balance</DialogTitle>
-                                  <DialogDescription>
-                                    Reset balance for new year or make corrections
-                                  </DialogDescription>
-                                </DialogHeader>
-                                <form onSubmit={handleUpdateGroupBalance} className="space-y-4 mt-4">
-                                  <div className="space-y-2">
-                                    <Label>New Balance (UGX)</Label>
-                                    <Input
-                                      type="number"
-                                      value={newGroupBalance}
-                                      onChange={(e) => setNewGroupBalance(e.target.value)}
-                                      placeholder="0"
-                                      required
-                                    />
-                                  </div>
-                                  <div className="space-y-2">
-                                    <Label>Reason</Label>
-                                    <Input
-                                      value={balanceReason}
-                                      onChange={(e) => setBalanceReason(e.target.value)}
-                                      placeholder="Year end reset / Correction"
-                                      required
-                                    />
-                                  </div>
-                                  <Button type="submit" className="w-full bg-[#2C5530]">
-                                    Update Balance
-                                  </Button>
-                                </form>
-                              </DialogContent>
-                            </Dialog>
-                          )}
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            className="text-xs"
-                            onClick={handleDistributeInterest}
-                            disabled={distributingInterest}
-                          >
-                            {distributingInterest ? 'Distributing...' : 'Distribute Interest'}
-                          </Button>
-                        </div>
-                      )}
-                    </div>
+{/* Main Content */}
+       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+         {/* Overview Tab */}
+         {activeTab === 'overview' && (
+           <div className="space-y-6 animate-fade-in">
+             {/* Stats Cards */}
+             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+               {/* Total Group Balance - Only Treasurer can edit */}
+               <Card className="md:col-span-2 lg:col-span-2 bg-[#2C5530] border-none shadow-lg" data-testid="total-balance-card">
+                 <CardContent className="p-6">
+                   <div className="flex items-center justify-between">
+                     <div>
+                       <p className="text-white/70 text-sm font-medium uppercase tracking-wide">Total Group Balance</p>
+                       <p className="text-4xl font-extrabold text-white font-numbers mt-2">
+                         {stats ? formatCurrency(stats.total_group_balance) : '—'}
+                       </p>
+                       <p className="text-white/70 text-sm mt-2">
+                         {stats ? `${stats.total_members} members • Year ends ${stats.year_end_date}` : 'Loading...'}
+                       </p>
+                     </div>
+                     <div className="flex flex-col items-end gap-2">
+                       <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center">
+                         <Wallet className="w-8 h-8 text-white" />
+                       </div>
+                       {isAdmin && (
+                         <div className="flex flex-col gap-2 items-end">
+                           {isTreasurer && (
+                             <Dialog open={balanceDialogOpen} onOpenChange={setBalanceDialogOpen}>
+                               <DialogTrigger asChild>
+                                 <Button size="sm" variant="secondary" className="text-xs">
+                                   Edit Balance
+                                 </Button>
+                               </DialogTrigger>
+                               <DialogContent>
+                                 <DialogHeader>
+                                   <DialogTitle>Update Group Balance</DialogTitle>
+                                   <DialogDescription>
+                                     Reset balance for new year or make corrections
+                                   </DialogDescription>
+                                 </DialogHeader>
+                                 <form onSubmit={handleUpdateGroupBalance} className="space-y-4 mt-4">
+                                   <div className="space-y-2">
+                                     <Label>New Balance (UGX)</Label>
+                                     <Input
+                                       type="number"
+                                       value={newGroupBalance}
+                                       onChange={(e) => setNewGroupBalance(e.target.value)}
+                                       placeholder="0"
+                                       required
+                                     />
+                                   </div>
+                                   <div className="space-y-2">
+                                     <Label>Reason</Label>
+                                     <Input
+                                       value={balanceReason}
+                                       onChange={(e) => setBalanceReason(e.target.value)}
+                                       placeholder="Year end reset / Correction"
+                                       required
+                                     />
+                                   </div>
+                                   <Button type="submit" className="w-full bg-[#2C5530]">
+                                     Update Balance
+                                   </Button>
+                                 </form>
+                               </DialogContent>
+                             </Dialog>
+                           )}
+                           <Button
+                             size="sm"
+                             variant="secondary"
+                             className="text-xs"
+                             onClick={handleDistributeInterest}
+                             disabled={distributingInterest}
+                           >
+                             {distributingInterest ? 'Distributing...' : 'Distribute Interest'}
+                           </Button>
+                         </div>
+                       )}
+                     </div>
                   </div>
                 </CardContent>
               </Card>
