@@ -779,6 +779,7 @@ async def create_product(
         raise HTTPException(status_code=500, detail=f"Failed to save product: {str(e)}")
 
     product_data["id"] = str(result.inserted_id)
+    product_data.pop("_id", None)
     return product_data
 
 @api_router.get("/products")

@@ -111,6 +111,21 @@ user_problem_statement: |
   4. Frontend - Removed console.log debug statements from pdfExport.js.
 
 backend:
+  - task: "POST /api/products ObjectId serialization fix"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "User reported 500 on POST /api/products with error: [TypeError(\"'ObjectId' object is not iterable\"), TypeError('vars() argument must have __dict__ attribute')]. Root cause: pymongo's insert_one mutates the dict by inserting `_id` ObjectId, which then fails JSON serialization in the response. Fix: added `product_data.pop('_id', None)` after setting the string `id`. Same pattern as /api/uploads fix earlier. Needs retest."
+      - working: true
+        agent: "testing"
+        comment: "VERIFIED: ObjectId serialization fix working correctly. (1) POST /api/auth/login with treasurer credentials returns access_token successfully. (2) POST /api/products WITHOUT images returns 200 with valid JSON response containing all required fields (id, title, description, price, category, image_url: null, image_urls: [], seller_id, seller_name, created_at). NO '_id' field present in response - ObjectId properly removed. (3) GET /api/products returns 200 with list of products, all have string 'id' field, NO '_id' ObjectId fields. Fix verified working. NOTE: Separate issue found - POST /api/products WITH images returns 422 validation error 'Input should be a valid list' due to FastAPI Optional[List[UploadFile]] parameter definition issue (not related to ObjectId fix). Backend endpoint at line 750 needs adjustment to handle single file uploads properly."
+
   - task: "Cloudinary upload configuration"
     implemented: true
     working: true
@@ -171,8 +186,8 @@ frontend:
 
 metadata:
   created_by: "main_agent"
-  version: "1.2"
-  test_sequence: 2
+  version: "1.3"
+  test_sequence: 3
   run_ui: false
 
 test_plan:
@@ -186,3 +201,7 @@ agent_communication:
     message: "Applied critical backend fixes from code review: (1) Cloudinary CLOUDINARY_URL configured in .env. (2) OFFICERS undefined name bug fixed. (3) upload_to_cloudinary result variable now always defined. (4) Code style cleanups. Please verify: POST /api/auth/login with treasurer credentials, GET /api/debug/cloudinary-status (200 OK), POST /api/uploads with small image (should return secure_url & cloudinary metadata), GET /api/quick-loans/valid-codes (should return officers/members/all without crashing), GET /api/loans (should list loans). Test credentials in /app/memory/test_credentials.md."
   - agent: "testing"
     message: "✅ ALL CRITICAL BACKEND TESTS PASSED (6/6). Verified: (1) Treasurer login working with access_token. (2) Cloudinary status endpoint returns configured: true, cloud: dwvfohqed. (3) File upload to Cloudinary working end-to-end, returns URL pointing to res.cloudinary.com/dwvfohqed with all required fields. (4) Quick loans valid-codes endpoint returns 200 with empty officers list (no NameError crash). (5) Quick loans request with invalid officer returns 400 (not 500 NameError). (6) Loans list endpoint working correctly after variable rename. All fixes verified working. Backend logs show no errors. Ready for main agent to summarize and finish."
+  - agent: "main"
+    message: "User reported critical bug: POST /api/products returns 500 with ObjectId serialization error. Applied fix: added product_data.pop('_id', None) at line 782 after setting string id. Same pattern as /api/uploads. Needs testing to verify fix resolves the 500 error."
+  - agent: "testing"
+    message: "✅ ObjectId serialization fix VERIFIED WORKING. POST /api/products without images returns 200 with valid JSON, no _id field, all required fields present. GET /api/products returns list without ObjectId fields. The critical 500 error is FIXED. ⚠️ Found separate issue: POST /api/products WITH images fails with 422 validation error due to FastAPI Optional[List[UploadFile]] parameter handling - this is a backend endpoint definition issue at line 750, not related to the ObjectId fix. The ObjectId fix itself is working correctly."
