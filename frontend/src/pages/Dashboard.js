@@ -243,6 +243,15 @@ const [withdrawalType, setWithdrawalType] = useState('savings');
 
   const handleOrderStatusChange = async (orderId, status) => {
     try {
+      // When rejected, delete the order entirely per product requirement
+      if (status === 'rejected') {
+        await axios.delete(`${API_URL}/api/orders/${orderId}`, {
+          headers: getAuthHeaders(),
+        });
+        setOrders((prev) => prev.filter((order) => order.id !== orderId));
+        toast.success('Order rejected and removed.');
+        return;
+      }
       await axios.patch(`${API_URL}/api/orders/${orderId}/status`, {
         status,
         notes: '',
@@ -254,10 +263,54 @@ const [withdrawalType, setWithdrawalType] = useState('savings');
           order.id === orderId ? { ...order, status } : order
         )
       );
-      toast.success(`Order ${status === 'approved' ? 'approved' : 'rejected'} successfully.`);
+      toast.success(`Order ${status === 'approved' ? 'approved' : status} successfully.`);
     } catch (err) {
       console.error('Failed to update order status:', err);
       toast.error(err.response?.data?.detail || 'Failed to update order status');
+    }
+  };
+
+  const handleDeleteOrder = async (orderId) => {
+    if (!window.confirm('Delete this order? This action cannot be undone.')) return;
+    try {
+      await axios.delete(`${API_URL}/api/orders/${orderId}`, {
+        headers: getAuthHeaders(),
+      });
+      setOrders((prev) => prev.filter((order) => order.id !== orderId));
+      toast.success('Order deleted.');
+    } catch (err) {
+      console.error('Failed to delete order:', err);
+      toast.error(err.response?.data?.detail || 'Failed to delete order');
+    }
+  };
+
+  const handleDeleteProduct = async (productId) => {
+    if (!window.confirm('Delete this product? This action cannot be undone.')) return;
+    try {
+      await axios.delete(`${API_URL}/api/products/${productId}`, {
+        headers: getAuthHeaders(),
+      });
+      setMyProducts((prev) => prev.filter((p) => p.id !== productId));
+      toast.success('Product deleted.');
+    } catch (err) {
+      console.error('Failed to delete product:', err);
+      toast.error(err.response?.data?.detail || 'Failed to delete product');
+    }
+  };
+
+  const handleToggleSoldOut = async (product) => {
+    const newSoldOut = !product.sold_out;
+    try {
+      const res = await axios.patch(`${API_URL}/api/products/${product.id}`, {
+        sold_out: newSoldOut,
+      }, {
+        headers: getAuthHeaders(),
+      });
+      setMyProducts((prev) => prev.map((p) => (p.id === product.id ? { ...p, ...res.data } : p)));
+      toast.success(newSoldOut ? 'Marked as sold out.' : 'Marked as available.');
+    } catch (err) {
+      console.error('Failed to update product:', err);
+      toast.error(err.response?.data?.detail || 'Failed to update product');
     }
   };
 
@@ -1747,6 +1800,16 @@ sellerOrders.map((order) => (
                           <Button size="sm" variant="outline" className="border-[#D05A49] text-[#D05A49] hover:bg-[#FDE8E7]" onClick={() => handleOrderStatusChange(order.id, 'rejected')}>
                             Reject
                           </Button>
+                          <Button size="sm" variant="outline" className="border-[#9B9B9B] text-[#5C665D] hover:bg-[#F1F1F1]" onClick={() => handleDeleteOrder(order.id)}>
+                            Delete
+                          </Button>
+                        </div>
+                      )}
+                      {order.status !== 'pending' && (
+                        <div className="mt-4 flex flex-wrap gap-3">
+                          <Button size="sm" variant="outline" className="border-[#9B9B9B] text-[#5C665D] hover:bg-[#F1F1F1]" onClick={() => handleDeleteOrder(order.id)}>
+                            Delete
+                          </Button>
                         </div>
                       )}
                     </div>
@@ -1770,12 +1833,17 @@ sellerOrders.map((order) => (
                 ) : myProducts.map((product) => (
                   <Card key={product.id} className="bg-white border border-[#E8EBE8] shadow-sm">
                     {product.image_url && (
-                      <div className="overflow-hidden rounded-t-3xl">
+                      <div className="overflow-hidden rounded-t-3xl relative">
                         <img
                           src={getImageUrl(product.image_url)}
                           alt={product.title}
-                          className="h-48 w-full object-cover"
+                          className={`h-48 w-full object-cover ${product.sold_out ? 'opacity-60 grayscale' : ''}`}
                         />
+                        {product.sold_out && (
+                          <span className="absolute top-3 left-3 inline-flex items-center rounded-full bg-[#D05A49] px-3 py-1 text-xs font-semibold text-white shadow">
+                            Sold Out
+                          </span>
+                        )}
                       </div>
                     )}
                     <CardContent>
@@ -1787,7 +1855,27 @@ sellerOrders.map((order) => (
                         <Badge variant="secondary">UGX {Number(product.price).toLocaleString()}</Badge>
                       </div>
                       <p className="text-sm text-[#5C665D] mb-3">{product.description || 'No description provided'}</p>
-                      <p className="text-xs text-[#6B7C61]">Uploaded {new Date(product.created_at || product.createdAt).toLocaleDateString()}</p>
+                      <p className="text-xs text-[#6B7C61] mb-3">Uploaded {new Date(product.created_at || product.createdAt).toLocaleDateString()}</p>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className={product.sold_out
+                            ? 'border-[#2C5530] text-[#2C5530] hover:bg-[#2C5530]/5'
+                            : 'border-[#C57A17] text-[#C57A17] hover:bg-[#FEF6E8]'}
+                          onClick={() => handleToggleSoldOut(product)}
+                        >
+                          {product.sold_out ? 'Mark Available' : 'Mark Sold Out'}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="border-[#D05A49] text-[#D05A49] hover:bg-[#FDE8E7]"
+                          onClick={() => handleDeleteProduct(product.id)}
+                        >
+                          Delete
+                        </Button>
+                      </div>
                     </CardContent>
                   </Card>
                 ))}

@@ -111,6 +111,51 @@ user_problem_statement: |
   4. Frontend - Removed console.log debug statements from pdfExport.js.
 
 backend:
+  - task: "DELETE /api/orders/{id} endpoint"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "New endpoint. Buyer (own order), seller (matched by sellerName), or admin can delete an order. Returns 401 if unauth, 403 if not allowed, 404 if not found, 400 if invalid id, 200 with {message,id} on success."
+      - working: true
+        agent: "testing"
+        comment: "✅ VERIFIED (5/5 tests passed). Test 6: DELETE /api/orders/{id} with treasurer token returns 200 with {message: 'Order deleted', id: '...'}. Test 7: GET /api/orders confirms order no longer in list. Test 8: DELETE same order again returns 404 'Order not found'. Test 9: DELETE /api/orders/INVALIDID returns 400 'Invalid order id'. Test 10: DELETE order without Authorization header returns 401 'Not authenticated'. All authorization checks (admin/seller/buyer), error handling (invalid id, not found, unauthorized), and deletion logic working correctly."
+
+  - task: "DELETE /api/products/{id} endpoint"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "New endpoint. Owner (seller_id match) or admin can delete a product. Returns 403 otherwise, 404 if not found, 400 if invalid id."
+      - working: true
+        agent: "testing"
+        comment: "✅ VERIFIED (3/3 tests passed). Test 11: DELETE /api/products/{id} with treasurer token returns 200 with {message: 'Product deleted', id: '...'}. Test 12: GET /api/products confirms product no longer in list. Test 13: DELETE same product again returns 404 'Product not found'. Authorization checks (owner/admin), error handling (invalid id, not found), and deletion logic all working correctly."
+
+  - task: "PATCH /api/products/{id} endpoint (sold_out toggle)"
+    implemented: true
+    working: true
+    file: "backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "New endpoint. Whitelists fields (sold_out,title,description,price,category,image_url,image_urls). Owner or admin only. Returns the updated product with string id and no _id."
+      - working: true
+        agent: "testing"
+        comment: "✅ VERIFIED (5/5 tests passed). Test 1: PATCH /api/products/{id} with {sold_out: true} returns 200 with response containing 'sold_out': true, string 'id' field, NO '_id' field. Test 2: PATCH with {sold_out: false} returns 200 with 'sold_out': false. Test 3: PATCH with empty body {} returns 400 'No valid fields to update'. Test 4: PATCH with {hacker_field: 'evil'} returns 400 (whitelist correctly rejects invalid fields). Test 5: PATCH /api/products/INVALIDID returns 400 'Invalid product id'. Field whitelist validation, authorization checks (owner/admin), error handling (invalid id, no valid fields), and response serialization (string id, no _id) all working correctly."
+
   - task: "POST /api/products ObjectId serialization fix"
     implemented: true
     working: true
@@ -193,7 +238,7 @@ frontend:
 metadata:
   created_by: "main_agent"
   version: "1.4"
-  test_sequence: 4
+  test_sequence: 5
   run_ui: false
 
 test_plan:
@@ -215,3 +260,5 @@ agent_communication:
     message: "Applied fix for multipart validation issue at line 750: Changed `images: Optional[List[UploadFile]] = File(None)` to `images: List[UploadFile] = File(default=[])`. This resolves the 422 validation error when images ARE sent. Requesting comprehensive testing of all 3 cases: (A) POST /api/products WITHOUT images, (B) POST WITH ONE image, (C) POST WITH MULTIPLE images. Also verify GET /api/products and GET /api/debug/cloudinary-status still work."
   - agent: "testing"
     message: "🎉 FINAL VERIFICATION COMPLETE - ALL TESTS PASSED (5/5). Comprehensive testing confirms both fixes working perfectly: (1) ObjectId serialization fix prevents 500 errors, all responses have string 'id' with no '_id' field. (2) Multipart validation fix allows image uploads. CASE A: POST without images returns 200 with image_url: null, image_urls: []. CASE B: POST with ONE image returns 200 with cloudinary URL in image_url and image_urls[0]. CASE C: POST with MULTIPLE images returns 200 with 2 cloudinary URLs in image_urls array. GET /api/products and GET /api/debug/cloudinary-status both return 200 OK. Backend logs show successful Cloudinary uploads with no errors. All product creation scenarios fully functional. Ready for main agent to summarize and finish."
+  - agent: "testing"
+    message: "🎉 ALL 13 TESTS PASSED for 3 NEW endpoints (PATCH /api/products/{id}, DELETE /api/orders/{id}, DELETE /api/products/{id}). Comprehensive testing completed: (1) PATCH /api/products/{id} - Field whitelist working (sold_out toggle tested), returns updated product with string 'id' and no '_id', rejects empty body and invalid fields with 400, validates product id format. (2) DELETE /api/orders/{id} - Authorization working (admin/seller/buyer), returns 200 with success message, properly deletes from database (verified via GET), returns 404 for already deleted orders, returns 401 without auth token, validates order id format. (3) DELETE /api/products/{id} - Authorization working (owner/admin), returns 200 with success message, properly deletes from database (verified via GET), returns 404 for already deleted products, validates product id format. All error handling, authorization checks, and data persistence verified. Backend endpoints fully functional. Ready for main agent to summarize and finish."

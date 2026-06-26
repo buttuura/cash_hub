@@ -5,7 +5,7 @@ ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi import FastAPI, APIRouter, HTTPException, Request, Depends, Form, File, UploadFile
+from fastapi import FastAPI, APIRouter, HTTPException, Request, Depends, Form, File, UploadFile, Body
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -869,6 +869,33 @@ async def update_order_status(order_id: str, data: OrderStatusUpdate, user: Opti
 
     return {"message": f"Order {data.status}"}
 
+@api_router.delete("/orders/{order_id}")
+async def delete_order(order_id: str, user: Optional[dict] = Depends(get_current_user_optional)):
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    try:
+        oid = ObjectId(order_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid order id")
+
+    order = await db.orders.find_one({"_id": oid})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    is_admin = user.get("role") in ["admin", "super_admin", "treasurer"]
+    is_seller = (order.get("sellerName") or "").lower() == (user.get("name") or "").lower()
+    is_buyer = order.get("buyerId") == user.get("id") or order.get("created_by") == user.get("id")
+
+    if not (is_admin or is_seller or is_buyer):
+        raise HTTPException(status_code=403, detail="You can only delete your own orders")
+
+    result = await db.orders.delete_one({"_id": oid})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    return {"message": "Order deleted", "id": order_id}
+
 @api_router.post("/uploads")
 async def upload_media(
     file: UploadFile = File(...),
@@ -951,6 +978,58 @@ async def list_my_products(user: dict = Depends(get_current_user)):
         product["id"] = str(product["_id"])
         product.pop("_id", None)
     return products
+
+@api_router.delete("/products/{product_id}")
+async def delete_product(product_id: str, user: dict = Depends(get_current_user)):
+    try:
+        oid = ObjectId(product_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid product id")
+
+    product = await db.products.find_one({"_id": oid})
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    is_admin = user.get("role") in ["admin", "super_admin", "treasurer"]
+    is_owner = product.get("seller_id") == user.get("id")
+
+    if not (is_admin or is_owner):
+        raise HTTPException(status_code=403, detail="You can only delete your own products")
+
+    result = await db.products.delete_one({"_id": oid})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    return {"message": "Product deleted", "id": product_id}
+
+@api_router.patch("/products/{product_id}")
+async def update_product(product_id: str, payload: dict = Body(...), user: dict = Depends(get_current_user)):
+    try:
+        oid = ObjectId(product_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid product id")
+
+    product = await db.products.find_one({"_id": oid})
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    is_admin = user.get("role") in ["admin", "super_admin", "treasurer"]
+    is_owner = product.get("seller_id") == user.get("id")
+    if not (is_admin or is_owner):
+        raise HTTPException(status_code=403, detail="You can only update your own products")
+
+    # Whitelist updatable fields
+    allowed_fields = {"sold_out", "title", "description", "price", "category", "image_url", "image_urls"}
+    update_fields = {k: v for k, v in (payload or {}).items() if k in allowed_fields}
+    if not update_fields:
+        raise HTTPException(status_code=400, detail="No valid fields to update")
+
+    await db.products.update_one({"_id": oid}, {"$set": update_fields})
+
+    updated = await db.products.find_one({"_id": oid})
+    updated["id"] = str(updated["_id"])
+    updated.pop("_id", None)
+    return updated
 
 @api_router.delete("/members/{member_id}")
 async def delete_member(member_id: str, user: dict = Depends(require_treasurer)):
