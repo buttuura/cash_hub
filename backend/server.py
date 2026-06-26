@@ -747,7 +747,7 @@ async def create_product(
     price: float = Form(...),
     category: str = Form(...),
     user: dict = Depends(get_current_user),
-    images: Optional[List[UploadFile]] = File(None),
+    images: List[UploadFile] = File(default=[]),
 ):
     image_urls = []
     if images:

@@ -125,6 +125,12 @@ backend:
       - working: true
         agent: "testing"
         comment: "VERIFIED: ObjectId serialization fix working correctly. (1) POST /api/auth/login with treasurer credentials returns access_token successfully. (2) POST /api/products WITHOUT images returns 200 with valid JSON response containing all required fields (id, title, description, price, category, image_url: null, image_urls: [], seller_id, seller_name, created_at). NO '_id' field present in response - ObjectId properly removed. (3) GET /api/products returns 200 with list of products, all have string 'id' field, NO '_id' ObjectId fields. Fix verified working. NOTE: Separate issue found - POST /api/products WITH images returns 422 validation error 'Input should be a valid list' due to FastAPI Optional[List[UploadFile]] parameter definition issue (not related to ObjectId fix). Backend endpoint at line 750 needs adjustment to handle single file uploads properly."
+      - working: "NA"
+        agent: "main"
+        comment: "Applied fix for multipart validation issue: Changed line 750 from `images: Optional[List[UploadFile]] = File(None)` to `images: List[UploadFile] = File(default=[])`. This fixes FastAPI multipart validation when files ARE sent. Needs comprehensive testing of all 3 cases: (A) POST without images, (B) POST with ONE image, (C) POST with MULTIPLE images."
+      - working: true
+        agent: "testing"
+        comment: "✅ COMPREHENSIVE VERIFICATION COMPLETE - ALL 3 CASES PASSED (5/5 tests). CASE A (no images): POST /api/products without images field returns 200 OK, response has image_url: null, image_urls: [], id is string, NO _id field. CASE B (one image): POST with ONE image returns 200 OK, image_url contains cloudinary URL (res.cloudinary.com/dwvfohqed/), image_urls array has 1 URL. CASE C (multiple images): POST with TWO images returns 200 OK, image_urls array has 2 cloudinary URLs. ALSO VERIFIED: GET /api/products returns 200 with all products having string id and no _id fields. GET /api/debug/cloudinary-status returns 200 OK with cloudinary_configured: true. Backend logs show successful Cloudinary uploads with no errors. Both ObjectId serialization fix AND multipart validation fix are working correctly. All product creation scenarios now functional."
 
   - task: "Cloudinary upload configuration"
     implemented: true
@@ -186,8 +192,8 @@ frontend:
 
 metadata:
   created_by: "main_agent"
-  version: "1.3"
-  test_sequence: 3
+  version: "1.4"
+  test_sequence: 4
   run_ui: false
 
 test_plan:
@@ -205,3 +211,7 @@ agent_communication:
     message: "User reported critical bug: POST /api/products returns 500 with ObjectId serialization error. Applied fix: added product_data.pop('_id', None) at line 782 after setting string id. Same pattern as /api/uploads. Needs testing to verify fix resolves the 500 error."
   - agent: "testing"
     message: "✅ ObjectId serialization fix VERIFIED WORKING. POST /api/products without images returns 200 with valid JSON, no _id field, all required fields present. GET /api/products returns list without ObjectId fields. The critical 500 error is FIXED. ⚠️ Found separate issue: POST /api/products WITH images fails with 422 validation error due to FastAPI Optional[List[UploadFile]] parameter handling - this is a backend endpoint definition issue at line 750, not related to the ObjectId fix. The ObjectId fix itself is working correctly."
+  - agent: "main"
+    message: "Applied fix for multipart validation issue at line 750: Changed `images: Optional[List[UploadFile]] = File(None)` to `images: List[UploadFile] = File(default=[])`. This resolves the 422 validation error when images ARE sent. Requesting comprehensive testing of all 3 cases: (A) POST /api/products WITHOUT images, (B) POST WITH ONE image, (C) POST WITH MULTIPLE images. Also verify GET /api/products and GET /api/debug/cloudinary-status still work."
+  - agent: "testing"
+    message: "🎉 FINAL VERIFICATION COMPLETE - ALL TESTS PASSED (5/5). Comprehensive testing confirms both fixes working perfectly: (1) ObjectId serialization fix prevents 500 errors, all responses have string 'id' with no '_id' field. (2) Multipart validation fix allows image uploads. CASE A: POST without images returns 200 with image_url: null, image_urls: []. CASE B: POST with ONE image returns 200 with cloudinary URL in image_url and image_urls[0]. CASE C: POST with MULTIPLE images returns 200 with 2 cloudinary URLs in image_urls array. GET /api/products and GET /api/debug/cloudinary-status both return 200 OK. Backend logs show successful Cloudinary uploads with no errors. All product creation scenarios fully functional. Ready for main agent to summarize and finish."
