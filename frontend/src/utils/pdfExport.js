@@ -311,6 +311,145 @@ export const exportPettyCashPDF = (items, filenamePrefix = 'petty-cash') => {
   doc.save(`${filenamePrefix}-${new Date().toISOString().split('T')[0]}.pdf`);
 };
 
+export const exportCustomerReceiptPDF = (customers, options = {}) => {
+  const { singleSeller, dateRange } = options;
+  const doc = new jsPDF();
+  const pageWidth = doc.internal.pageSize.width;
+
+  try {
+    doc.addImage('/icons/icon-512.png', 'PNG', pageWidth / 2 - 15, 8, 30, 30);
+  } catch (e) {
+    // Icon load failed
+  }
+
+  doc.setFontSize(18);
+  doc.setTextColor(44, 85, 48);
+  doc.text('Class One Group', pageWidth / 2, 48, { align: 'center' });
+
+  doc.setFontSize(10);
+  doc.setTextColor(212, 140, 112);
+  doc.text('Your Trusted Financial Partner - Secure Transactions, Happy Customers', pageWidth / 2, 54, { align: 'center' });
+
+  doc.setFontSize(8);
+  doc.setTextColor(150);
+  doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 62);
+  if (dateRange) {
+    doc.text(`Period: ${dateRange}`, 14, 68);
+  }
+
+  let grandTotal = 0;
+  const allRows = [];
+
+  customers.forEach((customer) => {
+    const customerTotal = customer.orders.reduce((sum, o) => sum + (o.total || 0), 0);
+    grandTotal += customerTotal;
+
+    customer.orders.forEach(o => {
+      const products = o.products && Array.isArray(o.products)
+        ? o.products.map(p => `${p.title || 'Item'} x${p.quantity || 1}`).join(', ')
+        : o.productTitle || '-';
+      allRows.push([
+        customer.name,
+        customer.phone || customer.email || '-',
+        fmtDate(o.createdAt || o.created_at),
+        o.sellerName || '-',
+        products,
+        fmtUGX(o.total || 0),
+        o.status || '-',
+      ]);
+    });
+  });
+
+  autoTable(doc, {
+    startY: 74,
+    head: [['Customer', 'Contact', 'Date', 'Seller', 'Products', 'Amount', 'Status']],
+    body: allRows,
+    styles: { fontSize: 8 },
+    headStyles: { fillColor: [44, 85, 48] },
+    margin: { left: 14, right: 14 },
+  });
+
+  const summaryY = doc.lastAutoTable.finalY + 15;
+  doc.setFontSize(12);
+  doc.setTextColor(212, 140, 112);
+  doc.setFont(undefined, 'bold');
+  doc.text(`Grand Total: ${fmtUGX(grandTotal)}`, 14, summaryY);
+  doc.setFontSize(10);
+  doc.setTextColor(92, 102, 93);
+  doc.text(`${customers.length} customer(s), ${customers.reduce((sum, c) => sum + c.orders.length, 0)} order(s)`, 14, summaryY + 8);
+
+  doc.save(`customer-receipt-${new Date().toISOString().split('T')[0]}.pdf`);
+};
+
+export const exportSellerReceiptPDF = (sellers, options = {}) => {
+  const { dateRange } = options;
+  const doc = new jsPDF();
+  const pageWidth = doc.internal.pageSize.width;
+
+  try {
+    doc.addImage('/icons/icon-512.png', 'PNG', pageWidth / 2 - 15, 8, 30, 30);
+  } catch (e) {
+    // Icon load failed
+  }
+
+  doc.setFontSize(18);
+  doc.setTextColor(44, 85, 48);
+  doc.text('Class One Group', pageWidth / 2, 48, { align: 'center' });
+
+  doc.setFontSize(10);
+  doc.setTextColor(212, 140, 112);
+  doc.text('Your Trusted Financial Partner - Empowering Sellers, Growing Together', pageWidth / 2, 54, { align: 'center' });
+
+  doc.setFontSize(8);
+  doc.setTextColor(150);
+  doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 62);
+  if (dateRange) {
+    doc.text(`Period: ${dateRange}`, 14, 68);
+  }
+
+  let grandTotal = 0;
+  const allRows = [];
+
+  sellers.forEach((seller) => {
+    const sellerTotal = seller.orders.reduce((sum, o) => sum + (o.total || 0), 0);
+    grandTotal += sellerTotal;
+
+    seller.orders.forEach(o => {
+      const products = o.products && Array.isArray(o.products)
+        ? o.products.map(p => `${p.title || 'Item'} x${p.quantity || 1}`).join(', ')
+        : o.productTitle || '-';
+      allRows.push([
+        seller.name,
+        fmtDate(o.createdAt || o.created_at),
+        products,
+        fmtUGX(o.total || 0),
+        o.buyerName || '-',
+        o.status || '-',
+      ]);
+    });
+  });
+
+  autoTable(doc, {
+    startY: 74,
+    head: [['Seller', 'Date', 'Products', 'Amount', 'Buyer', 'Status']],
+    body: allRows,
+    styles: { fontSize: 8 },
+    headStyles: { fillColor: [44, 85, 48] },
+    margin: { left: 14, right: 14 },
+  });
+
+  const summaryY = doc.lastAutoTable.finalY + 15;
+  doc.setFontSize(12);
+  doc.setTextColor(212, 140, 112);
+  doc.setFont(undefined, 'bold');
+  doc.text(`Grand Total Sales: ${fmtUGX(grandTotal)}`, 14, summaryY);
+  doc.setFontSize(10);
+  doc.setTextColor(92, 102, 93);
+  doc.text(`${sellers.length} seller(s), ${sellers.reduce((sum, s) => sum + s.orders.length, 0)} order(s)`, 14, summaryY + 8);
+
+  doc.save(`seller-receipt-${new Date().toISOString().split('T')[0]}.pdf`);
+};
+
 export const exportFullGroupReportPDF = ({ financials, deposits, loans, withdrawals, pettyCash, members }) => {
   const doc = new jsPDF();
   addHeader(doc, 'Full Group Report', `Comprehensive record for admin`);

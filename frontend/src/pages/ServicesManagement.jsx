@@ -24,7 +24,7 @@ import {
   Home,
 } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
-import { exportLoanAgreementPDF } from '../utils/pdfExport';
+import { exportLoanAgreementPDF, exportCustomerReceiptPDF, exportSellerReceiptPDF } from '../utils/pdfExport';
 import { OFFICERS } from '../data/officers';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
@@ -60,6 +60,19 @@ const ServicesManagement = () => {
   const [quickLoans, setQuickLoans] = useState([]);
   const [allProducts, setAllProducts] = useState([]);
   const [showQuickLoanPurpose, setShowQuickLoanPurpose] = useState(false);
+
+  const [selectedSeller, setSelectedSeller] = useState(null);
+  const [showSellerDropdown, setShowSellerDropdown] = useState(false);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (showSellerDropdown && !e.target.closest('.relative')) {
+        setShowSellerDropdown(false);
+      }
+    };
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [showSellerDropdown]);
 
   const fetchOrders = useCallback(async () => {
     setDataLoading(true);
@@ -438,7 +451,7 @@ const ServicesManagement = () => {
       </nav>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
         {/* Orders Tab */}
         {activeTab === 'orders' && (
           <div className="space-y-6 animate-fade-in">
@@ -459,20 +472,20 @@ const ServicesManagement = () => {
               )}
             </div>
 
-            <Card className="bg-white border border-[#E8EBE8] shadow-sm">
+            <Card className="bg-white border border-[#E8EBE8] shadow-sm overflow-x-auto">
               <CardContent className="p-0">
-                <div className="w-full overflow-hidden">
+                <div className="w-full">
                   <table className="w-full">
                     <thead>
                       <tr className="border-b border-[#E8EBE8] bg-[#FAFAF8]">
-                        <th className="text-left py-4 px-4 text-sm font-semibold text-[#5C665D]">Date</th>
-                        <th className="text-left py-4 px-4 text-sm font-semibold text-[#5C665D]">Seller</th>
-                        <th className="text-left py-4 px-4 text-sm font-semibold text-[#5C665D]">Customer</th>
-                        <th className="text-left py-4 px-4 text-sm font-semibold text-[#5C665D]">Products</th>
-                        <th className="text-left py-4 px-4 text-sm font-semibold text-[#5C665D]">Total</th>
-                        <th className="text-left py-4 px-4 text-sm font-semibold text-[#5C665D]">Status</th>
-                        <th className="text-left py-4 px-4 text-sm font-semibold text-[#5C665D]">Contact</th>
-                        <th className="text-left py-4 px-4 text-sm font-semibold text-[#5C665D]">Actions</th>
+                        <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Date</th>
+                        <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Seller</th>
+                        <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Customer</th>
+                        <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Products</th>
+                        <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Total</th>
+                        <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Status</th>
+                        <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Contact</th>
+                        <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -485,21 +498,20 @@ const ServicesManagement = () => {
                           : null;
                         return (
                           <tr key={order.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5]">
-                            <td className="py-4 px-4 text-sm text-[#1E231F]">
+                            <td className="py-3 px-3 text-xs text-[#1E231F] whitespace-nowrap">
                               {new Date(order.createdAt || order.created_at).toLocaleDateString()}
                             </td>
-                            <td className="py-4 px-4 text-sm font-medium text-[#2C5530]">{order.sellerName || '-'}</td>
-                            <td className="py-4 px-4 text-sm text-[#1E231F]">
-                              <div>
-                                <p className="font-medium">{order.buyerName || '-'}</p>
-                                {order.buyerPhone && <p className="text-xs text-[#5C665D]">{order.buyerPhone}</p>}
-                              </div>
+                            <td className="py-3 px-3 text-xs font-medium text-[#2C5530] whitespace-nowrap">{order.sellerName || '-'}</td>
+                            <td className="py-3 px-3 text-xs text-[#1E231F] whitespace-nowrap">
+                              {order.buyerName || '-'}{order.buyerPhone && <span className="text-[#5C665D]"> ({order.buyerPhone})</span>}
                             </td>
-                            <td className="py-4 px-4 text-sm text-[#5C665D] max-w-[200px] truncate">{productSummary}</td>
-                            <td className="py-4 px-4 text-sm font-semibold text-[#1E231F] font-numbers">
+                            <td className="py-3 px-3 text-xs text-[#5C665D]">
+                              <div className="max-w-[220px] truncate" title={productSummary}>{productSummary}</div>
+                            </td>
+                            <td className="py-3 px-3 text-xs font-semibold text-[#1E231F] font-numbers whitespace-nowrap">
                               {formatCurrency(order.total || 0)}
                             </td>
-                            <td className="py-4 px-4">
+                            <td className="py-3 px-3 whitespace-nowrap">
                               <Badge
                                 className={
                                   order.status === 'approved'
@@ -509,51 +521,34 @@ const ServicesManagement = () => {
                                     : 'bg-[#E8B25C]/20 text-[#E8B25C] border-[#E8B25C]/30'
                                 }
                               >
-                                {order.status === 'pending' && <Clock className="w-3 h-3 mr-1" />}
-                                {order.status === 'approved' && <CheckCircle className="w-3 h-3 mr-1" />}
-                                {order.status === 'rejected' && <XCircle className="w-3 h-3 mr-1" />}
-                                {order.status || 'pending'}
+                                <span className="text-[10px]">{order.status === 'pending' && <Clock className="w-2.5 h-2.5 inline mr-0.5" />}{order.status === 'approved' && <CheckCircle className="w-2.5 h-2.5 inline mr-0.5" />}{order.status === 'rejected' && <XCircle className="w-2.5 h-2.5 inline mr-0.5" />}{order.status || 'pending'}</span>
                               </Badge>
                             </td>
-                            <td className="py-4 px-4">
-                              <div className="flex gap-2">
+                            <td className="py-3 px-3">
+                              <div className="flex gap-1">
                                 {order.buyerPhone && (
-                                  <a
-                                    href={`tel:${order.buyerPhone}`}
-                                    className="text-[#2C5530] hover:text-[#214024]"
-                                    title="Call"
-                                  >
-                                    <Phone className="w-4 h-4" />
+                                  <a href={`tel:${order.buyerPhone}`} className="text-[#2C5530] hover:text-[#214024]" title="Call">
+                                    <Phone className="w-3.5 h-3.5" />
                                   </a>
                                 )}
                                 {order.buyerEmail && (
-                                  <a
-                                    href={`mailto:${order.buyerEmail}`}
-                                    className="text-[#D48C70] hover:text-[#BD7B60]"
-                                    title="Email"
-                                  >
-                                    <Mail className="w-4 h-4" />
+                                  <a href={`mailto:${order.buyerEmail}`} className="text-[#D48C70] hover:text-[#BD7B60]" title="Email">
+                                    <Mail className="w-3.5 h-3.5" />
                                   </a>
                                 )}
                                 {waUrl && (
-                                  <a
-                                    href={waUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-[#25D366] hover:text-[#1EA852]"
-                                    title="WhatsApp"
-                                  >
-                                    <MessageCircle className="w-4 h-4" />
+                                  <a href={waUrl} target="_blank" rel="noopener noreferrer" className="text-[#25D366] hover:text-[#1EA852]" title="WhatsApp">
+                                    <MessageCircle className="w-3.5 h-3.5" />
                                   </a>
                                 )}
                               </div>
                             </td>
-                            <td className="py-4 px-4">
+                            <td className="py-3 px-3">
                               {order.status === 'pending' ? (
-                                <div className="flex gap-2">
+                                <div className="flex gap-1">
                                   <Button
                                     size="sm"
-                                    className="bg-[#2C5530] text-white hover:bg-[#214024] rounded-full text-xs"
+                                    className="bg-[#2C5530] text-white hover:bg-[#214024] rounded-full text-[10px] h-7 px-2"
                                     onClick={() => handleOrderStatusChange(order.id, 'approved')}
                                   >
                                     Approve
@@ -561,14 +556,14 @@ const ServicesManagement = () => {
                                   <Button
                                     size="sm"
                                     variant="outline"
-                                    className="border-[#D05A49] text-[#D05A49] rounded-full text-xs"
+                                    className="border-[#D05A49] text-[#D05A49] rounded-full text-[10px] h-7 px-2"
                                     onClick={() => handleOrderStatusChange(order.id, 'rejected')}
                                   >
                                     Reject
                                   </Button>
                                 </div>
                               ) : (
-                                <span className="text-xs text-[#5C665D]">—</span>
+                                <span className="text-[10px] text-[#5C665D]">—</span>
                               )}
                             </td>
                           </tr>
@@ -593,6 +588,16 @@ const ServicesManagement = () => {
                 <h2 className="text-2xl font-bold font-['Manrope'] text-[#1E231F]">Sellers & Products</h2>
                 <p className="text-sm text-[#5C665D]">All products listed by sellers in the marketplace.</p>
               </div>
+              {uniqueSellers.length > 0 && (
+                <Button
+                  variant="outline"
+                  onClick={() => exportSellerReceiptPDF(uniqueSellers)}
+                  className="border-[#2C5530] text-[#2C5530] rounded-full text-xs"
+                >
+                  <FileDown className="w-4 h-4 mr-1" />
+                  Download Seller Receipt
+                </Button>
+              )}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -661,6 +666,55 @@ const ServicesManagement = () => {
               <div>
                 <h2 className="text-2xl font-bold font-['Manrope'] text-[#1E231F]">Customers</h2>
                 <p className="text-sm text-[#5C665D]">Buyers who have placed orders and their order history.</p>
+              </div>
+              <div className="flex items-center gap-2">
+                {uniqueCustomers.length > 0 && (
+                  <>
+                    <div className="relative">
+                      <Button
+                        variant="outline"
+                        className="border-[#E8EBE8] rounded-full text-xs"
+                        onClick={() => setShowSellerDropdown(!showSellerDropdown)}
+                      >
+                        {selectedSeller ? selectedSeller : 'All Customers'}
+                      </Button>
+                      {showSellerDropdown && (
+                        <div className="absolute right-0 mt-2 w-56 bg-white border border-[#E8EBE8] rounded-lg shadow-lg z-10 max-h-60 overflow-y-auto">
+                          <button
+                            className="w-full px-4 py-2 text-left text-xs hover:bg-[#FAFAF8] border-b border-[#E8EBE8]"
+                            onClick={() => { setSelectedSeller(null); setShowSellerDropdown(false); }}
+                          >
+                            All Customers
+                          </button>
+                          {uniqueCustomers.map((c) => (
+                            <button
+                              key={c.id}
+                              className="w-full px-4 py-2 text-left text-xs hover:bg-[#FAFAF8]"
+                              onClick={() => { setSelectedSeller(c.name); setShowSellerDropdown(false); }}
+                            >
+                              {c.name}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        const customersToExport = selectedSeller
+                          ? uniqueCustomers.filter((c) => c.name === selectedSeller)
+                          : uniqueCustomers;
+                        exportCustomerReceiptPDF(customersToExport, {
+                          singleSeller: !!selectedSeller,
+                        });
+                      }}
+                      className="border-[#2C5530] text-[#2C5530] rounded-full text-xs"
+                    >
+                      <FileDown className="w-4 h-4 mr-1" />
+                      Download Receipt
+                    </Button>
+                  </>
+                )}
               </div>
             </div>
 
@@ -733,56 +787,56 @@ const ServicesManagement = () => {
               )}
             </div>
 
-            <Card className="bg-white border border-[#E8EBE8] shadow-sm">
+            <Card className="bg-white border border-[#E8EBE8] shadow-sm overflow-x-auto">
               <CardContent className="p-0">
-                <div className="w-full overflow-hidden">
+                <div className="w-full">
                   <table className="w-full">
                     <thead>
                       <tr className="border-b border-[#E8EBE8] bg-[#FAFAF8]">
-                        <th className="text-left py-4 px-4 text-sm font-semibold text-[#5C665D]">Date</th>
-                        <th className="text-left py-4 px-4 text-sm font-semibold text-[#5C665D]">Borrower</th>
-                        <th className="text-left py-4 px-4 text-sm font-semibold text-[#5C665D]">Amount</th>
-                        <th className="text-left py-4 px-4 text-sm font-semibold text-[#5C665D]">
-                          <div className="flex items-center gap-2">
+                        <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Date</th>
+                        <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Borrower</th>
+                        <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Amount</th>
+                        <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">
+                          <div className="flex items-center gap-1">
                             <span>Purpose</span>
                             <Button
                               variant="ghost"
                               size="sm"
                               onClick={() => setShowQuickLoanPurpose((prev) => !prev)}
-                              className="text-xs h-6 px-2"
+                              className="text-[10px] h-5 px-1.5"
                             >
                               {showQuickLoanPurpose ? 'Hide' : 'Show'}
                             </Button>
                           </div>
                         </th>
-                        <th className="text-left py-4 px-4 text-sm font-semibold text-[#5C665D]">Officer</th>
-                        <th className="text-left py-4 px-4 text-sm font-semibold text-[#5C665D]">Collateral</th>
-                        <th className="text-left py-4 px-4 text-sm font-semibold text-[#5C665D]">Status</th>
-                        <th className="text-left py-4 px-4 text-sm font-semibold text-[#5C665D]">Actions</th>
+                        <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Officer</th>
+                        <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Collateral</th>
+                        <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Status</th>
+                        <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
                       {quickLoans.map((q) => (
                         <tr key={q.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5]">
-                          <td className="py-4 px-4 text-sm text-[#1E231F]">
+                          <td className="py-3 px-3 text-xs text-[#1E231F] whitespace-nowrap">
                             {new Date(q.created_at).toLocaleDateString()}
                           </td>
-                          <td className="py-4 px-4 text-sm font-medium text-[#1E231F]">{q.loan_name || '-'}</td>
-                          <td className="py-4 px-4 text-sm font-semibold text-[#D48C70] font-numbers">
+                          <td className="py-3 px-3 text-xs font-medium text-[#1E231F] whitespace-nowrap">{q.loan_name || '-'}</td>
+                          <td className="py-3 px-3 text-xs font-semibold text-[#D48C70] font-numbers whitespace-nowrap">
                             {formatCurrency(q.amount || 0)}
                           </td>
                           {showQuickLoanPurpose && (
-                            <td className="py-4 px-4 text-sm text-[#5C665D]">{q.purpose || '-'}</td>
+                            <td className="py-3 px-3 text-xs text-[#5C665D]">{q.purpose || '-'}</td>
                           )}
-                          <td className="py-4 px-4 text-sm text-[#5C665D]">{q.officer_name || '-'}</td>
-                          <td className="py-4 px-4 text-sm text-[#5C665D] whitespace-normal break-words max-w-[200px]">
+                          <td className="py-3 px-3 text-xs text-[#5C665D] whitespace-nowrap">{q.officer_name || '-'}</td>
+                          <td className="py-3 px-3 text-xs text-[#5C665D] whitespace-nowrap">
                             {q.is_guaranteed ? (
-                              <Badge className="bg-[#2C5530]/10 text-[#2C5530]">Guaranteed</Badge>
+                              <Badge className="bg-[#2C5530]/10 text-[#2C5530] text-[10px]">Guaranteed</Badge>
                             ) : (
-                              <span className="text-xs">{q.collateral || '-'}</span>
+                              <span className="text-[10px]">{q.collateral || '-'}</span>
                             )}
                           </td>
-                          <td className="py-4 px-4">
+                          <td className="py-3 px-3 whitespace-nowrap">
                             <Badge
                               className={
                                 q.status === 'approved'
@@ -792,18 +846,15 @@ const ServicesManagement = () => {
                                   : 'bg-[#E8B25C]/20 text-[#E8B25C] border-[#E8B25C]/30'
                               }
                             >
-                              {q.status === 'pending_treasurer' && <Clock className="w-3 h-3 mr-1" />}
-                              {q.status === 'approved' && <CheckCircle className="w-3 h-3 mr-1" />}
-                              {q.status === 'rejected' && <XCircle className="w-3 h-3 mr-1" />}
-                              {q.status || 'pending'}
+                              <span className="text-[10px]">{q.status === 'pending_treasurer' && <Clock className="w-2.5 h-2.5 inline mr-0.5" />}{q.status === 'approved' && <CheckCircle className="w-2.5 h-2.5 inline mr-0.5" />}{q.status === 'rejected' && <XCircle className="w-2.5 h-2.5 inline mr-0.5" />}{q.status || 'pending'}</span>
                             </Badge>
                           </td>
-                          <td className="py-4 px-4">
+                          <td className="py-3 px-3">
                             {q.status === 'pending_treasurer' ? (
-                              <div className="flex gap-2">
+                              <div className="flex gap-1">
                                 <Button
                                   size="sm"
-                                  className="bg-[#2C5530] text-white hover:bg-[#214024] rounded-full text-xs"
+                                  className="bg-[#2C5530] text-white hover:bg-[#214024] rounded-full text-[10px] h-7 px-2"
                                   onClick={() => handleApproveQuickLoan(q.id, true)}
                                 >
                                   Approve
@@ -811,23 +862,23 @@ const ServicesManagement = () => {
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  className="border-[#D05A49] text-[#D05A49] rounded-full text-xs"
+                                  className="border-[#D05A49] text-[#D05A49] rounded-full text-[10px] h-7 px-2"
                                   onClick={() => handleApproveQuickLoan(q.id, false)}
                                 >
                                   Reject
                                 </Button>
                               </div>
                             ) : (
-                              <span className="text-xs text-[#5C665D]">—</span>
+                              <span className="text-[10px] text-[#5C665D]">—</span>
                             )}
                             <Button
                               size="sm"
                               variant="ghost"
-                              className="ml-2 text-[#5C665D] hover:text-[#2C5530]"
+                              className="ml-1 text-[#5C665D] hover:text-[#2C5530] h-7 w-7 p-0"
                               onClick={() => handleDownloadQuickLoanPDF(q)}
                               title="Download loan agreement"
                             >
-                              <FileDown className="w-4 h-4" />
+                              <FileDown className="w-3.5 h-3.5" />
                             </Button>
                           </td>
                         </tr>
@@ -863,21 +914,21 @@ const ServicesManagement = () => {
               )}
             </div>
 
-            <Card className="bg-white border border-[#E8EBE8] shadow-sm">
+            <Card className="bg-white border border-[#E8EBE8] shadow-sm overflow-x-auto">
               <CardContent className="p-0">
-                <div className="w-full overflow-hidden">
+                <div className="w-full">
                   <table className="w-full">
                     <thead>
                       <tr className="border-b border-[#E8EBE8] bg-[#FAFAF8]">
-                        <th className="text-left py-4 px-4 text-sm font-semibold text-[#5C665D]">Date</th>
-                        <th className="text-left py-4 px-4 text-sm font-semibold text-[#5C665D]">Seller</th>
-                        <th className="text-left py-4 px-4 text-sm font-semibold text-[#5C665D]">Buyer</th>
-                        <th className="text-left py-4 px-4 text-sm font-semibold text-[#5C665D]">Products</th>
-                        <th className="text-left py-4 px-4 text-sm font-semibold text-[#5C665D]">Total</th>
-                        <th className="text-left py-4 px-4 text-sm font-semibold text-[#5C665D]">Status</th>
-                        <th className="text-left py-4 px-4 text-sm font-semibold text-[#5C665D]">Deleted By</th>
+                        <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Date</th>
+                        <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Seller</th>
+                        <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Buyer</th>
+                        <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Products</th>
+                        <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Total</th>
+                        <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Status</th>
+                        <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Deleted By</th>
                         {isTreasurer && (
-                          <th className="text-left py-4 px-4 text-sm font-semibold text-[#5C665D]">Actions</th>
+                          <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Actions</th>
                         )}
                       </tr>
                     </thead>
@@ -888,31 +939,33 @@ const ServicesManagement = () => {
                           : order.productTitle || '-';
                         return (
                           <tr key={order.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5]">
-                            <td className="py-4 px-4 text-sm text-[#1E231F]">
+                            <td className="py-3 px-3 text-xs text-[#1E231F] whitespace-nowrap">
                               {new Date(order.createdAt || order.created_at).toLocaleDateString()}
                             </td>
-                            <td className="py-4 px-4 text-sm font-medium text-[#2C5530]">{order.sellerName || '-'}</td>
-                            <td className="py-4 px-4 text-sm text-[#1E231F]">{order.buyerName || '-'}</td>
-                            <td className="py-4 px-4 text-sm text-[#5C665D] max-w-[200px] truncate">{productSummary}</td>
-                            <td className="py-4 px-4 text-sm font-semibold text-[#1E231F] font-numbers">
+                            <td className="py-3 px-3 text-xs font-medium text-[#2C5530] whitespace-nowrap">{order.sellerName || '-'}</td>
+                            <td className="py-3 px-3 text-xs text-[#1E231F] whitespace-nowrap">{order.buyerName || '-'}</td>
+                            <td className="py-3 px-3 text-xs text-[#5C665D]">
+                              <div className="max-w-[200px] truncate" title={productSummary}>{productSummary}</div>
+                            </td>
+                            <td className="py-3 px-3 text-xs font-semibold text-[#1E231F] font-numbers whitespace-nowrap">
                               {formatCurrency(order.total || 0)}
                             </td>
-                            <td className="py-4 px-4">
+                            <td className="py-3 px-3 whitespace-nowrap">
                               <Badge className="bg-[#D05A49]/20 text-[#D05A49] border-[#D05A49]/30">
-                                {order.status || 'deleted'}
+                                <span className="text-[10px]">{order.status || 'deleted'}</span>
                               </Badge>
                             </td>
-                            <td className="py-4 px-4 text-sm text-[#5C665D]">{order.deleted_by || '-'}</td>
+                            <td className="py-3 px-3 text-xs text-[#5C665D] whitespace-nowrap">{order.deleted_by || '-'}</td>
                             {isTreasurer && (
-                              <td className="py-4 px-4">
+                              <td className="py-3 px-3">
                                 <Button
                                   size="sm"
                                   variant="outline"
-                                  className="border-[#D05A49] text-[#D05A49] hover:bg-[#FDE8E7] rounded-full text-xs"
+                                  className="border-[#D05A49] text-[#D05A49] hover:bg-[#FDE8E7] rounded-full text-[10px] h-7 px-2"
                                   onClick={() => handlePermanentDeleteOrder(order.id)}
                                 >
-                                  <Trash2 className="w-3.5 h-3.5 mr-1" />
-                                  Permanent Delete
+                                  <Trash2 className="w-3 h-3 mr-1" />
+                                  Delete
                                 </Button>
                               </td>
                             )}
