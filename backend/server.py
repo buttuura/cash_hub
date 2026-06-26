@@ -825,12 +825,17 @@ async def get_orders(user: Optional[dict] = Depends(get_current_user_optional)):
         return []
 
     if user.get("role") in ["admin", "super_admin", "treasurer"]:
-        orders = await db.orders.find({}).sort("created_at", -1).to_list(1000)
+        orders = await db.orders.find({"deleted": {"$ne": True}}).sort("created_at", -1).to_list(1000)
     else:
         orders = await db.orders.find({
-            "$or": [
-                {"buyerId": user["id"]},
-                {"sellerName": user["name"]}
+            "$and": [
+                {"deleted": {"$ne": True}},
+                {
+                    "$or": [
+                        {"buyerId": user["id"]},
+                        {"sellerName": user["name"]}
+                    ]
+                }
             ]
         }).sort("created_at", -1).to_list(1000)
 
@@ -890,11 +895,39 @@ async def delete_order(order_id: str, user: Optional[dict] = Depends(get_current
     if not (is_admin or is_seller or is_buyer):
         raise HTTPException(status_code=403, detail="You can only delete your own orders")
 
+    result = await db.orders.update_one(
+        {"_id": oid},
+        {"$set": {
+            "deleted": True,
+            "deleted_at": datetime.now(timezone.utc).isoformat(),
+            "deleted_by": user.get("name") or user.get("id"),
+        }}
+    )
+    if result.modified_count == 0:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    return {"message": "Order deleted", "id": order_id}
+
+@api_router.get("/orders/deleted")
+async def get_deleted_orders(user: dict = Depends(require_treasurer)):
+    orders = await db.orders.find({"deleted": True}).sort("created_at", -1).to_list(1000)
+    for order in orders:
+        order["id"] = str(order["_id"])
+        order.pop("_id", None)
+    return orders
+
+@api_router.delete("/orders/{order_id}/permanent")
+async def permanent_delete_order(order_id: str, user: dict = Depends(require_treasurer)):
+    try:
+        oid = ObjectId(order_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid order id")
+
     result = await db.orders.delete_one({"_id": oid})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Order not found")
 
-    return {"message": "Order deleted", "id": order_id}
+    return {"message": "Order permanently deleted", "id": order_id}
 
 @api_router.post("/uploads")
 async def upload_media(

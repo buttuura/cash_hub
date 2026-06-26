@@ -48,6 +48,7 @@ import {
   ShoppingCart,
   Copy,
   Check,
+  Settings,
 } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
 import {
@@ -679,6 +680,10 @@ const [withdrawalType, setWithdrawalType] = useState('savings');
     { id: 'rules', label: 'Rules', icon: Shield },
   ];
 
+  if (isAdmin || isTreasurer) {
+    navItems.push({ id: 'services', label: 'Services', icon: Settings });
+  }
+
   if (isAdmin) {
     navItems.push({ id: 'admin', label: 'Admin', icon: Shield });
   }
@@ -735,7 +740,7 @@ const [withdrawalType, setWithdrawalType] = useState('savings');
               {navItems.map((item) => (
                 <button
                   key={item.id}
-                  onClick={() => setActiveTab(item.id)}
+                  onClick={() => item.id === 'services' ? navigate('/services-management') : setActiveTab(item.id)}
                   data-testid={`nav-${item.id}`}
                   className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
                     activeTab === item.id
@@ -808,7 +813,11 @@ const [withdrawalType, setWithdrawalType] = useState('savings');
                 <button
                   key={item.id}
                   onClick={() => {
-                    setActiveTab(item.id);
+                    if (item.id === 'services') {
+                      navigate('/services-management');
+                    } else {
+                      setActiveTab(item.id);
+                    }
                     setMobileMenuOpen(false);
                   }}
                   className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${

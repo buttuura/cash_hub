@@ -7,6 +7,7 @@ import RegisterPage from './pages/RegisterPage';
 import Dashboard from './pages/Dashboard';
 import ShopPage from './pages/ShopPage';
 import CategoryPage from './pages/CategoryPage';
+import ServicesManagement from './pages/ServicesManagement';
 import './App.css';
 
 // Protected Route Component
@@ -75,6 +76,14 @@ function AppRoutes() {
         element={
           <ProtectedRoute>
             <Dashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/services-management"
+        element={
+          <ProtectedRoute>
+            <ServicesManagement />
           </ProtectedRoute>
         }
       />
