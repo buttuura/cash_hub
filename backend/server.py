@@ -66,6 +66,9 @@ MAX_GUARANTEES_PER_MEMBER = 2
 COMMITTEE_APPRECIATION = 2000  # UGX per member
 YEAR_END_DATE = "2026-12-20"
 
+# Loan Officers list (populated from DB or static config; empty by default)
+OFFICERS: list[dict] = []
+
 # Create the main app
 app = FastAPI(title="Class One Savings API")
 # Add CORS middleware - FIX for "blocked by CORS policy"
@@ -310,12 +313,16 @@ async def upload_to_cloudinary(upload_file: UploadFile, folder: str = "cash_hub/
         logger.info(f"Cloudinary response keys: {result.keys()}")
         return result
 
+    result = None
     try:
         result = await anyio.to_thread.run_sync(_upload, file_obj)
         logger.info(f"Cloudinary upload successful for {upload_file.filename}")
     except Exception as e:
         logger.error(f"Cloudinary upload failed for {upload_file.filename}: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Cloudinary upload failed: {str(e)}")
+
+    if result is None:
+        raise HTTPException(status_code=500, detail="Cloudinary upload returned no result")
 
     secure_url = result.get("secure_url") or result.get("url")
     if not secure_url:
@@ -1516,36 +1523,36 @@ async def get_loans(user: dict = Depends(get_current_user)):
         }).to_list(1000)
     
     result = []
-    for l in loans:
-        l["id"] = str(l["_id"])
-        l.pop("_id", None)
+    for loan_item in loans:
+        loan_item["id"] = str(loan_item["_id"])
+        loan_item.pop("_id", None)
         
         # For pending loans, surface initial interest/total if not present (backward-compat)
-        if l.get("status") in ["pending_guarantor", "pending_admin"]:
-            if not l.get("initial_interest"):
-                l["initial_interest"] = l["amount"] * LOAN_INTEREST_NORMAL
-                l["initial_total_due"] = l["amount"] + l["initial_interest"]
-            l["current_interest"] = l.get("initial_interest")
-            l["total_due"] = l.get("initial_total_due")
+        if loan_item.get("status") in ["pending_guarantor", "pending_admin"]:
+            if not loan_item.get("initial_interest"):
+                loan_item["initial_interest"] = loan_item["amount"] * LOAN_INTEREST_NORMAL
+                loan_item["initial_total_due"] = loan_item["amount"] + loan_item["initial_interest"]
+            loan_item["current_interest"] = loan_item.get("initial_interest")
+            loan_item["total_due"] = loan_item.get("initial_total_due")
         
         # Calculate current interest for approved loans
-        if l.get("status") == "approved" and not l.get("repaid"):
+        if loan_item.get("status") == "approved" and not loan_item.get("repaid"):
             try:
-                l = await accrue_loan_interest_on_db(l)
-                l["total_due"] = get_loan_outstanding_balance(l)
-                approved_date = l.get("approved_at")
+                loan_item = await accrue_loan_interest_on_db(loan_item)
+                loan_item["total_due"] = get_loan_outstanding_balance(loan_item)
+                approved_date = loan_item.get("approved_at")
                 if approved_date:
                     try:
                         parsed_date = datetime.fromisoformat(approved_date.replace('Z', '+00:00'))
-                        l["months_elapsed"] = calculate_months_elapsed(parsed_date)
+                        loan_item["months_elapsed"] = calculate_months_elapsed(parsed_date)
                     except ValueError:
                         logger.warning("Loan has invalid approved_at date: %s", approved_date)
                 else:
-                    logger.warning("Loan missing approved_at while approved: %s", l.get("id"))
+                    logger.warning("Loan missing approved_at while approved: %s", loan_item.get("id"))
             except Exception as e:
-                logger.error("Failed to process loan %s during list retrieval: %s", l.get("id"), e)
+                logger.error("Failed to process loan %s during list retrieval: %s", loan_item.get("id"), e)
         
-        result.append(l)
+        result.append(loan_item)
     return result
 
 @api_router.post("/loans/approve")
@@ -2216,9 +2223,9 @@ async def get_group_rules():
             f"Late fee: UGX {LATE_FEE_PER_POSITION:,} per position after 10th",
             f"Development fee: UGX {DEVELOPMENT_FEE:,} per month (non-withdrawable)",
             f"Max loan: UGX {MAX_LOAN_AMOUNT:,}",
-            f"Loan interest: 3% per month (within 4 months), 5% beyond",
-            f"Each loan requires a guarantor (max 2 guarantees per member)",
-            f"2 months notice required to leave group",
+            "Loan interest: 3% per month (within 4 months), 5% beyond",
+            "Each loan requires a guarantor (max 2 guarantees per member)",
+            "2 months notice required to leave group",
             f"Year-end sharing: {YEAR_END_DATE}"
         ]
     }

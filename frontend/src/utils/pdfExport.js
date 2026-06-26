@@ -136,8 +136,6 @@ const getImageSize = async (imageDataUrl, pageWidth) => {
 
 export const exportLoanAgreementPDF = async (loanData, officer, options = { download: true }) => {
   const doc = new jsPDF();
-  console.log('LOAN DATA RECEIVED:', loanData);
-  console.log('OFFICER RECEIVED:', officer);
   const pageWidth = doc.internal.pageSize.width;
   const lineHeight = 7; 
   let y = 45; 
@@ -155,7 +153,7 @@ export const exportLoanAgreementPDF = async (loanData, officer, options = { down
   try {
     doc.addImage('/icons/icon-512.png', 'PNG', pageWidth / 2 - 15, 8, 30, 30);
   } catch (e) {
-    console.log('Logo load failed - check /public/icons/icon-512.png exists');
+    // Logo load failed - icon may be missing
   }
   // 2. H1 - MAIN HEADING
   doc.setFontSize(16);
