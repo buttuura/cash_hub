@@ -910,6 +910,7 @@ async def upload_media(
         raise HTTPException(status_code=500, detail=f"Failed to save file metadata: {str(e)}")
 
     upload_metadata["id"] = str(result.inserted_id)
+    upload_metadata.pop("_id", None)
     return upload_metadata
 
 @api_router.get("/debug/cloudinary-status")
