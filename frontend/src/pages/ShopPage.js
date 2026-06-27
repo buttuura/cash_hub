@@ -290,15 +290,16 @@ const ShopPage = () => {
     }
 
     setOrderSubmitting(true);
-    const sellersMap = getCartItemsBySeller();
 
     try {
       await Promise.all(
-        Object.entries(sellersMap).map(([seller, items]) => {
-          const total = items.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
+        cart.map((item) => {
+          const total = item.product.price * item.quantity;
           return submitOrder({
-            products: items.map(i => ({ productId: i.productId, quantity: i.quantity, title: i.product.title, price: i.product.price })),
-            sellerName: seller,
+            products: [{ productId: item.productId, quantity: item.quantity, title: item.product.title, price: item.product.price }],
+            productTitle: item.product.title,
+            productPrice: item.product.price,
+            sellerName: item.product.sellerName || item.product.seller_name || 'Member',
             buyerName: cartBuyerName.trim(),
             buyerEmail: cartBuyerEmail.trim(),
             buyerPhone: cartBuyerPhone.trim(),
@@ -316,7 +317,7 @@ const ShopPage = () => {
       setCartBuyerPhone('');
       setCartBuyerNote('');
       setCartOpen(false);
-      toast.success(`Orders sent to ${Object.keys(sellersMap).length} seller(s). They will contact you by phone.`);
+      toast.success(`Sent ${cart.length} order(s). They will contact you by phone.`);
     } catch (error) {
       console.error('Failed to submit orders:', error);
       toast.error(error.response?.data?.detail || 'Failed to submit orders');
@@ -1579,7 +1580,7 @@ if (error.response) {
                   <Textarea id="cart-note" value={cartBuyerNote} onChange={(event) => setCartBuyerNote(event.target.value)} placeholder="Write a message to all sellers" rows={3} />
                 </div>
                 <Button onClick={handleCartCheckout} className="bg-[#172B12] text-white hover:bg-[#0f2409]" disabled={cart.length === 0}>
-                  {orderSubmitting ? 'Sending requests...' : `Send orders to ${Object.keys(getCartItemsBySeller()).length} seller(s)`}
+                  {orderSubmitting ? 'Sending requests...' : `Send ${cart.length} order(s)`}
                 </Button>
               </>
             )}

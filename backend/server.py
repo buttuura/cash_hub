@@ -925,6 +925,10 @@ async def permanent_delete_order(order_id: str, user: dict = Depends(require_tre
 
     result = await db.orders.delete_one({"_id": oid})
     if result.deleted_count == 0:
+        fallback = await db.orders.find_one({"id": order_id})
+        if fallback:
+            await db.orders.delete_one({"_id": fallback["_id"]})
+            return {"message": "Order permanently deleted", "id": order_id}
         raise HTTPException(status_code=404, detail="Order not found")
 
     return {"message": "Order permanently deleted", "id": order_id}
@@ -1584,6 +1588,23 @@ async def approve_quick_loan(approval: TransactionApproval, user: dict = Depends
         }}
     )
     return {"message": f"Quick loan request {new_status}"}
+
+@api_router.delete("/quick-loans/{loan_id}")
+async def delete_quick_loan(loan_id: str, user: dict = Depends(require_treasurer)):
+    try:
+        loid = ObjectId(loan_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid loan id")
+
+    result = await db.quick_loans.delete_one({"_id": loid})
+    if result.deleted_count == 0:
+        fallback = await db.quick_loans.find_one({"id": loan_id})
+        if fallback:
+            await db.quick_loans.delete_one({"_id": fallback["_id"]})
+            return {"message": "Quick loan request deleted"}
+        raise HTTPException(status_code=404, detail="Quick loan request not found")
+
+    return {"message": "Quick loan request deleted"}
 
 @api_router.post("/loans/guarantor-approve")
 async def guarantor_approve_loan(approval: GuarantorApproval, user: dict = Depends(get_current_user)):
@@ -2346,11 +2367,11 @@ async def get_group_rules():
 # ==================== TREASURER SEED ====================
 
 async def seed_treasurer():
-    admin_email = os.environ.get("ADMIN_EMAIL", "treasurer@savingsgroup.com")
-    admin_password = os.environ.get("ADMIN_PASSWORD", "Treasurer@123")
-    admin_phone = os.environ.get("ADMIN_PHONE", "0700000000")
-    admin_name = os.environ.get("ADMIN_NAME", "Buttura Isaiah")
-    admin_role = os.environ.get("ADMIN_ROLE", "super_admin")
+    admin_email = os.environ.get("SUPER_ADMIN_EMAIL", "treasurer@savingsgroup.com")
+    admin_password = os.environ.get("SUPER_ADMIN_PASSWORD", "Treasurer@123")
+    admin_phone = os.environ.get("SUPER_ADMIN_PHONE", "0700000000")
+    admin_name = os.environ.get("SUPER_ADMIN_NAME", "Treasurer")
+    admin_role = os.environ.get("SUPER_ADMIN_ROLE", "super_admin")
     if admin_role not in ["super_admin", "treasurer"]:
         admin_role = "super_admin"
 

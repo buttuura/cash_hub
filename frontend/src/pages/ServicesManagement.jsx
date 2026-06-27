@@ -10,7 +10,6 @@ import autoTable from 'jspdf-autotable';
 import {
   ShoppingCart,
   Store,
-  Users,
   Clock,
   CheckCircle,
   XCircle,
@@ -24,7 +23,7 @@ import {
   Home,
 } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
-import { exportLoanAgreementPDF, exportCustomerReceiptPDF, exportSellerReceiptPDF } from '../utils/pdfExport';
+import { exportLoanAgreementPDF, exportSellerReceiptPDF, exportOrderReceiptPDF } from '../utils/pdfExport';
 import { OFFICERS } from '../data/officers';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
@@ -43,7 +42,6 @@ const buildWhatsAppUrl = (phone, message) => {
 const SERVICES_TABS = [
   { id: 'orders', label: 'Orders', icon: ShoppingCart },
   { id: 'sellers', label: 'Sellers & Products', icon: Store },
-  { id: 'customers', label: 'Customers', icon: Users },
   { id: 'quick-loans', label: 'Quick Loans', icon: CreditCard },
   { id: 'deleted', label: 'Deleted Orders', icon: Trash2 },
 ];
@@ -60,19 +58,7 @@ const ServicesManagement = () => {
   const [quickLoans, setQuickLoans] = useState([]);
   const [allProducts, setAllProducts] = useState([]);
   const [showQuickLoanPurpose, setShowQuickLoanPurpose] = useState(false);
-
-  const [selectedSeller, setSelectedSeller] = useState(null);
-  const [showSellerDropdown, setShowSellerDropdown] = useState(false);
-
-  useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (showSellerDropdown && !e.target.closest('.relative')) {
-        setShowSellerDropdown(false);
-      }
-    };
-    document.addEventListener('click', handleClickOutside);
-    return () => document.removeEventListener('click', handleClickOutside);
-  }, [showSellerDropdown]);
+  const [showQuickLoanOfficer, setShowQuickLoanOfficer] = useState(true);
 
   const fetchOrders = useCallback(async () => {
     setDataLoading(true);
@@ -82,7 +68,6 @@ const ServicesManagement = () => {
     } catch (err) {
       console.error('Failed to load orders:', err);
       toast.error('Failed to load orders');
-      setOrders([]);
     } finally {
       setDataLoading(false);
     }
@@ -96,7 +81,6 @@ const ServicesManagement = () => {
     } catch (err) {
       console.error('Failed to load deleted orders:', err);
       toast.error('Failed to load deleted orders');
-      setDeletedOrders([]);
     } finally {
       setDataLoading(false);
     }
@@ -110,7 +94,6 @@ const ServicesManagement = () => {
     } catch (err) {
       console.error('Failed to load quick loans:', err);
       toast.error('Failed to load quick loans');
-      setQuickLoans([]);
     } finally {
       setDataLoading(false);
     }
@@ -151,6 +134,10 @@ const ServicesManagement = () => {
     }
   };
 
+  const handleDownloadOrderReceipt = (order) => {
+    exportOrderReceiptPDF(order, order.buyerName, order.buyerPhone, order.buyerEmail);
+  };
+
   const handleApproveQuickLoan = async (id, approved) => {
     try {
       await axios.post(
@@ -163,6 +150,18 @@ const ServicesManagement = () => {
     } catch (err) {
       console.error('Failed to update quick loan:', err);
       toast.error(err.response?.data?.detail || 'Action failed');
+    }
+  };
+
+  const handleDeleteQuickLoan = async (id) => {
+    if (!window.confirm('Delete this quick loan request?')) return;
+    try {
+      await axios.delete(`${API_URL}/api/quick-loans/${id}`, { headers: getAuthHeaders() });
+      setQuickLoans((prev) => prev.filter((q) => q.id !== id));
+      toast.success('Quick loan deleted');
+    } catch (err) {
+      console.error('Failed to delete quick loan:', err);
+      toast.error(err.response?.data?.detail || 'Failed to delete quick loan');
     }
   };
 
@@ -184,6 +183,7 @@ const ServicesManagement = () => {
     } catch (err) {
       console.error('Failed to permanently delete order:', err);
       toast.error(err.response?.data?.detail || 'Failed to permanently delete order');
+      fetchDeletedOrders();
     }
   };
 
@@ -318,25 +318,6 @@ const ServicesManagement = () => {
 
     doc.save(`deleted-orders-report-${new Date().toISOString().split('T')[0]}.pdf`);
   };
-
-  const uniqueCustomers = React.useMemo(() => {
-    const map = new Map();
-    orders.forEach((o) => {
-      if (o.buyerId && o.buyerName) {
-        if (!map.has(o.buyerId)) {
-          map.set(o.buyerId, {
-            id: o.buyerId,
-            name: o.buyerName,
-            phone: o.buyerPhone,
-            email: o.buyerEmail,
-            orders: [],
-          });
-        }
-        map.get(o.buyerId).orders.push(o);
-      }
-    });
-    return Array.from(map.values());
-  }, [orders]);
 
   const uniqueSellers = React.useMemo(() => {
     const map = new Map();
@@ -544,27 +525,39 @@ const ServicesManagement = () => {
                               </div>
                             </td>
                             <td className="py-3 px-3">
-                              {order.status === 'pending' ? (
-                                <div className="flex gap-1">
-                                  <Button
-                                    size="sm"
-                                    className="bg-[#2C5530] text-white hover:bg-[#214024] rounded-full text-[10px] h-7 px-2"
-                                    onClick={() => handleOrderStatusChange(order.id, 'approved')}
-                                  >
-                                    Approve
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="border-[#D05A49] text-[#D05A49] rounded-full text-[10px] h-7 px-2"
-                                    onClick={() => handleOrderStatusChange(order.id, 'rejected')}
-                                  >
-                                    Reject
-                                  </Button>
-                                </div>
-                              ) : (
-                                <span className="text-[10px] text-[#5C665D]">—</span>
-                              )}
+                              <div className="flex gap-1 flex-wrap">
+                                {order.status === 'pending' ? (
+                                  <>
+                                    <Button
+                                      size="sm"
+                                      className="bg-[#2C5530] text-white hover:bg-[#214024] rounded-full text-[10px] h-7 px-2"
+                                      onClick={() => handleOrderStatusChange(order.id, 'approved')}
+                                    >
+                                      Approve
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="border-[#D05A49] text-[#D05A49] rounded-full text-[10px] h-7 px-2"
+                                      onClick={() => handleOrderStatusChange(order.id, 'rejected')}
+                                    >
+                                      Reject
+                                    </Button>
+                                  </>
+                                ) : (
+                                  <span className="text-[10px] text-[#5C665D]">—</span>
+                                )}
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="border-[#2C5530] text-[#2C5530] rounded-full text-[10px] h-7 px-2"
+                                  onClick={() => handleDownloadOrderReceipt(order)}
+                                  title="Download receipt"
+                                >
+                                  <FileDown className="w-3.5 h-3.5 mr-1" />
+                                  Receipt
+                                </Button>
+                              </div>
                             </td>
                           </tr>
                         );
@@ -659,114 +652,6 @@ const ServicesManagement = () => {
           </div>
         )}
 
-        {/* Customers Tab */}
-        {activeTab === 'customers' && (
-          <div className="space-y-6 animate-fade-in">
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <div>
-                <h2 className="text-2xl font-bold font-['Manrope'] text-[#1E231F]">Customers</h2>
-                <p className="text-sm text-[#5C665D]">Buyers who have placed orders and their order history.</p>
-              </div>
-              <div className="flex items-center gap-2">
-                {uniqueCustomers.length > 0 && (
-                  <>
-                    <div className="relative">
-                      <Button
-                        variant="outline"
-                        className="border-[#E8EBE8] rounded-full text-xs"
-                        onClick={() => setShowSellerDropdown(!showSellerDropdown)}
-                      >
-                        {selectedSeller ? selectedSeller : 'All Customers'}
-                      </Button>
-                      {showSellerDropdown && (
-                        <div className="absolute right-0 mt-2 w-56 bg-white border border-[#E8EBE8] rounded-lg shadow-lg z-10 max-h-60 overflow-y-auto">
-                          <button
-                            className="w-full px-4 py-2 text-left text-xs hover:bg-[#FAFAF8] border-b border-[#E8EBE8]"
-                            onClick={() => { setSelectedSeller(null); setShowSellerDropdown(false); }}
-                          >
-                            All Customers
-                          </button>
-                          {uniqueCustomers.map((c) => (
-                            <button
-                              key={c.id}
-                              className="w-full px-4 py-2 text-left text-xs hover:bg-[#FAFAF8]"
-                              onClick={() => { setSelectedSeller(c.name); setShowSellerDropdown(false); }}
-                            >
-                              {c.name}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    <Button
-                      variant="outline"
-                      onClick={() => {
-                        const customersToExport = selectedSeller
-                          ? uniqueCustomers.filter((c) => c.name === selectedSeller)
-                          : uniqueCustomers;
-                        exportCustomerReceiptPDF(customersToExport, {
-                          singleSeller: !!selectedSeller,
-                        });
-                      }}
-                      className="border-[#2C5530] text-[#2C5530] rounded-full text-xs"
-                    >
-                      <FileDown className="w-4 h-4 mr-1" />
-                      Download Receipt
-                    </Button>
-                  </>
-                )}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {uniqueCustomers.map((customer) => (
-                <Card key={customer.id} className="bg-white border border-[#E8EBE8] shadow-sm">
-                  <CardContent className="p-5">
-                    <div className="flex items-center gap-3 mb-3">
-                      <div className="w-10 h-10 bg-[#2C5530]/10 rounded-full flex items-center justify-center">
-                        <span className="text-sm font-bold text-[#2C5530]">
-                          {customer.name?.charAt(0)?.toUpperCase() || '?'}
-                        </span>
-                      </div>
-                      <div>
-                        <p className="font-semibold text-[#1E231F]">{customer.name}</p>
-                        <p className="text-xs text-[#5C665D]">{customer.phone || customer.email || 'No contact'}</p>
-                      </div>
-                    </div>
-                    <div className="text-sm text-[#5C665D] mb-2">
-                      <span className="font-semibold text-[#1E231F]">{customer.orders.length}</span> order(s)
-                    </div>
-                    <div className="space-y-2">
-                      {customer.orders.slice(0, 5).map((o) => (
-                        <div key={o.id} className="flex items-center justify-between p-2 bg-[#FAFAF8] rounded-lg">
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-medium text-[#1E231F] truncate">
-                              {o.products && Array.isArray(o.products) && o.products.length > 0
-                                ? o.products.map((p) => p.title).join(', ')
-                                : o.productTitle || 'Order'}
-                            </p>
-                            <p className="text-xs text-[#5C665D]">{new Date(o.createdAt || o.created_at).toLocaleDateString()}</p>
-                          </div>
-                          <span className="text-xs font-semibold text-[#1E231F] font-numbers ml-2">
-                            {formatCurrency(o.total || 0)}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-              {uniqueCustomers.length === 0 && (
-                <Card className="col-span-full bg-white border border-[#E8EBE8] shadow-sm">
-                  <CardContent className="p-8 text-center text-[#5C665D]">
-                    No customers found. Customer records will appear once orders are placed.
-                  </CardContent>
-                </Card>
-              )}
-            </div>
-          </div>
-        )}
-
         {/* Quick Loans Tab */}
         {activeTab === 'quick-loans' && (
           <div className="space-y-6 animate-fade-in">
@@ -809,7 +694,19 @@ const ServicesManagement = () => {
                             </Button>
                           </div>
                         </th>
-                        <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Officer</th>
+                        <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">
+                          <div className="flex items-center gap-1">
+                            <span>Officer</span>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setShowQuickLoanOfficer((prev) => !prev)}
+                              className="text-[10px] h-5 px-1.5"
+                            >
+                              {showQuickLoanOfficer ? 'Hide' : 'Show'}
+                            </Button>
+                          </div>
+                        </th>
                         <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Collateral</th>
                         <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Status</th>
                         <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Actions</th>
@@ -828,7 +725,9 @@ const ServicesManagement = () => {
                           {showQuickLoanPurpose && (
                             <td className="py-3 px-3 text-xs text-[#5C665D]">{q.purpose || '-'}</td>
                           )}
-                          <td className="py-3 px-3 text-xs text-[#5C665D] whitespace-nowrap">{q.officer_name || '-'}</td>
+                          {showQuickLoanOfficer && (
+                            <td className="py-3 px-3 text-xs text-[#5C665D] whitespace-nowrap">{q.officer_name || '-'}</td>
+                          )}
                           <td className="py-3 px-3 text-xs text-[#5C665D] whitespace-nowrap">
                             {q.is_guaranteed ? (
                               <Badge className="bg-[#2C5530]/10 text-[#2C5530] text-[10px]">Guaranteed</Badge>
@@ -850,36 +749,48 @@ const ServicesManagement = () => {
                             </Badge>
                           </td>
                           <td className="py-3 px-3">
-                            {q.status === 'pending_treasurer' ? (
-                              <div className="flex gap-1">
-                                <Button
-                                  size="sm"
-                                  className="bg-[#2C5530] text-white hover:bg-[#214024] rounded-full text-[10px] h-7 px-2"
-                                  onClick={() => handleApproveQuickLoan(q.id, true)}
-                                >
-                                  Approve
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="border-[#D05A49] text-[#D05A49] rounded-full text-[10px] h-7 px-2"
-                                  onClick={() => handleApproveQuickLoan(q.id, false)}
-                                >
-                                  Reject
-                                </Button>
-                              </div>
-                            ) : (
-                              <span className="text-[10px] text-[#5C665D]">—</span>
-                            )}
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="ml-1 text-[#5C665D] hover:text-[#2C5530] h-7 w-7 p-0"
-                              onClick={() => handleDownloadQuickLoanPDF(q)}
-                              title="Download loan agreement"
-                            >
-                              <FileDown className="w-3.5 h-3.5" />
-                            </Button>
+                            <div className="flex flex-wrap gap-1">
+                              {q.status === 'pending_treasurer' ? (
+                                <>
+                                  <Button
+                                    size="sm"
+                                    className="bg-[#2C5530] text-white hover:bg-[#214024] rounded-full text-[10px] h-7 px-2"
+                                    onClick={() => handleApproveQuickLoan(q.id, true)}
+                                  >
+                                    Approve
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="border-[#D05A49] text-[#D05A49] rounded-full text-[10px] h-7 px-2"
+                                    onClick={() => handleApproveQuickLoan(q.id, false)}
+                                  >
+                                    Reject
+                                  </Button>
+                                </>
+                              ) : (
+                                <span className="text-[10px] text-[#5C665D]">—</span>
+                              )}
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="border-[#D05A49] text-[#D05A49] rounded-full text-[10px] h-7 px-2"
+                                onClick={() => handleDeleteQuickLoan(q.id)}
+                                title="Delete quick loan"
+                              >
+                                <Trash2 className="w-3.5 h-3.5 mr-1" />
+                                Delete
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="text-[#5C665D] hover:text-[#2C5530] h-7 w-7 p-0"
+                                onClick={() => handleDownloadQuickLoanPDF(q)}
+                                title="Download loan agreement"
+                              >
+                                <FileDown className="w-3.5 h-3.5" />
+                              </Button>
+                            </div>
                           </td>
                         </tr>
                       ))}

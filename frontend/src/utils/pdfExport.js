@@ -311,72 +311,214 @@ export const exportPettyCashPDF = (items, filenamePrefix = 'petty-cash') => {
   doc.save(`${filenamePrefix}-${new Date().toISOString().split('T')[0]}.pdf`);
 };
 
+const drawReceiptLine = (doc, y, text, x = 14, align = 'left', bold = false) => {
+  doc.setFontSize(9);
+  doc.setFont(undefined, bold ? 'bold' : 'normal');
+  doc.text(text, x, y, { align });
+  return y + 5;
+};
+
+const drawDashedLine = (doc, y) => {
+  doc.setDrawColor(180);
+  doc.setLineDashPattern([2, 2], 0);
+  doc.line(14, y, doc.internal.pageSize.width - 14, y);
+  doc.setLineDashPattern([], 0);
+  return y + 4;
+};
+
+const drawItemRow = (doc, y, item, qty, lineTotal) => {
+  doc.setFontSize(9);
+  doc.setFont(undefined, 'normal');
+  const shortTitle = item.length > 30 ? item.substring(0, 27) + '...' : item;
+  doc.text(shortTitle, 14, y);
+  doc.text(String(qty), 80, y);
+  doc.text(fmtUGX(lineTotal), doc.internal.pageSize.width - 14, y, { align: 'right' });
+  return y + 5;
+};
+
+export const exportOrderReceiptPDF = (order, buyerName, buyerPhone, buyerEmail) => {
+  const doc = new jsPDF();
+  const pageWidth = doc.internal.pageSize.width;
+  let y = 20;
+
+  doc.setFontSize(18);
+  doc.setFont(undefined, 'bold');
+  doc.setTextColor(44, 85, 48);
+  doc.text('Class One Savings', pageWidth / 2, y, { align: 'center' });
+  y += 8;
+
+  doc.setFontSize(14);
+  doc.setTextColor(44, 85, 48);
+  doc.text('RECEIPT', pageWidth / 2, y, { align: 'center' });
+  y += 10;
+
+  y = drawDashedLine(doc, y);
+
+  y = drawReceiptLine(doc, y, `Receipt No: ${order.id || 'N/A'}`, 14, 'left', true);
+  y = drawReceiptLine(doc, y, `Date: ${fmtDate(order.createdAt || order.created_at)}`, 14, 'left');
+  y = drawReceiptLine(doc, y, `Seller: ${order.sellerName || 'N/A'}`, 14, 'left');
+  y = drawReceiptLine(doc, y, `Customer: ${buyerName || order.buyerName || 'N/A'}`, 14, 'left');
+  if (buyerPhone || order.buyerPhone) {
+    y = drawReceiptLine(doc, y, `Phone: ${buyerPhone || order.buyerPhone}`, 14, 'left');
+  }
+  if (buyerEmail || order.buyerEmail) {
+    y = drawReceiptLine(doc, y, `Email: ${buyerEmail || order.buyerEmail}`, 14, 'left');
+  }
+  y += 2;
+
+  y = drawDashedLine(doc, y);
+
+  doc.setFont(undefined, 'bold');
+  doc.setFontSize(9);
+  doc.text('Item', 14, y);
+  doc.text('Qty', 75, y);
+  doc.text('Price', 110, y, { align: 'right' });
+  doc.text('Total', pageWidth - 14, y, { align: 'right' });
+  y += 2;
+  y = drawDashedLine(doc, y);
+
+  const products = order.products && Array.isArray(order.products)
+    ? order.products
+    : order.productTitle
+      ? [{ title: order.productTitle, quantity: 1, price: order.productPrice || order.total || 0 }]
+      : [];
+
+  products.forEach((p) => {
+    const qty = p.quantity || 1;
+    const unitPrice = p.price || 0;
+    const lineTotal = unitPrice * qty;
+    const title = p.title || 'Item';
+    const shortTitle = title.length > 28 ? title.substring(0, 25) + '...' : title;
+    doc.setFontSize(9);
+    doc.setFont(undefined, 'normal');
+    doc.text(shortTitle, 14, y);
+    doc.text(String(qty), 75, y);
+    doc.text(fmtUGX(unitPrice), 110, y, { align: 'right' });
+    doc.text(fmtUGX(lineTotal), pageWidth - 14, y, { align: 'right' });
+    y += 5;
+  });
+
+  y = drawDashedLine(doc, y);
+
+  const subtotal = order.total || products.reduce((sum, p) => sum + (p.price || 0) * (p.quantity || 1), 0);
+  y = drawReceiptLine(doc, y, `Subtotal: ${fmtUGX(subtotal)}`, pageWidth - 14, 'right', true);
+  y = drawReceiptLine(doc, y, `TOTAL: ${fmtUGX(subtotal)}`, pageWidth - 14, 'right', true);
+  y += 4;
+
+  y = drawDashedLine(doc, y);
+
+  doc.setFontSize(8);
+  doc.setTextColor(100);
+  doc.text('Thank you for your purchase!', pageWidth / 2, y, { align: 'center' });
+  y += 5;
+  doc.text('For inquiries, contact the seller directly.', pageWidth / 2, y, { align: 'center' });
+
+  doc.save(`receipt-${order.id || 'order'}-${new Date().toISOString().split('T')[0]}.pdf`);
+};
+
 export const exportCustomerReceiptPDF = (customers, options = {}) => {
   const { singleSeller, dateRange } = options;
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.width;
 
-  try {
-    doc.addImage('/icons/icon-512.png', 'PNG', pageWidth / 2 - 15, 8, 30, 30);
-  } catch (e) {
-    // Icon load failed
-  }
-
-  doc.setFontSize(18);
-  doc.setTextColor(44, 85, 48);
-  doc.text('Class One Group', pageWidth / 2, 48, { align: 'center' });
-
-  doc.setFontSize(10);
-  doc.setTextColor(212, 140, 112);
-  doc.text('Your Trusted Financial Partner - Secure Transactions, Happy Customers', pageWidth / 2, 54, { align: 'center' });
-
-  doc.setFontSize(8);
-  doc.setTextColor(150);
-  doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 62);
-  if (dateRange) {
-    doc.text(`Period: ${dateRange}`, 14, 68);
-  }
-
-  let grandTotal = 0;
-  const allRows = [];
-
-  customers.forEach((customer) => {
-    const customerTotal = customer.orders.reduce((sum, o) => sum + (o.total || 0), 0);
-    grandTotal += customerTotal;
-
-    customer.orders.forEach(o => {
-      const products = o.products && Array.isArray(o.products)
-        ? o.products.map(p => `${p.title || 'Item'} x${p.quantity || 1}`).join(', ')
-        : o.productTitle || '-';
-      allRows.push([
-        customer.name,
-        customer.phone || customer.email || '-',
-        fmtDate(o.createdAt || o.created_at),
-        o.sellerName || '-',
-        products,
-        fmtUGX(o.total || 0),
-        o.status || '-',
-      ]);
+  customers.forEach((customer, customerIndex) => {
+    const sortedOrders = (customer.orders || []).slice().sort((a, b) => {
+      const dateA = new Date(a.createdAt || a.created_at || 0);
+      const dateB = new Date(b.createdAt || b.created_at || 0);
+      return dateA - dateB;
     });
-  });
 
-  autoTable(doc, {
-    startY: 74,
-    head: [['Customer', 'Contact', 'Date', 'Seller', 'Products', 'Amount', 'Status']],
-    body: allRows,
-    styles: { fontSize: 8 },
-    headStyles: { fillColor: [44, 85, 48] },
-    margin: { left: 14, right: 14 },
-  });
+    let y = 20;
+    if (customerIndex > 0) {
+      doc.addPage();
+    }
 
-  const summaryY = doc.lastAutoTable.finalY + 15;
-  doc.setFontSize(12);
-  doc.setTextColor(212, 140, 112);
-  doc.setFont(undefined, 'bold');
-  doc.text(`Grand Total: ${fmtUGX(grandTotal)}`, 14, summaryY);
-  doc.setFontSize(10);
-  doc.setTextColor(92, 102, 93);
-  doc.text(`${customers.length} customer(s), ${customers.reduce((sum, c) => sum + c.orders.length, 0)} order(s)`, 14, summaryY + 8);
+    doc.setFontSize(18);
+    doc.setFont(undefined, 'bold');
+    doc.setTextColor(44, 85, 48);
+    doc.text('Class One Savings', pageWidth / 2, y, { align: 'center' });
+    y += 8;
+
+    doc.setFontSize(14);
+    doc.setTextColor(44, 85, 48);
+    doc.text('Customer Receipt', pageWidth / 2, y, { align: 'center' });
+    y += 10;
+
+    y = drawDashedLine(doc, y);
+
+    doc.setFontSize(8);
+    doc.setTextColor(150);
+    doc.text(`Generated: ${new Date().toLocaleString()}`, 14, y);
+    y += 10;
+
+    doc.setFontSize(11);
+    doc.setFont(undefined, 'bold');
+    doc.setTextColor(44, 85, 48);
+    doc.text(`Customer: ${customer.name}`, 14, y);
+    y += 6;
+    doc.setFontSize(9);
+    doc.setFont(undefined, 'normal');
+    doc.setTextColor(80);
+    doc.text(`Contact: ${customer.phone || customer.email || '-'}`, 14, y);
+    y += 8;
+
+    y = drawDashedLine(doc, y);
+
+    let customerTotal = 0;
+
+    sortedOrders.forEach((o) => {
+      if (y > 240) {
+        doc.addPage();
+        y = 20;
+      }
+
+      doc.setFontSize(9);
+      doc.setFont(undefined, 'bold');
+      doc.setTextColor(44, 85, 48);
+      doc.text(`Order: ${o.id || '-'}  |  Date: ${fmtDate(o.createdAt || o.created_at)}  |  Seller: ${o.sellerName || '-'}`, 14, y);
+      y += 5;
+
+      const products = o.products && Array.isArray(o.products)
+        ? o.products
+        : o.productTitle
+          ? [{ title: o.productTitle, quantity: 1, price: o.productPrice || o.total || 0 }]
+          : [];
+
+      products.forEach((p) => {
+        if (y > 270) {
+          doc.addPage();
+          y = 20;
+        }
+        const qty = p.quantity || 1;
+        const lineTotal = (p.price || 0) * qty;
+        const title = p.title || 'Item';
+        const shortTitle = title.length > 32 ? title.substring(0, 29) + '...' : title;
+        y = drawItemRow(doc, y, shortTitle, qty, lineTotal);
+      });
+
+      const orderTotal = o.total || products.reduce((sum, p) => sum + (p.price || 0) * (p.quantity || 1), 0);
+      customerTotal += orderTotal;
+      y = drawReceiptLine(doc, y, `Order Total: ${fmtUGX(orderTotal)}`, pageWidth - 14, 'right', true);
+      y = drawDashedLine(doc, y);
+      y += 2;
+    });
+
+    if (y > 240) {
+      doc.addPage();
+      y = 20;
+    }
+
+    y = drawDashedLine(doc, y);
+    doc.setFontSize(11);
+    doc.setFont(undefined, 'bold');
+    doc.setTextColor(212, 140, 112);
+    doc.text(`Customer Total: ${fmtUGX(customerTotal)}`, 14, y);
+    y += 6;
+    doc.setFontSize(9);
+    doc.setFont(undefined, 'normal');
+    doc.setTextColor(92, 102, 93);
+    doc.text(`${sortedOrders.length} order(s)`, 14, y);
+  });
 
   doc.save(`customer-receipt-${new Date().toISOString().split('T')[0]}.pdf`);
 };
@@ -385,67 +527,104 @@ export const exportSellerReceiptPDF = (sellers, options = {}) => {
   const { dateRange } = options;
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.width;
-
-  try {
-    doc.addImage('/icons/icon-512.png', 'PNG', pageWidth / 2 - 15, 8, 30, 30);
-  } catch (e) {
-    // Icon load failed
-  }
+  let y = 20;
 
   doc.setFontSize(18);
+  doc.setFont(undefined, 'bold');
   doc.setTextColor(44, 85, 48);
-  doc.text('Class One Group', pageWidth / 2, 48, { align: 'center' });
+  doc.text('Class One Savings', pageWidth / 2, y, { align: 'center' });
+  y += 8;
 
-  doc.setFontSize(10);
-  doc.setTextColor(212, 140, 112);
-  doc.text('Your Trusted Financial Partner - Empowering Sellers, Growing Together', pageWidth / 2, 54, { align: 'center' });
+  doc.setFontSize(14);
+  doc.setTextColor(44, 85, 48);
+  doc.text('Seller Receipts', pageWidth / 2, y, { align: 'center' });
+  y += 10;
+
+  y = drawDashedLine(doc, y);
 
   doc.setFontSize(8);
   doc.setTextColor(150);
-  doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 62);
+  doc.text(`Generated: ${new Date().toLocaleString()}`, 14, y);
   if (dateRange) {
-    doc.text(`Period: ${dateRange}`, 14, 68);
+    doc.text(`Period: ${dateRange}`, 14, y + 5);
   }
+  y += 12;
 
   let grandTotal = 0;
-  const allRows = [];
 
   sellers.forEach((seller) => {
-    const sellerTotal = seller.orders.reduce((sum, o) => sum + (o.total || 0), 0);
-    grandTotal += sellerTotal;
+    const sortedOrders = (seller.orders || []).slice().sort((a, b) => {
+      const dateA = new Date(a.createdAt || a.created_at || 0);
+      const dateB = new Date(b.createdAt || b.created_at || 0);
+      return dateA - dateB;
+    });
 
-    seller.orders.forEach(o => {
+    if (y > 240) {
+      doc.addPage();
+      y = 20;
+    }
+
+    doc.setFontSize(11);
+    doc.setFont(undefined, 'bold');
+    doc.setTextColor(44, 85, 48);
+    doc.text(`Seller: ${seller.name}`, 14, y);
+    y += 8;
+
+    y = drawDashedLine(doc, y);
+
+    sortedOrders.forEach((o) => {
+      if (y > 240) {
+        doc.addPage();
+        y = 20;
+      }
+
+      doc.setFontSize(9);
+      doc.setFont(undefined, 'bold');
+      doc.setTextColor(44, 85, 48);
+      doc.text(`Order: ${o.id || '-'}  |  Date: ${fmtDate(o.createdAt || o.created_at)}  |  Buyer: ${o.buyerName || '-'}`, 14, y);
+      y += 5;
+
       const products = o.products && Array.isArray(o.products)
-        ? o.products.map(p => `${p.title || 'Item'} x${p.quantity || 1}`).join(', ')
-        : o.productTitle || '-';
-      allRows.push([
-        seller.name,
-        fmtDate(o.createdAt || o.created_at),
-        products,
-        fmtUGX(o.total || 0),
-        o.buyerName || '-',
-        o.status || '-',
-      ]);
+        ? o.products
+        : o.productTitle
+          ? [{ title: o.productTitle, quantity: 1, price: o.productPrice || o.total || 0 }]
+          : [];
+
+      products.forEach((p) => {
+        if (y > 270) {
+          doc.addPage();
+          y = 20;
+        }
+        const qty = p.quantity || 1;
+        const lineTotal = (p.price || 0) * qty;
+        const title = p.title || 'Item';
+        const shortTitle = title.length > 32 ? title.substring(0, 29) + '...' : title;
+        y = drawItemRow(doc, y, shortTitle, qty, lineTotal);
+      });
+
+      const orderTotal = o.total || products.reduce((sum, p) => sum + (p.price || 0) * (p.quantity || 1), 0);
+      grandTotal += orderTotal;
+      y = drawReceiptLine(doc, y, `Order Total: ${fmtUGX(orderTotal)}`, pageWidth - 14, 'right', true);
+      y = drawDashedLine(doc, y);
+      y += 2;
     });
   });
 
-  autoTable(doc, {
-    startY: 74,
-    head: [['Seller', 'Date', 'Products', 'Amount', 'Buyer', 'Status']],
-    body: allRows,
-    styles: { fontSize: 8 },
-    headStyles: { fillColor: [44, 85, 48] },
-    margin: { left: 14, right: 14 },
-  });
+  if (y > 240) {
+    doc.addPage();
+    y = 20;
+  }
 
-  const summaryY = doc.lastAutoTable.finalY + 15;
-  doc.setFontSize(12);
-  doc.setTextColor(212, 140, 112);
+  y = drawDashedLine(doc, y);
+  doc.setFontSize(11);
   doc.setFont(undefined, 'bold');
-  doc.text(`Grand Total Sales: ${fmtUGX(grandTotal)}`, 14, summaryY);
-  doc.setFontSize(10);
+  doc.setTextColor(212, 140, 112);
+  doc.text(`Grand Total Sales: ${fmtUGX(grandTotal)}`, 14, y);
+  y += 6;
+  doc.setFontSize(9);
+  doc.setFont(undefined, 'normal');
   doc.setTextColor(92, 102, 93);
-  doc.text(`${sellers.length} seller(s), ${sellers.reduce((sum, s) => sum + s.orders.length, 0)} order(s)`, 14, summaryY + 8);
+  doc.text(`${sellers.length} seller(s), ${sellers.reduce((sum, s) => sum + s.orders.length, 0)} order(s)`, 14, y);
 
   doc.save(`seller-receipt-${new Date().toISOString().split('T')[0]}.pdf`);
 };
