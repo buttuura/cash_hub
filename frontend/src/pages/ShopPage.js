@@ -977,7 +977,7 @@ if (error.response) {
                   return { category, categoryProducts };
                 })
                 .sort((a, b) => b.categoryProducts.length - a.categoryProducts.length)
-                .slice(0, 5)
+.slice(0, 5)
 .map(({ category, categoryProducts }) => {
                     const visibleProducts = categoryProducts.slice(0, 6);
                     const Icon = ICON_MAP[category.id] || Sparkles;
@@ -986,15 +986,20 @@ if (error.response) {
                       <div key={category.id} className="space-y-3">
                         <div className="flex items-center justify-between gap-3">
                           <div className="flex min-w-0 items-center gap-2">
-                            <Icon className="h-4 w-4 shrink-0 text-[#2B6F38]" />
-                            <p className="truncate text-sm font-semibold text-[#1B3A16]">{category.name}</p>
+                            <Icon className="h-5 w-5 shrink-0 text-[#2B6F38]" />
+                            <p className="truncate text-base font-semibold text-[#1B3A16]">{category.name}</p>
                           </div>
-                          <Badge variant="secondary">{categoryProducts.length}</Badge>
+                          <Badge variant="secondary" className="bg-[#ECF8E9] text-[#172B12] font-medium">
+                            {categoryProducts.length} {categoryProducts.length === 1 ? 'item' : 'items'}
+                          </Badge>
                         </div>
 
                         {categoryProducts.length === 0 ? (
-                          <div className="rounded-3xl border border-dashed border-slate-200 bg-[#F7FAF3] px-4 py-5 text-sm text-[#4B5A45]">
-                            No products in this category yet.
+                          <div className="flex items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-gradient-to-br from-[#F7FAF3] to-[#EBF5E8] px-6 py-8 text-center">
+                            <div>
+                              <svg className="w-10 h-10 mx-auto text-[#4B5A45] mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0h-2m-2 0h-6m-2 0H6m16 10H4a2 2 0 01-2-2v-5a2 2 0 012-2h2m8-4v4m4-4v4m4-4v4M8 7h.01M12 7h.01M16 7h.01" /></svg>
+                              <p className="text-sm text-[#4B5A45]">No products in this category yet.</p>
+                            </div>
                           </div>
                         ) : (
                           <div className="relative">
@@ -1005,7 +1010,7 @@ if (error.response) {
                                   const row = document.querySelector(`[data-popular-row="${category.id}"]`);
                                   row?.scrollBy({ left: -360, behavior: 'smooth' });
                                 }}
-                                className="inline-flex md:hidden absolute left-0 top-1/2 -translate-y-1/2 z-10 h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-lg font-semibold text-[#172B12] hover:bg-[#ECF8E9] shadow-md"
+                                className="inline-flex md:hidden absolute left-0 top-1/2 -translate-y-1/2 z-10 h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-300 bg-white text-lg font-semibold text-[#172B12] hover:bg-[#ECF8E9] shadow-md"
                                 aria-label={`Scroll ${category.name} products left`}
                               >
                                 ‹
@@ -1016,7 +1021,7 @@ if (error.response) {
                                   const row = document.querySelector(`[data-popular-row="${category.id}"]`);
                                   row?.scrollBy({ left: 360, behavior: 'smooth' });
                                 }}
-                                className="inline-flex md:hidden absolute right-0 top-1/2 -translate-y-1/2 z-10 h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-lg font-semibold text-[#172B12] hover:bg-[#ECF8E9] shadow-md"
+                                className="inline-flex md:hidden absolute right-0 top-1/2 -translate-y-1/2 z-10 h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-300 bg-white text-lg font-semibold text-[#172B12] hover:bg-[#ECF8E9] shadow-md"
                                 aria-label={`Scroll ${category.name} products right`}
                               >
                                 ›
@@ -1024,60 +1029,63 @@ if (error.response) {
                             </>
                             <div
                               data-popular-row={category.id}
-                              className="flex gap-3 overflow-x-auto scroll-smooth pb-2 px-10 hide-scrollbar"
+                              className="flex gap-4 overflow-x-auto scroll-smooth pb-2 px-10 hide-scrollbar"
                             >
                              {visibleProducts.map((product) => {
-                               const hasMultipleImages = product.image_urls && product.image_urls.length > 1;
-                               const displayImage = product.image_urls?.[0] || product.image_url;
-                               return (
-                                 <button
-                                   key={product.id}
-                                   type="button"
-                                   onClick={() => handleOpenPurchase(product)}
-                                   className="snap-start shrink-0 rounded-3xl border border-slate-200 bg-white p-3 text-left shadow-sm transition hover:border-[#2B6F38]/70 w-32"
-                                 >
-                                   {displayImage ? (
-                                     <div className="overflow-hidden rounded-2xl bg-[#F4F8EF] relative">
-                                       <img
-                                         src={getImageUrl(displayImage)}
-                                         alt={product.title}
-                                         className="h-20 w-full object-cover cursor-pointer"
-                                         onClick={(e) => {
-                                           e.stopPropagation();
-                                           openImageGallery(product);
-                                         }}
-                                       />
-                                       {hasMultipleImages && (
-                                         <span className="absolute bottom-1 right-1 bg-black/70 text-white text-[10px] px-1 rounded-full">
-                                           {product.image_urls.length}
-                                         </span>
-                                       )}
-                                     </div>
-                                   ) : (
-                                     <div className="mb-3 flex h-20 items-center justify-center rounded-2xl bg-[#F4F8EF] text-xs font-medium text-[#4B5A45]">
-                                       No image
-                                     </div>
-                                   )}
-                                   <p className="mt-2 line-clamp-2 text-xs font-semibold leading-4 text-[#172B12]">{product.title}</p>
-                                   <p className="mt-1 text-xs font-semibold text-[#2B6F38]">UGX {Number(product.price).toLocaleString()}</p>
-                                    <div
-                                      role="button"
-                                      tabIndex={0}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        addToCart(product);
-                                      }}
-                                      onKeyDown={(e) => {
-                                        if (e.key === 'Enter' || e.key === ' ') {
-                                          e.preventDefault();
+                                const hasMultipleImages = product.image_urls && product.image_urls.length > 1;
+                                const displayImage = product.image_urls?.[0] || product.image_url;
+                                return (
+                                  <button
+                                    key={product.id}
+                                    type="button"
+                                    onClick={() => handleOpenPurchase(product)}
+                                    className="snap-start shrink-0 rounded-2xl border border-slate-200 bg-white text-left shadow-sm transition-all duration-200 hover:shadow-md hover:border-[#2B6F38]/50 w-44 group"
+                                  >
+                                    {displayImage ? (
+                                      <div className="overflow-hidden rounded-t-2xl bg-[#F4F8EF] relative">
+                                        <img
+                                          src={getImageUrl(displayImage)}
+                                          alt={product.title}
+                                          className="h-28 w-full object-cover cursor-pointer transition-transform duration-300 group-hover:scale-105"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            openImageGallery(product);
+                                          }}
+                                        />
+                                        {hasMultipleImages && (
+                                          <div className="absolute top-2 right-2 bg-black/70 text-white text-[10px] px-1.5 py-0.5 rounded-full backdrop-blur-sm">
+                                            📷 {product.image_urls.length}
+                                          </div>
+                                        )}
+                                      </div>
+                                    ) : (
+                                      <div className="flex h-28 items-center justify-center rounded-t-2xl bg-gradient-to-br from-[#F4F8EF] to-[#E8F0E3] border-b border-slate-200">
+                                        <span className="text-xs text-[#4B5A45]">No image</span>
+                                      </div>
+                                    )}
+                                    <div className="p-3">
+                                      <p className="line-clamp-2 text-xs font-semibold leading-4 text-[#172B12] mb-1">{product.title}</p>
+                                      <p className="text-xs font-bold text-[#2B6F38] mb-2">UGX {Number(product.price).toLocaleString()}</p>
+                                      <div
+                                        role="button"
+                                        tabIndex={0}
+                                        onClick={(e) => {
                                           e.stopPropagation();
                                           addToCart(product);
-                                        }
-                                      }}
-                                      className="mt-1 inline-block cursor-pointer text-xs text-[#172B12] hover:text-[#2B6F38]"
-                                    >
-                                      Add to Cart
-</div>
+                                        }}
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter' || e.key === ' ') {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            addToCart(product);
+                                          }
+                                        }}
+                                        className="inline-flex items-center gap-1 text-xs text-[#172B12] hover:text-[#2B6F38] font-medium cursor-pointer"
+                                      >
+                                        <ShoppingCart className="h-3 w-3" />
+                                        Add to Cart
+                                      </div>
+                                    </div>
                                   </button>
                                 );
                               })}
@@ -1086,9 +1094,12 @@ if (error.response) {
                                 <button
                                   type="button"
                                   onClick={() => navigate(`/category/${category.id}`)}
-                                  className="snap-start flex h-full min-h-[124px] shrink-0 items-center justify-center rounded-3xl border border-[#2B6F38]/30 bg-[#ECF8E9] px-4 text-center text-sm font-semibold text-[#172B12] hover:bg-[#2B6F38] hover:text-white w-32"
+                                  className="snap-start flex h-full min-h-[116px] shrink-0 items-center justify-center rounded-2xl border-2 border-dashed border-[#2B6F38] bg-[#ECF8E9] px-4 text-center text-sm font-semibold text-[#172B12] hover:bg-[#2B6F38] hover:text-white transition-colors duration-200 w-44"
                                 >
-                                  See more
+                                  <div className="text-center">
+                                    <svg className="w-6 h-6 mx-auto mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
+                                    See more
+                                  </div>
                                 </button>
                               )}
                             </div>
@@ -1131,7 +1142,7 @@ if (error.response) {
           </CardFooter>
         </Card>
 
-        <section className="space-y-6">
+<section className="space-y-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-3xl font-semibold text-[#172B12]">New Products on Market</h2>
@@ -1141,59 +1152,94 @@ if (error.response) {
             </div>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
             {recentProducts.length === 0 ? (
               <Card className="border border-slate-200 bg-white shadow-sm">
                 <CardContent>
                   <p className="text-sm text-[#4B5A45]">No products have been listed yet. Members can add products from their dashboard.</p>
                 </CardContent>
               </Card>
-) : recentProducts.map((product) => {
-               const hasMultipleImages = product.image_urls && product.image_urls.length > 1;
-               const displayImage = product.image_urls?.[0] || product.image_url;
-               return (
-                 <Card key={product.id} className="border border-slate-200 bg-white shadow-sm">
-                   {displayImage && (
-                     <div className="overflow-hidden rounded-t-[32px] bg-[#F4F8EF] relative">
-                       <img
-                         src={getImageUrl(displayImage)}
-                         alt={product.title}
-                         className="h-56 w-full object-cover cursor-pointer"
-                         onClick={() => openImageGallery(product)}
-                       />
-                       {hasMultipleImages && (
-                         <span className="absolute bottom-2 right-2 bg-black/70 text-white text-xs px-2 py-1 rounded-full">
-                           {product.image_urls.length} images
-                         </span>
-                       )}
-                     </div>
-                   )}
-                   <CardHeader className="space-y-3">
-                     <div className="flex items-start justify-between gap-3">
-                       <div>
-                         <CardTitle className="text-lg">{product.title}</CardTitle>
-                         <CardDescription>{product.description}</CardDescription>
-                       </div>
-                       <div className="text-right">
-                         <p className="text-sm text-[#4B5A45]">Price</p>
-                         <p className="text-xl font-semibold text-[#172B12]">UGX {Number(product.price).toLocaleString()}</p>
-                       </div>
-                     </div>
-                   </CardHeader>
-                   <CardContent>
-                     <div className="space-y-2 text-sm text-[#4B5A45]">
-                       <p>Seller: <span className="font-medium text-[#172B12]">{product.sellerName || product.seller_name || 'Member'}</span></p>
-                       <p className="text-xs text-[#6B7C61]">{new Date(product.createdAt || product.created_at).toLocaleDateString()}</p>
-                     </div>
-                   </CardContent>
-                   <CardFooter className="flex flex-wrap gap-3 border-t border-slate-200 pt-4">
-                     <Button size="sm" onClick={() => addToCart(product)} className="bg-[#172B12] text-white hover:bg-[#0f2409]">Add to Cart</Button>
-                     <Button size="sm" onClick={() => handleOpenPurchase(product)} className="bg-white text-[#172B12] border border-[#172B12] hover:bg-[#ECF8E9]">Buy now</Button>
-                     <Button size="sm" onClick={() => setCartOpen(true)} className="bg-[#172B12] text-white hover:bg-[#0f2409]">View cart</Button>
-                   </CardFooter>
-                 </Card>
-               );
-             })}
+            ) : recentProducts.map((product) => {
+                const hasMultipleImages = product.image_urls && product.image_urls.length > 1;
+                const displayImage = product.image_urls?.[0] || product.image_url;
+                return (
+                  <Card key={product.id} className="group border border-slate-200 bg-white shadow-sm hover:shadow-md transition-shadow duration-300 overflow-hidden">
+                    {displayImage ? (
+                      <div className="relative overflow-hidden rounded-t-xl">
+                        <img
+                          src={getImageUrl(displayImage)}
+                          alt={product.title}
+                          className="h-56 w-full object-cover cursor-pointer transition-transform duration-500 group-hover:scale-105"
+                          onClick={() => openImageGallery(product)}
+                        />
+                        {hasMultipleImages && (
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end justify-end p-3">
+                            <Badge className="bg-black/70 text-white hover:bg-black/80">
+                              <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l6-6 6 6z" clipRule="evenodd" /></svg>
+                              {product.image_urls.length} photos
+                            </Badge>
+                          </div>
+                        )}
+                        {!hasMultipleImages && (
+                          <div className="absolute top-3 right-3 bg-white/80 backdrop-blur rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 cursor-pointer" onClick={() => openImageGallery(product)}>
+                            <svg className="w-4 h-4 text-[#172B12]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" /></svg>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="h-56 flex items-center justify-center rounded-t-xl bg-gradient-to-br from-[#F4F8EF] to-[#E8F0E3] border-b border-slate-200">
+                        <div className="text-center">
+                          <svg className="w-12 h-12 mx-auto text-[#4B5A45] mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-12 4h16a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                          <p className="text-sm font-medium text-[#4B5A45]">No image available</p>
+                        </div>
+                      </div>
+                    )}
+                    <CardHeader className="pb-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <CardTitle className="text-lg group-hover:text-[#2B6F38] transition-colors line-clamp-1">{product.title}</CardTitle>
+                          <CardDescription className="mt-1 line-clamp-2">{product.description}</CardDescription>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="text-xs text-[#4B5A45] uppercase tracking-wider">Price</p>
+                          <p className="text-xl font-bold text-[#172B12]">UGX {Number(product.price).toLocaleString()}</p>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="pb-3">
+                      <div className="flex items-center justify-between text-sm">
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 rounded-full bg-[#ECF8E9] flex items-center justify-center">
+                            <svg className="w-3 h-3 text-[#2B6F38]" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 016 0zM2 17a3 3 0 116 0 3 3 0 01-6 0zm14-3a3 3 0 110-6 3 3 0 010 6z" clipRule="evenodd" /></svg>
+                          </div>
+                          <span className="text-[#4B5A45]">Seller:</span>
+                          <span className="font-medium text-[#172B12] truncate max-w-[120px]">{product.sellerName || product.seller_name || 'Member'}</span>
+                        </div>
+                        <span className="text-xs text-[#6B7C61] bg-slate-100 px-2 py-1 rounded-full">
+                          {new Date(product.createdAt || product.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        </span>
+                      </div>
+                    </CardContent>
+                    <CardFooter className="flex flex-col sm:flex-row gap-2 pt-4 border-t border-slate-100">
+                      <Button 
+                        size="sm" 
+                        onClick={() => addToCart(product)} 
+                        className="w-full sm:flex-1 bg-[#172B12] text-white hover:bg-[#0f2409] shadow-sm"
+                      >
+                        <ShoppingCart className="h-4 w-4 mr-2" />
+                        Add to Cart
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        onClick={() => handleOpenPurchase(product)} 
+                        className="w-full sm:flex-1 bg-white text-[#172B12] border border-[#172B12] hover:bg-[#ECF8E9]"
+                      >
+                        Buy now
+                      </Button>
+                    </CardFooter>
+                  </Card>
+                );
+              })}
           </div>
         </section>
       </div>
@@ -1500,56 +1546,71 @@ if (error.response) {
             <Button type="submit" className="bg-[#172B12] text-white hover:bg-[#0f2409]">
               {orderSubmitting ? 'Sending request...' : 'Send purchase request'}
             </Button>
-          </form>
+</form>
         </DialogContent>
       </Dialog>
 
       <Dialog open={galleryOpen} onOpenChange={setGalleryOpen}>
-        <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto flex flex-col">
-          <DialogHeader>
+        <DialogContent className="sm:max-w-4xl max-h-[90vh] flex flex-col p-4 bg-transparent">
+          <DialogHeader className="sr-only">
             <DialogTitle>Product Gallery</DialogTitle>
-            <DialogDescription>View all product images</DialogDescription>
           </DialogHeader>
-          <div className="flex-1 space-y-4">
+          <div className="flex-1 overflow-y-auto">
             {galleryImages.length > 0 && (
-              <div className="relative">
-                <img
-                  src={galleryImages[galleryIndex]}
-                  alt={`Product image ${galleryIndex + 1}`}
-                  className="w-full h-96 object-contain rounded-lg"
-                />
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-col sm:flex-row gap-4 items-start">
+                  <div className="relative flex-shrink-0">
+                    <img
+                      src={galleryImages[galleryIndex]}
+                      alt="Product"
+                      className="max-h-[60vh] max-w-[300px] object-contain rounded-lg bg-white p-2"
+                    />
+                    {galleryImages.length > 1 && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setGalleryIndex(i => (i > 0 ? i - 1 : galleryImages.length - 1))}
+                          className="absolute left-1 top-1/2 -translate-y-1/2 bg-white text-black rounded-full w-8 h-8 flex items-center justify-center shadow-md hover:bg-gray-200 text-sm"
+                        >
+                          ‹
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setGalleryIndex(i => (i < galleryImages.length - 1 ? i + 1 : 0))}
+                          className="absolute right-1 top-1/2 -translate-y-1/2 bg-white text-black rounded-full w-8 h-8 flex items-center justify-center shadow-md hover:bg-gray-200 text-sm"
+                        >
+                          ›
+                        </button>
+                      </>
+                    )}
+                  </div>
+                  {purchaseProduct && (
+                    <div className="flex-1 space-y-3">
+                      <h3 className="text-xl font-semibold text-[#172B12]">{purchaseProduct.title}</h3>
+                      <p className="text-sm text-[#4B5A45]">{purchaseProduct.description}</p>
+                      <p className="text-lg font-semibold text-[#2B6F38]">UGX {Number(purchaseProduct.price).toLocaleString()}</p>
+                      <p className="text-xs text-[#6B7C61]">Seller: {purchaseProduct.sellerName || purchaseProduct.seller_name || 'Member'}</p>
+                      <div className="flex gap-2 pt-2">
+                        <Button onClick={() => addToCart(purchaseProduct)} className="bg-[#172B12] text-white hover:bg-[#0f2409]">Add to Cart</Button>
+                        <Button onClick={() => { setGalleryOpen(false); setPurchaseOpen(true); }} className="bg-white text-[#172B12] border border-[#172B12] hover:bg-[#ECF8E9]">Buy now</Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
                 {galleryImages.length > 1 && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => setGalleryIndex(prev => prev > 0 ? prev - 1 : galleryImages.length - 1)}
-                      className="absolute left-2 top-1/2 -translate-y-1/2 z-10 h-10 w-10 rounded-full bg-white/80 text-lg font-semibold text-[#172B12] hover:bg-white shadow-md"
-                    >
-                      ‹
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setGalleryIndex(prev => prev < galleryImages.length - 1 ? prev + 1 : 0)}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 z-10 h-10 w-10 rounded-full bg-white/80 text-lg font-semibold text-[#172B12] hover:bg-white shadow-md"
-                    >
-                      ›
-                    </button>
-                  </>
+                  <div className="flex gap-1 flex-wrap justify-center">
+                    {galleryImages.map((img, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => setGalleryIndex(idx)}
+                        className={`w-12 h-12 rounded-full overflow-hidden border-2 ${idx === galleryIndex ? 'border-[#2B6F38]' : 'border-slate-300'}`}
+                      >
+                        <img src={img} alt={`thumb-${idx}`} className="w-full h-full object-cover" />
+                      </button>
+                    ))}
+                  </div>
                 )}
-              </div>
-            )}
-            {galleryImages.length > 1 && (
-              <div className="flex gap-2 justify-center overflow-x-auto pb-2">
-                {galleryImages.map((img, index) => (
-                  <button
-                    key={index}
-                    type="button"
-                    onClick={() => setGalleryIndex(index)}
-                    className={`h-12 w-12 shrink-0 rounded-full border-2 overflow-hidden ${index === galleryIndex ? 'border-[#2B6F38]' : 'border-slate-200'}`}
-                  >
-                    <img src={img} alt={`Thumbnail ${index + 1}`} className="h-full w-full object-cover" />
-                  </button>
-                ))}
               </div>
             )}
           </div>
@@ -1624,73 +1685,6 @@ if (error.response) {
                   {orderSubmitting ? 'Sending requests...' : `Send ${cart.length} order(s)`}
                 </Button>
               </>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
-
-<Dialog open={galleryOpen} onOpenChange={setGalleryOpen}>
-        <DialogContent className="sm:max-w-4xl max-h-[90vh] flex flex-col p-4 bg-transparent">
-          <DialogHeader className="sr-only">
-            <DialogTitle>Product Gallery</DialogTitle>
-          </DialogHeader>
-          <div className="flex-1 overflow-y-auto">
-            {galleryImages.length > 0 && (
-              <div className="flex flex-col gap-4">
-                <div className="flex flex-col sm:flex-row gap-4 items-start">
-                  <div className="relative flex-shrink-0">
-                    <img
-                      src={galleryImages[galleryIndex]}
-                      alt="Product"
-                      className="max-h-[60vh] max-w-[300px] object-contain rounded-lg bg-white p-2"
-                    />
-                    {galleryImages.length > 1 && (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => setGalleryIndex(i => (i > 0 ? i - 1 : galleryImages.length - 1))}
-                          className="absolute left-1 top-1/2 -translate-y-1/2 bg-white text-black rounded-full w-8 h-8 flex items-center justify-center shadow-md hover:bg-gray-200 text-sm"
-                        >
-                          ‹
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setGalleryIndex(i => (i < galleryImages.length - 1 ? i + 1 : 0))}
-                          className="absolute right-1 top-1/2 -translate-y-1/2 bg-white text-black rounded-full w-8 h-8 flex items-center justify-center shadow-md hover:bg-gray-200 text-sm"
-                        >
-                          ›
-                        </button>
-                      </>
-                    )}
-                  </div>
-                  {purchaseProduct && (
-                    <div className="flex-1 space-y-3">
-                      <h3 className="text-xl font-semibold text-[#172B12]">{purchaseProduct.title}</h3>
-                      <p className="text-sm text-[#4B5A45]">{purchaseProduct.description}</p>
-                      <p className="text-lg font-semibold text-[#2B6F38]">UGX {Number(purchaseProduct.price).toLocaleString()}</p>
-                      <p className="text-xs text-[#6B7C61]">Seller: {purchaseProduct.sellerName || purchaseProduct.seller_name || 'Member'}</p>
-                      <div className="flex gap-2 pt-2">
-                        <Button onClick={() => addToCart(purchaseProduct)} className="bg-[#172B12] text-white hover:bg-[#0f2409]">Add to Cart</Button>
-                        <Button onClick={() => { setGalleryOpen(false); setPurchaseOpen(true); }} className="bg-white text-[#172B12] border border-[#172B12] hover:bg-[#ECF8E9]">Buy now</Button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-                {galleryImages.length > 1 && (
-                  <div className="flex gap-1 flex-wrap justify-center">
-                    {galleryImages.map((img, idx) => (
-                      <button
-                        key={idx}
-                        type="button"
-                        onClick={() => setGalleryIndex(idx)}
-                        className={`w-12 h-12 rounded-full overflow-hidden border-2 ${idx === galleryIndex ? 'border-[#2B6F38]' : 'border-slate-300'}`}
-                      >
-                        <img src={img} alt={`thumb-${idx}`} className="w-full h-full object-cover" />
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
             )}
           </div>
         </DialogContent>

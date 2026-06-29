@@ -4,6 +4,7 @@ import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '../components/ui/card';
+import { Badge } from '../components/ui/badge';
 import { Toaster, toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../components/ui/dialog';
 import { Input } from '../components/ui/input';
@@ -416,79 +417,114 @@ return (
         </div>
 
 {filteredProducts.length === 0 ? (
-           <Card className="rounded-[32px] border border-slate-200 bg-white p-12 text-center">
-             <CardContent>
-               <p className="text-sm text-[#4B5A45]">
-                 {categoryId === 'all' && searchQuery.trim()
-                   ? 'No products match your search. Try a different keyword.'
-                   : 'No products found in this category.'}
-               </p>
-             </CardContent>
-           </Card>
-         ) : (
-           <>
-             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-               {visibleProducts.map((product) => {
-                 const hasMultipleImages = product.image_urls && product.image_urls.length > 1;
-                 const displayImage = product.image_urls?.[0] || product.image_url || product.imageUrl;
-                 return (
-                   <Card key={product.id} className="border border-slate-200 bg-white shadow-sm">
-                     {displayImage ? (
-                       <div className="overflow-hidden rounded-t-[32px] bg-[#F4F8EF] relative">
-                         <img
-                           src={getImageUrl(displayImage)}
-                           alt={product.title}
-                           className="h-56 w-full object-cover cursor-pointer"
-                           onClick={() => openImageGallery(product)}
-                         />
-                         {hasMultipleImages && (
-                           <span className="absolute bottom-2 right-2 bg-black/70 text-white text-xs px-2 py-1 rounded-full">
-                             {product.image_urls.length} images
-                           </span>
-                         )}
-                       </div>
-                     ) : (
-                       <div className="h-56 flex items-center justify-center rounded-t-[32px] bg-[#F4F8EF] text-xs font-medium text-[#4B5A45] border-b border-slate-200">
-                         No image
-                       </div>
-                     )}
-                     <CardHeader className="space-y-3">
-                       <div className="flex items-start justify-between gap-3">
-                         <div>
-                           <CardTitle className="text-lg">{product.title}</CardTitle>
-                           <CardDescription>{product.description}</CardDescription>
-                         </div>
-                         <div className="text-right">
-                           <p className="text-sm text-[#4B5A45]">Price</p>
-                           <p className="text-xl font-semibold text-[#172B12]">UGX {Number(product.price).toLocaleString()}</p>
-                         </div>
-                       </div>
-                     </CardHeader>
-                     <CardContent>
-                       <div className="space-y-2 text-sm text-[#4B5A45]">
-                         <p>Seller: <span className="font-medium text-[#172B12]">{product.sellerName || product.seller_name || 'Member'}</span></p>
-                         <p className="text-xs text-[#6B7C61]">{new Date(product.createdAt || product.created_at).toLocaleDateString()}</p>
-                       </div>
-                     </CardContent>
-                     <CardFooter className="flex flex-wrap gap-3 border-t border-slate-200 pt-4">
-                       <Button size="sm" onClick={() => addToCart(product)} className="bg-[#172B12] text-white hover:bg-[#0f2409]">Add to Cart</Button>
-                       <Button size="sm" onClick={() => handleOpenPurchase(product)} className="bg-white text-[#172B12] border border-[#172B12] hover:bg-[#ECF8E9]">Buy now</Button>
-                       <Button size="sm" onClick={() => setCartOpen(true)} className="bg-[#172B12] text-white hover:bg-[#0f2409]">View cart</Button>
-                     </CardFooter>
-                   </Card>
-                 );
-               })}
-             </div>
+            <Card className="rounded-3xl border border-slate-200 bg-white shadow-sm text-center py-12">
+              <CardContent>
+                <div className="flex flex-col items-center">
+                  <svg className="w-16 h-16 text-[#4B5A45] mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 3h2l.4 2M7 13h14l-1.35 6.75a2 2 0 01-2 1.25H7a2 2 0 01-2-2V5a2 2 0 012-2h14m-5 14a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z" /></svg>
+                  <p className="text-base text-[#4B5A45]">
+                    {categoryId === 'all' && searchQuery.trim()
+                      ? 'No products match your search. Try different keywords.'
+                      : 'No products found in this category yet.'}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <>
+              <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
+                {visibleProducts.map((product) => {
+                  const hasMultipleImages = product.image_urls && product.image_urls.length > 1;
+                  const displayImage = product.image_urls?.[0] || product.image_url || product.imageUrl;
+                  return (
+                    <Card key={product.id} className="group border border-slate-200 bg-white shadow-sm hover:shadow-md transition-shadow duration-300 overflow-hidden">
+                      {displayImage ? (
+                        <div className="relative overflow-hidden rounded-t-xl">
+                          <img
+                            src={getImageUrl(displayImage)}
+                            alt={product.title}
+                            className="h-56 w-full object-cover cursor-pointer transition-transform duration-500 group-hover:scale-105"
+                            onClick={() => openImageGallery(product)}
+                          />
+                          {hasMultipleImages && (
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end justify-end p-3">
+                              <Badge className="bg-black/70 text-white hover:bg-black/80">
+                                <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l6-6 6 6z" clipRule="evenodd" /></svg>
+                                {product.image_urls.length} photos
+                              </Badge>
+                            </div>
+                          )}
+                          {!hasMultipleImages && (
+                            <div className="absolute top-3 right-3 bg-white/80 backdrop-blur rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 cursor-pointer" onClick={() => openImageGallery(product)}>
+                              <svg className="w-4 h-4 text-[#172B12]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" /></svg>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="h-56 flex items-center justify-center rounded-t-xl bg-gradient-to-br from-[#F4F8EF] to-[#E8F0E3] border-b border-slate-200">
+                          <div className="text-center">
+                            <svg className="w-12 h-12 mx-auto text-[#4B5A45] mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-12 4h16a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                            <p className="text-sm font-medium text-[#4B5A45]">No image available</p>
+                          </div>
+                        </div>
+                      )}
+                      <CardHeader className="pb-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex-1 min-w-0">
+                            <CardTitle className="text-lg group-hover:text-[#2B6F38] transition-colors line-clamp-1">{product.title}</CardTitle>
+                            <CardDescription className="mt-1 line-clamp-2">{product.description}</CardDescription>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <p className="text-xs text-[#4B5A45] uppercase tracking-wider">Price</p>
+                            <p className="text-xl font-bold text-[#172B12]">UGX {Number(product.price).toLocaleString()}</p>
+                          </div>
+                        </div>
+                      </CardHeader>
+                      <CardContent className="pb-3">
+                        <div className="flex items-center justify-between text-sm">
+                          <div className="flex items-center gap-2">
+                            <div className="w-6 h-6 rounded-full bg-[#ECF8E9] flex items-center justify-center">
+                              <svg className="w-3 h-3 text-[#2B6F38]" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 016 0zM2 17a3 3 0 116 0 3 3 0 01-6 0zm14-3a3 3 0 110-6 3 3 0 010 6z" clipRule="evenodd" /></svg>
+                            </div>
+                            <span className="text-[#4B5A45]">Seller:</span>
+                            <span className="font-medium text-[#172B12] truncate max-w-[120px]">{product.sellerName || product.seller_name || 'Member'}</span>
+                          </div>
+                          <span className="text-xs text-[#6B7C61] bg-slate-100 px-2 py-1 rounded-full">
+                            {new Date(product.createdAt || product.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                          </span>
+                        </div>
+                      </CardContent>
+                      <CardFooter className="flex flex-col sm:flex-row gap-2 pt-4 border-t border-slate-100">
+                        <Button 
+                          size="sm" 
+                          onClick={() => addToCart(product)} 
+                          className="w-full sm:flex-1 bg-[#172B12] text-white hover:bg-[#0f2409] shadow-sm"
+                        >
+                          <ShoppingCart className="h-4 w-4 mr-2" />
+                          Add to Cart
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          onClick={() => handleOpenPurchase(product)} 
+                          className="w-full sm:flex-1 bg-white text-[#172B12] border border-[#172B12] hover:bg-[#ECF8E9]"
+                        >
+                          Buy now
+                        </Button>
+                      </CardFooter>
+                    </Card>
+                  );
+                })}
+              </div>
 
-             {hasMore && (
-               <div className="flex justify-center pt-4">
-                 <Button onClick={() => setDisplayCount(prev => prev + PRODUCTS_PER_PAGE)} className="bg-[#172B12] text-white hover:bg-[#0f2409]">
-                   See more ({filteredProducts.length - displayCount} remaining)
-                 </Button>
-               </div>
-             )}
-           </>
-         )}
+              {hasMore && (
+                <div className="flex justify-center pt-6">
+                  <Button onClick={() => setDisplayCount(prev => prev + PRODUCTS_PER_PAGE)} className="bg-[#172B12] text-white hover:bg-[#0f2409] px-8 shadow-sm">
+                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
+                    See more ({filteredProducts.length - displayCount} remaining)
+                  </Button>
+                </div>
+              )}
+            </>
+          )}
       </div>
 
       <Dialog open={quickLoanOpen} onOpenChange={(open) => { if (!open) resetQuickLoanDialogState(); setQuickLoanOpen(open); }}>
