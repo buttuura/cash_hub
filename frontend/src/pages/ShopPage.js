@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { renderMatches, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -30,6 +30,7 @@ const ICON_MAP = {
 };
 
 const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
+const WS_URL = API_URL.replace(/^http/, 'ws');
 
 const DEFAULT_CATEGORIES = [
   {
@@ -146,6 +147,8 @@ const ShopPage = () => {
   const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
   const [selectedCategory, setSelectedCategory] = useState('food');
   const [products, setProducts] = useState(DEFAULT_PRODUCTS);
+  const [orders, setOrders] = useState([]);
+  const audioRef = useRef(null);
   const [addCategoryOpen, setAddCategoryOpen] = useState(false);
   const [addProductOpen, setAddProductOpen] = useState(false);
   const [quickLoanOpen, setQuickLoanOpen] = useState(false);
@@ -452,6 +455,43 @@ const ShopPage = () => {
     window.localStorage.setItem('shopProducts', JSON.stringify(products));
   }, [products]);
 
+  // WebSocket connection for real-time order notifications
+  useEffect(() => {
+    if (!user?.name) return;
+
+    const ws = new WebSocket(`${WS_URL}/ws/orders/${encodeURIComponent(user.name)}`);
+
+    ws.onopen = () => {
+      console.log('WebSocket connected for order notifications');
+    };
+
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data.type === 'new_order') {
+        setOrders(prev => [data.order, ...prev]);
+        if (audioRef.current) {
+          audioRef.current.loop = true;
+          audioRef.current.play().catch(() => {});
+        }
+        toast.info(`New order received from ${data.order.buyerName || 'a buyer'}`);
+      }
+    };
+
+    ws.onclose = () => {
+      setTimeout(() => {
+        new WebSocket(`${WS_URL}/ws/orders/${encodeURIComponent(user.name)}`);
+      }, 3000);
+    };
+
+    ws.onerror = (error) => {
+      console.error('WebSocket error:', error);
+    };
+
+    return () => {
+      ws.close();
+    };
+  }, [user?.name]);
+
   const categoryMap = categories.reduce((acc, category) => {
     acc[category.id] = category;
     return acc;
@@ -720,6 +760,7 @@ if (error.response) {
   return (
     <div className="min-h-screen bg-[#F7FAF3] px-4 py-8 sm:px-6 lg:px-8">
       <Toaster position="top-right" />
+      <audio ref={audioRef} src="/images/app_icons/cart_images/order_ring_tone.m4a" preload="auto" />
       
 {/* Top Navigation Bar */}
         <nav className="sticky top-0 z-40 backdrop-blur border-b border-slate-200 mb-6">
@@ -1583,6 +1624,73 @@ if (error.response) {
                   {orderSubmitting ? 'Sending requests...' : `Send ${cart.length} order(s)`}
                 </Button>
               </>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+<Dialog open={galleryOpen} onOpenChange={setGalleryOpen}>
+        <DialogContent className="sm:max-w-4xl max-h-[90vh] flex flex-col p-4 bg-transparent">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Product Gallery</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 overflow-y-auto">
+            {galleryImages.length > 0 && (
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-col sm:flex-row gap-4 items-start">
+                  <div className="relative flex-shrink-0">
+                    <img
+                      src={galleryImages[galleryIndex]}
+                      alt="Product"
+                      className="max-h-[60vh] max-w-[300px] object-contain rounded-lg bg-white p-2"
+                    />
+                    {galleryImages.length > 1 && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setGalleryIndex(i => (i > 0 ? i - 1 : galleryImages.length - 1))}
+                          className="absolute left-1 top-1/2 -translate-y-1/2 bg-white text-black rounded-full w-8 h-8 flex items-center justify-center shadow-md hover:bg-gray-200 text-sm"
+                        >
+                          ‹
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setGalleryIndex(i => (i < galleryImages.length - 1 ? i + 1 : 0))}
+                          className="absolute right-1 top-1/2 -translate-y-1/2 bg-white text-black rounded-full w-8 h-8 flex items-center justify-center shadow-md hover:bg-gray-200 text-sm"
+                        >
+                          ›
+                        </button>
+                      </>
+                    )}
+                  </div>
+                  {purchaseProduct && (
+                    <div className="flex-1 space-y-3">
+                      <h3 className="text-xl font-semibold text-[#172B12]">{purchaseProduct.title}</h3>
+                      <p className="text-sm text-[#4B5A45]">{purchaseProduct.description}</p>
+                      <p className="text-lg font-semibold text-[#2B6F38]">UGX {Number(purchaseProduct.price).toLocaleString()}</p>
+                      <p className="text-xs text-[#6B7C61]">Seller: {purchaseProduct.sellerName || purchaseProduct.seller_name || 'Member'}</p>
+                      <div className="flex gap-2 pt-2">
+                        <Button onClick={() => addToCart(purchaseProduct)} className="bg-[#172B12] text-white hover:bg-[#0f2409]">Add to Cart</Button>
+                        <Button onClick={() => { setGalleryOpen(false); setPurchaseOpen(true); }} className="bg-white text-[#172B12] border border-[#172B12] hover:bg-[#ECF8E9]">Buy now</Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                {galleryImages.length > 1 && (
+                  <div className="flex gap-1 flex-wrap justify-center">
+                    {galleryImages.map((img, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => setGalleryIndex(idx)}
+                        className={`w-12 h-12 rounded-full overflow-hidden border-2 ${idx === galleryIndex ? 'border-[#2B6F38]' : 'border-slate-300'}`}
+                      >
+                        <img src={img} alt={`thumb-${idx}`} className="w-full h-full object-cover" />
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </DialogContent>

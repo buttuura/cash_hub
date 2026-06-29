@@ -71,6 +71,9 @@ const CategoryPage = () => {
   const [quickLoanOpen, setQuickLoanOpen] = useState(false);
   const [purchaseOpen, setPurchaseOpen] = useState(false);
   const [purchaseProduct, setPurchaseProduct] = useState(null);
+  const [galleryOpen, setGalleryOpen] = useState(false);
+  const [galleryImages, setGalleryImages] = useState([]);
+  const [galleryIndex, setGalleryIndex] = useState(0);
 
   const [loanName, setLoanName] = useState('');
   const [loanEmail, setLoanEmail] = useState('');
@@ -253,6 +256,16 @@ const CategoryPage = () => {
   };
 
   const handleOpenPurchase = (product) => { setPurchaseProduct(product); setPurchaseOpen(true); };
+  const openImageGallery = (product) => {
+    const images = product.image_urls && product.image_urls.length > 0
+      ? product.image_urls.map(url => getImageUrl(url))
+      : product.image_url
+        ? [getImageUrl(product.image_url)]
+        : [];
+    setGalleryImages(images);
+    setGalleryIndex(0);
+    setGalleryOpen(true);
+  };
   const getImageUrl = (imageUrl) => { if (!imageUrl) return null; return imageUrl.startsWith('http') ? imageUrl : `${API_URL}${imageUrl}`; };
 
   const category = categories.find(c => c.id === categoryId);
@@ -402,62 +415,80 @@ return (
           </h1>
         </div>
 
-        {filteredProducts.length === 0 ? (
-          <Card className="rounded-[32px] border border-slate-200 bg-white p-12 text-center">
-            <CardContent>
-              <p className="text-sm text-[#4B5A45]">
-                {categoryId === 'all' && searchQuery.trim()
-                  ? 'No products match your search. Try a different keyword.'
-                  : 'No products found in this category.'}
-              </p>
-            </CardContent>
-          </Card>
-        ) : (
-          <>
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-              {visibleProducts.map((product) => (
-                <Card key={product.id} className="border border-slate-200 bg-white shadow-sm">
-                  {product.image_url && (
-                    <div className="overflow-hidden rounded-t-[32px] bg-[#F4F8EF]">
-                      <img src={getImageUrl(product.image_url)} alt={product.title} className="h-56 w-full object-cover" />
-                    </div>
-                  )}
-                  <CardHeader className="space-y-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <CardTitle className="text-lg">{product.title}</CardTitle>
-                        <CardDescription>{product.description}</CardDescription>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm text-[#4B5A45]">Price</p>
-                        <p className="text-xl font-semibold text-[#172B12]">UGX {Number(product.price).toLocaleString()}</p>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-2 text-sm text-[#4B5A45]">
-                      <p>Seller: <span className="font-medium text-[#172B12]">{product.sellerName || product.seller_name || 'Member'}</span></p>
-                      <p className="text-xs text-[#6B7C61]">{new Date(product.createdAt || product.created_at).toLocaleDateString()}</p>
-                    </div>
-                  </CardContent>
-                  <CardFooter className="flex flex-wrap gap-3 border-t border-slate-200 pt-4">
-                    <Button size="sm" onClick={() => addToCart(product)} className="bg-[#172B12] text-white hover:bg-[#0f2409]">Add to Cart</Button>
-                    <Button size="sm" onClick={() => handleOpenPurchase(product)} className="bg-white text-[#172B12] border border-[#172B12] hover:bg-[#ECF8E9]">Buy now</Button>
-                    <Button size="sm" onClick={() => setCartOpen(true)} className="bg-[#172B12] text-white hover:bg-[#0f2409]">View cart</Button>
-                  </CardFooter>
-                </Card>
-              ))}
-            </div>
+{filteredProducts.length === 0 ? (
+           <Card className="rounded-[32px] border border-slate-200 bg-white p-12 text-center">
+             <CardContent>
+               <p className="text-sm text-[#4B5A45]">
+                 {categoryId === 'all' && searchQuery.trim()
+                   ? 'No products match your search. Try a different keyword.'
+                   : 'No products found in this category.'}
+               </p>
+             </CardContent>
+           </Card>
+         ) : (
+           <>
+             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+               {visibleProducts.map((product) => {
+                 const hasMultipleImages = product.image_urls && product.image_urls.length > 1;
+                 const displayImage = product.image_urls?.[0] || product.image_url || product.imageUrl;
+                 return (
+                   <Card key={product.id} className="border border-slate-200 bg-white shadow-sm">
+                     {displayImage ? (
+                       <div className="overflow-hidden rounded-t-[32px] bg-[#F4F8EF] relative">
+                         <img
+                           src={getImageUrl(displayImage)}
+                           alt={product.title}
+                           className="h-56 w-full object-cover cursor-pointer"
+                           onClick={() => openImageGallery(product)}
+                         />
+                         {hasMultipleImages && (
+                           <span className="absolute bottom-2 right-2 bg-black/70 text-white text-xs px-2 py-1 rounded-full">
+                             {product.image_urls.length} images
+                           </span>
+                         )}
+                       </div>
+                     ) : (
+                       <div className="h-56 flex items-center justify-center rounded-t-[32px] bg-[#F4F8EF] text-xs font-medium text-[#4B5A45] border-b border-slate-200">
+                         No image
+                       </div>
+                     )}
+                     <CardHeader className="space-y-3">
+                       <div className="flex items-start justify-between gap-3">
+                         <div>
+                           <CardTitle className="text-lg">{product.title}</CardTitle>
+                           <CardDescription>{product.description}</CardDescription>
+                         </div>
+                         <div className="text-right">
+                           <p className="text-sm text-[#4B5A45]">Price</p>
+                           <p className="text-xl font-semibold text-[#172B12]">UGX {Number(product.price).toLocaleString()}</p>
+                         </div>
+                       </div>
+                     </CardHeader>
+                     <CardContent>
+                       <div className="space-y-2 text-sm text-[#4B5A45]">
+                         <p>Seller: <span className="font-medium text-[#172B12]">{product.sellerName || product.seller_name || 'Member'}</span></p>
+                         <p className="text-xs text-[#6B7C61]">{new Date(product.createdAt || product.created_at).toLocaleDateString()}</p>
+                       </div>
+                     </CardContent>
+                     <CardFooter className="flex flex-wrap gap-3 border-t border-slate-200 pt-4">
+                       <Button size="sm" onClick={() => addToCart(product)} className="bg-[#172B12] text-white hover:bg-[#0f2409]">Add to Cart</Button>
+                       <Button size="sm" onClick={() => handleOpenPurchase(product)} className="bg-white text-[#172B12] border border-[#172B12] hover:bg-[#ECF8E9]">Buy now</Button>
+                       <Button size="sm" onClick={() => setCartOpen(true)} className="bg-[#172B12] text-white hover:bg-[#0f2409]">View cart</Button>
+                     </CardFooter>
+                   </Card>
+                 );
+               })}
+             </div>
 
-            {hasMore && (
-              <div className="flex justify-center pt-4">
-                <Button onClick={() => setDisplayCount(prev => prev + PRODUCTS_PER_PAGE)} className="bg-[#172B12] text-white hover:bg-[#0f2409]">
-                  See more ({filteredProducts.length - displayCount} remaining)
-                </Button>
-              </div>
-            )}
-          </>
-        )}
+             {hasMore && (
+               <div className="flex justify-center pt-4">
+                 <Button onClick={() => setDisplayCount(prev => prev + PRODUCTS_PER_PAGE)} className="bg-[#172B12] text-white hover:bg-[#0f2409]">
+                   See more ({filteredProducts.length - displayCount} remaining)
+                 </Button>
+               </div>
+             )}
+           </>
+         )}
       </div>
 
       <Dialog open={quickLoanOpen} onOpenChange={(open) => { if (!open) resetQuickLoanDialogState(); setQuickLoanOpen(open); }}>
@@ -561,6 +592,73 @@ return (
                 <div className="space-y-2"><Label htmlFor="cart-note" className="text-sm font-medium text-slate-700">Message to sellers</Label><Textarea id="cart-note" value={cartBuyerNote} onChange={(e) => setCartBuyerNote(e.target.value)} placeholder="Write a message to all sellers" rows={3} /></div>
                 <Button onClick={handleCartCheckout} className="bg-[#172B12] text-white hover:bg-[#0f2409]" disabled={cart.length === 0}>{orderSubmitting ? 'Sending requests...' : `Send orders to ${Object.keys(getCartItemsBySeller()).length} seller(s)`}</Button>
               </>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+<Dialog open={galleryOpen} onOpenChange={setGalleryOpen}>
+        <DialogContent className="sm:max-w-4xl max-h-[90vh] flex flex-col p-4 bg-transparent">
+          <DialogHeader className="sr-only">
+            <DialogTitle>Product Gallery</DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 overflow-y-auto">
+            {galleryImages.length > 0 && (
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-col sm:flex-row gap-4 items-start">
+                  <div className="relative flex-shrink-0">
+                    <img
+                      src={galleryImages[galleryIndex]}
+                      alt="Product"
+                      className="max-h-[60vh] max-w-[300px] object-contain rounded-lg bg-white p-2"
+                    />
+                    {galleryImages.length > 1 && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setGalleryIndex(i => (i > 0 ? i - 1 : galleryImages.length - 1))}
+                          className="absolute left-1 top-1/2 -translate-y-1/2 bg-white text-black rounded-full w-8 h-8 flex items-center justify-center shadow-md hover:bg-gray-200 text-sm"
+                        >
+                          ‹
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setGalleryIndex(i => (i < galleryImages.length - 1 ? i + 1 : 0))}
+                          className="absolute right-1 top-1/2 -translate-y-1/2 bg-white text-black rounded-full w-8 h-8 flex items-center justify-center shadow-md hover:bg-gray-200 text-sm"
+                        >
+                          ›
+                        </button>
+                      </>
+                    )}
+                  </div>
+                  {purchaseProduct && (
+                    <div className="flex-1 space-y-3">
+                      <h3 className="text-xl font-semibold text-[#172B12]">{purchaseProduct.title}</h3>
+                      <p className="text-sm text-[#4B5A45]">{purchaseProduct.description}</p>
+                      <p className="text-lg font-semibold text-[#2B6F38]">UGX {Number(purchaseProduct.price).toLocaleString()}</p>
+                      <p className="text-xs text-[#6B7C61]">Seller: {purchaseProduct.sellerName || purchaseProduct.seller_name || 'Member'}</p>
+                      <div className="flex gap-2 pt-2">
+                        <Button onClick={() => addToCart(purchaseProduct)} className="bg-[#172B12] text-white hover:bg-[#0f2409]">Add to Cart</Button>
+                        <Button onClick={() => { setGalleryOpen(false); setPurchaseOpen(true); }} className="bg-white text-[#172B12] border border-[#172B12] hover:bg-[#ECF8E9]">Buy now</Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                {galleryImages.length > 1 && (
+                  <div className="flex gap-1 flex-wrap justify-center">
+                    {galleryImages.map((img, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => setGalleryIndex(idx)}
+                        className={`w-12 h-12 rounded-full overflow-hidden border-2 ${idx === galleryIndex ? 'border-[#2B6F38]' : 'border-slate-300'}`}
+                      >
+                        <img src={img} alt={`thumb-${idx}`} className="w-full h-full object-cover" />
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </DialogContent>

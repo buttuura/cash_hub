@@ -61,6 +61,7 @@ import {
 import { FileDown } from 'lucide-react';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
+const WS_URL = API_URL.replace(/^http/, 'ws');
 
 const formatCurrency = (amount) => {
   return `UGX ${Number(amount || 0).toLocaleString()}`;
@@ -123,6 +124,7 @@ const [withdrawalType, setWithdrawalType] = useState('savings');
   const [pettyCashCategory, setPettyCashCategory] = useState('general');
   const [myProducts, setMyProducts] = useState([]);
   const [orders, setOrders] = useState([]);
+  const wsRef = useRef(null);
 
   const audioRef = useRef(null);
 
@@ -210,6 +212,54 @@ const [withdrawalType, setWithdrawalType] = useState('savings');
       setOrders([]);
     }
   }, [getAuthHeaders]);
+
+
+  // WebSocket connection for real-time order notifications
+  useEffect(() => {
+    if (!user?.name) return;
+    
+    const connectWebSocket = () => {
+      const wsUrl = `${WS_URL}/ws/orders/${encodeURIComponent(user.name)}`;
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+      
+      ws.onopen = () => {
+        console.log('WebSocket connected for order notifications');
+      };
+      
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.type === 'new_order') {
+          // Add new order to state
+          setOrders(prev => [data.order, ...prev]);
+          // Play notification sound with loop
+          if (audioRef.current) {
+            audioRef.current.loop = true;
+            audioRef.current.play().catch(() => {});
+          }
+          // Show toast notification
+          toast.info(`New order received from ${data.order.buyerName || 'a buyer'}`);
+        }
+      };
+      
+      ws.onclose = () => {
+        setTimeout(connectWebSocket, 3000);
+      };
+      
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        ws.close();
+      };
+    };
+    
+    connectWebSocket();
+    
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.close();
+      }
+    };
+  }, [user?.name]);
 
   const sellerOrders = user?.name
     ? orders.filter((order) => (order.sellerName || '').toLowerCase() === user.name.toLowerCase())

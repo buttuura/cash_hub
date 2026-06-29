@@ -5,7 +5,7 @@ ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi import FastAPI, APIRouter, HTTPException, Request, Depends, Form, File, UploadFile, Body
+from fastapi import FastAPI, APIRouter, HTTPException, Request, Depends, Form, File, UploadFile, Body, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -85,6 +85,39 @@ app.add_middleware(
     allow_headers=["*"],
 )
 api_router = APIRouter(prefix="/api")
+
+# ==================== WEBSOCKET CONNECTION MANAGER ====================
+
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections = {}
+
+    async def connect(self, websocket: WebSocket, seller_name: str):
+        await websocket.accept()
+        if seller_name not in self.active_connections:
+            self.active_connections[seller_name] = []
+        self.active_connections[seller_name].append(websocket)
+
+    def disconnect(self, websocket: WebSocket, seller_name: str):
+        if seller_name in self.active_connections:
+            self.active_connections[seller_name].remove(websocket)
+            if not self.active_connections[seller_name]:
+                del self.active_connections[seller_name]
+
+    async def broadcast_to_seller(self, seller_name: str, message: dict):
+        import json
+        if seller_name in self.active_connections:
+            dead = []
+            for ws in self.active_connections[seller_name]:
+                try:
+                    await ws.send_text(json.dumps(message))
+                except Exception:
+                    dead.append(ws)
+            for ws in dead:
+                self.disconnect(ws, seller_name)
+
+manager = ConnectionManager()
+
 # ==================== PYDANTIC MODELS ====================
 
 class UserCreate(BaseModel):
@@ -817,6 +850,13 @@ async def create_order(order: OrderCreate, user: Optional[dict] = Depends(get_cu
     result = await db.orders.insert_one(order_doc)
     order_doc["id"] = str(result.inserted_id)
     order_doc.pop("_id", None)
+    
+    # Send WebSocket notification to seller
+    await manager.broadcast_to_seller(order.sellerName, {
+        "type": "new_order",
+        "order": order_doc
+    })
+    
     return order_doc
 
 @api_router.get("/orders")
@@ -2516,3 +2556,14 @@ if static_dir.exists():
             return FileResponse(str(index_path))
         
         raise HTTPException(status_code=404, detail="Not found")
+
+# ==================== WEBSOCKET ENDPOINT ====================
+
+@app.websocket("/ws/orders/{seller_name}")
+async def websocket_endpoint(websocket: WebSocket, seller_name: str):
+    await manager.connect(websocket, seller_name)
+    try:
+        while True:
+            data = await websocket.receive_text()
+    except Exception:
+        manager.disconnect(websocket, seller_name)
