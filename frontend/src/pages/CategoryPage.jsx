@@ -11,6 +11,7 @@ import { Input } from '../components/ui/input';
 import { Textarea } from '../components/ui/textarea';
 import { Label } from '../components/ui/label';
 import { ShoppingCart, Search, Menu, X, Sparkles } from 'lucide-react';
+import ProductCard from '../components/ProductCard';
 import { exportLoanAgreementPDF } from '../utils/pdfExport';
 import { OFFICERS } from '../data/officers';
 
@@ -72,9 +73,6 @@ const CategoryPage = () => {
   const [quickLoanOpen, setQuickLoanOpen] = useState(false);
   const [purchaseOpen, setPurchaseOpen] = useState(false);
   const [purchaseProduct, setPurchaseProduct] = useState(null);
-  const [galleryOpen, setGalleryOpen] = useState(false);
-  const [galleryImages, setGalleryImages] = useState([]);
-  const [galleryIndex, setGalleryIndex] = useState(0);
 
   const [loanName, setLoanName] = useState('');
   const [loanEmail, setLoanEmail] = useState('');
@@ -257,16 +255,6 @@ const CategoryPage = () => {
   };
 
   const handleOpenPurchase = (product) => { setPurchaseProduct(product); setPurchaseOpen(true); };
-  const openImageGallery = (product) => {
-    const images = product.image_urls && product.image_urls.length > 0
-      ? product.image_urls.map(url => getImageUrl(url))
-      : product.image_url
-        ? [getImageUrl(product.image_url)]
-        : [];
-    setGalleryImages(images);
-    setGalleryIndex(0);
-    setGalleryOpen(true);
-  };
   const getImageUrl = (imageUrl) => { if (!imageUrl) return null; return imageUrl.startsWith('http') ? imageUrl : `${API_URL}${imageUrl}`; };
 
   const category = categories.find(c => c.id === categoryId);
@@ -432,87 +420,15 @@ return (
           ) : (
             <>
               <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
-                {visibleProducts.map((product) => {
-                  const hasMultipleImages = product.image_urls && product.image_urls.length > 1;
-                  const displayImage = product.image_urls?.[0] || product.image_url || product.imageUrl;
-                  return (
-                    <Card key={product.id} className="group border border-slate-200 bg-white shadow-sm hover:shadow-md transition-shadow duration-300 overflow-hidden">
-                      {displayImage ? (
-                        <div className="relative overflow-hidden rounded-t-xl">
-                          <img
-                            src={getImageUrl(displayImage)}
-                            alt={product.title}
-                            className="h-56 w-full object-cover cursor-pointer transition-transform duration-500 group-hover:scale-105"
-                            onClick={() => openImageGallery(product)}
-                          />
-                          {hasMultipleImages && (
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end justify-end p-3">
-                              <Badge className="bg-black/70 text-white hover:bg-black/80">
-                                <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l6-6 6 6z" clipRule="evenodd" /></svg>
-                                {product.image_urls.length} photos
-                              </Badge>
-                            </div>
-                          )}
-                          {!hasMultipleImages && (
-                            <div className="absolute top-3 right-3 bg-white/80 backdrop-blur rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 cursor-pointer" onClick={() => openImageGallery(product)}>
-                              <svg className="w-4 h-4 text-[#172B12]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v3m0 0v3m0-3h3m-3 0H7" /></svg>
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <div className="h-56 flex items-center justify-center rounded-t-xl bg-gradient-to-br from-[#F4F8EF] to-[#E8F0E3] border-b border-slate-200">
-                          <div className="text-center">
-                            <svg className="w-12 h-12 mx-auto text-[#4B5A45] mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-12 4h16a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                            <p className="text-sm font-medium text-[#4B5A45]">No image available</p>
-                          </div>
-                        </div>
-                      )}
-                      <CardHeader className="pb-3">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex-1 min-w-0">
-                            <CardTitle className="text-lg group-hover:text-[#2B6F38] transition-colors line-clamp-1">{product.title}</CardTitle>
-                            <CardDescription className="mt-1 line-clamp-2">{product.description}</CardDescription>
-                          </div>
-                          <div className="text-right shrink-0">
-                            <p className="text-xs text-[#4B5A45] uppercase tracking-wider">Price</p>
-                            <p className="text-xl font-bold text-[#172B12]">UGX {Number(product.price).toLocaleString()}</p>
-                          </div>
-                        </div>
-                      </CardHeader>
-                      <CardContent className="pb-3">
-                        <div className="flex items-center justify-between text-sm">
-                          <div className="flex items-center gap-2">
-                            <div className="w-6 h-6 rounded-full bg-[#ECF8E9] flex items-center justify-center">
-                              <svg className="w-3 h-3 text-[#2B6F38]" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 016 0zM2 17a3 3 0 116 0 3 3 0 01-6 0zm14-3a3 3 0 110-6 3 3 0 010 6z" clipRule="evenodd" /></svg>
-                            </div>
-                            <span className="text-[#4B5A45]">Seller:</span>
-                            <span className="font-medium text-[#172B12] truncate max-w-[120px]">{product.sellerName || product.seller_name || 'Member'}</span>
-                          </div>
-                          <span className="text-xs text-[#6B7C61] bg-slate-100 px-2 py-1 rounded-full">
-                            {new Date(product.createdAt || product.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                          </span>
-                        </div>
-                      </CardContent>
-                      <CardFooter className="flex flex-col sm:flex-row gap-2 pt-4 border-t border-slate-100">
-                        <Button 
-                          size="sm" 
-                          onClick={() => addToCart(product)} 
-                          className="w-full sm:flex-1 bg-[#172B12] text-white hover:bg-[#0f2409] shadow-sm"
-                        >
-                          <ShoppingCart className="h-4 w-4 mr-2" />
-                          Add to Cart
-                        </Button>
-                        <Button 
-                          size="sm" 
-                          onClick={() => handleOpenPurchase(product)} 
-                          className="w-full sm:flex-1 bg-white text-[#172B12] border border-[#172B12] hover:bg-[#ECF8E9]"
-                        >
-                          Buy now
-                        </Button>
-                      </CardFooter>
-                    </Card>
-                  );
-                })}
+{visibleProducts.map((product) => (
+                  <ProductCard
+                    key={product.id}
+                    product={product}
+                    getImageUrl={getImageUrl}
+                    onAddToCart={addToCart}
+                    onBuyNow={handleOpenPurchase}
+                  />
+                ))}
               </div>
 
               {hasMore && (
@@ -629,78 +545,11 @@ return (
                 <Button onClick={handleCartCheckout} className="bg-[#172B12] text-white hover:bg-[#0f2409]" disabled={cart.length === 0}>{orderSubmitting ? 'Sending requests...' : `Send orders to ${Object.keys(getCartItemsBySeller()).length} seller(s)`}</Button>
               </>
             )}
-          </div>
-        </DialogContent>
-      </Dialog>
-
-<Dialog open={galleryOpen} onOpenChange={setGalleryOpen}>
-        <DialogContent className="sm:max-w-4xl max-h-[90vh] flex flex-col p-4 bg-transparent">
-          <DialogHeader className="sr-only">
-            <DialogTitle>Product Gallery</DialogTitle>
-          </DialogHeader>
-          <div className="flex-1 overflow-y-auto">
-            {galleryImages.length > 0 && (
-              <div className="flex flex-col gap-4">
-                <div className="flex flex-col sm:flex-row gap-4 items-start">
-                  <div className="relative flex-shrink-0">
-                    <img
-                      src={galleryImages[galleryIndex]}
-                      alt="Product"
-                      className="max-h-[60vh] max-w-[300px] object-contain rounded-lg bg-white p-2"
-                    />
-                    {galleryImages.length > 1 && (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => setGalleryIndex(i => (i > 0 ? i - 1 : galleryImages.length - 1))}
-                          className="absolute left-1 top-1/2 -translate-y-1/2 bg-white text-black rounded-full w-8 h-8 flex items-center justify-center shadow-md hover:bg-gray-200 text-sm"
-                        >
-                          ‹
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setGalleryIndex(i => (i < galleryImages.length - 1 ? i + 1 : 0))}
-                          className="absolute right-1 top-1/2 -translate-y-1/2 bg-white text-black rounded-full w-8 h-8 flex items-center justify-center shadow-md hover:bg-gray-200 text-sm"
-                        >
-                          ›
-                        </button>
-                      </>
-                    )}
-                  </div>
-                  {purchaseProduct && (
-                    <div className="flex-1 space-y-3">
-                      <h3 className="text-xl font-semibold text-[#172B12]">{purchaseProduct.title}</h3>
-                      <p className="text-sm text-[#4B5A45]">{purchaseProduct.description}</p>
-                      <p className="text-lg font-semibold text-[#2B6F38]">UGX {Number(purchaseProduct.price).toLocaleString()}</p>
-                      <p className="text-xs text-[#6B7C61]">Seller: {purchaseProduct.sellerName || purchaseProduct.seller_name || 'Member'}</p>
-                      <div className="flex gap-2 pt-2">
-                        <Button onClick={() => addToCart(purchaseProduct)} className="bg-[#172B12] text-white hover:bg-[#0f2409]">Add to Cart</Button>
-                        <Button onClick={() => { setGalleryOpen(false); setPurchaseOpen(true); }} className="bg-white text-[#172B12] border border-[#172B12] hover:bg-[#ECF8E9]">Buy now</Button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-                {galleryImages.length > 1 && (
-                  <div className="flex gap-1 flex-wrap justify-center">
-                    {galleryImages.map((img, idx) => (
-                      <button
-                        key={idx}
-                        type="button"
-                        onClick={() => setGalleryIndex(idx)}
-                        className={`w-12 h-12 rounded-full overflow-hidden border-2 ${idx === galleryIndex ? 'border-[#2B6F38]' : 'border-slate-300'}`}
-                      >
-                        <img src={img} alt={`thumb-${idx}`} className="w-full h-full object-cover" />
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
+</div>
+          </DialogContent>
+        </Dialog>
+      </div>
+   );
 };
 
 export default CategoryPage;

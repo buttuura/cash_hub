@@ -823,6 +823,18 @@ async def list_products():
         product.pop("_id", None)
     return products
 
+@api_router.get("/products/{product_id}")
+async def get_product(product_id: str):
+    from bson import ObjectId
+    if not ObjectId.is_valid(product_id):
+        return {}
+    product = await db.products.find_one({"_id": ObjectId(product_id)})
+    if not product:
+        return {}
+    product["id"] = str(product["_id"])
+    product.pop("_id", None)
+    return product
+
 @api_router.post("/orders")
 async def create_order(order: OrderCreate, user: Optional[dict] = Depends(get_current_user_optional)):
     order_doc = {

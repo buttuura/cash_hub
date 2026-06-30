@@ -7,6 +7,7 @@ import RegisterPage from './pages/RegisterPage';
 import Dashboard from './pages/Dashboard';
 import ShopPage from './pages/ShopPage';
 import CategoryPage from './pages/CategoryPage';
+import ProductDetailPage from './pages/ProductDetailPage';
 import ServicesManagement from './pages/ServicesManagement';
 import './App.css';
 
@@ -70,6 +71,7 @@ function AppRoutes() {
       />
       <Route path="/" element={<ShopPage />} />
       <Route path="/shop" element={<ShopPage />} />
+      <Route path="/product/:productId" element={<ProductDetailPage />} />
       <Route path="/category/:categoryId" element={<CategoryPage />} />
       <Route
         path="/dashboard"
