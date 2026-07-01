@@ -3,14 +3,13 @@ import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
-import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
 import { Input } from '../components/ui/input';
 import { Textarea } from '../components/ui/textarea';
 import { Label } from '../components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../components/ui/dialog';
 import { Toaster, toast } from 'sonner';
-import { ShoppingCart, Heart, Share2, ChevronLeft, ChevronRight, Star, MapPin, Truck, Shield, ArrowLeft, X } from 'lucide-react';
+import { ShoppingCart, Heart, Share2, ChevronLeft, ChevronRight, MapPin, Shield, ArrowLeft, X } from 'lucide-react';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
 
@@ -97,23 +96,24 @@ function ProductDetailPage() {
     }
     setAddingToCart(true);
     try {
-      const storedCart = JSON.parse(localStorage.getItem('cart') || '[]');
-      const existingItemIndex = storedCart.findIndex(
-        item => item.id === product.id
-      );
-      if (existingItemIndex > -1) {
-        storedCart[existingItemIndex].quantity += quantity;
+      const storedCart = JSON.parse(localStorage.getItem('cash_hub_cart') || '[]');
+      const existingItem = storedCart.find(item => item.productId === product.id);
+      if (existingItem) {
+        existingItem.quantity += quantity;
       } else {
         storedCart.push({
-          id: product.id,
-          title: product.title,
-          price: product.price,
-          image: allImages[0],
-          sellerName: product.sellerName || product.seller_name || 'Member',
+          productId: product.id,
           quantity: quantity,
+          product: {
+            id: product.id,
+            title: product.title,
+            price: product.price,
+            image: allImages[0],
+            sellerName: product.sellerName || product.seller_name || 'Member',
+          },
         });
       }
-      localStorage.setItem('cart', JSON.stringify(storedCart));
+      localStorage.setItem('cash_hub_cart', JSON.stringify(storedCart));
       toast.success(`${quantity} item(s) added to cart`);
       setQuantity(1);
     } catch (error) {
@@ -332,7 +332,7 @@ function ProductDetailPage() {
             </div>
           </div>
 
-          <div className="lg:col-span-5 space-y-5">
+          <div className="lg:col-span-8 space-y-5">
             <div>
               <h1 className="text-2xl sm:text-3xl font-bold text-[#172B12] leading-tight mb-2">
                 {product.title}
@@ -348,36 +348,50 @@ function ProductDetailPage() {
               </div>
             </div>
 
-            <div className="flex items-center gap-4 flex-wrap">
-              <div className="flex items-center gap-1">
-                <Star className="h-4 w-4 fill-orange-400 text-orange-400" />
-                <Star className="h-4 w-4 fill-orange-400 text-orange-400" />
-                <Star className="h-4 w-4 fill-orange-400 text-orange-400" />
-                <Star className="h-4 w-4 fill-orange-400 text-orange-400" />
-                <Star className="h-4 w-4 text-slate-300" />
-              </div>
-              <span className="text-sm text-[#EA580C] font-medium">4.3 out of 5</span>
-              <span className="text-sm text-[#4B5A45]">(1,149 ratings)</span>
-            </div>
-
             <div className="bg-white rounded-xl border border-slate-200 p-4">
-              <div className="flex items-baseline gap-3 mb-1">
+              <div className="flex items-baseline gap-3 mb-3">
                 <span className="text-sm text-[#EA580C] font-medium">{discountPercent}% off</span>
                 <span className="text-xs text-[#6B7C61] line-through">UGX {originalPrice.toLocaleString()}</span>
               </div>
-              <div className="flex items-baseline gap-3">
-                <span className="text-3xl font-bold text-[#EA580C]">UGX {price.toLocaleString()}</span>
-                <span className="text-xs text-[#6B7C61]">per item</span>
-              </div>
-            </div>
-
-            <div className="bg-gradient-to-br from-[#FFF7ED] to-[#FFF1F2] rounded-xl border border-orange-100 p-4">
-              <div className="flex items-start gap-3">
-                <Truck className="h-5 w-5 text-[#EA580C] mt-0.5 shrink-0" />
-                <div>
-                  <p className="text-sm font-medium text-[#172B12]">FREE delivery <span className="text-[#EA580C]">Thursday, 2 July</span></p>
-                  <p className="text-xs text-[#6B7C61] mt-1">Or fastest delivery <span className="text-[#EA580C] font-medium">Tomorrow, 1 July</span></p>
+              <p className="text-3xl font-bold text-[#EA580C] mb-4">UGX {price.toLocaleString()}</p>
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium text-[#172B12]">Quantity</label>
                 </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setQuantity((prev) => Math.max(1, prev - 1))}
+                    className="h-10 w-10 rounded-xl border border-slate-200 flex items-center justify-center text-[#172B12] hover:bg-slate-50 transition-colors text-lg font-medium"
+                  >
+                    -
+                  </button>
+                  <span className="flex-1 text-center font-semibold text-[#172B12]">{quantity}</span>
+                  <button
+                    type="button"
+                    onClick={() => setQuantity((prev) => prev + 1)}
+                    className="h-10 w-10 rounded-xl border border-slate-200 flex items-center justify-center text-[#172B12] hover:bg-slate-50 transition-colors text-lg font-medium"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+              <div className="space-y-2 mt-4">
+                <Button
+                  onClick={handleAddToCart}
+                  disabled={addingToCart}
+                  className="w-full h-12 bg-[#172B12] text-white hover:bg-[#0f2409] text-base font-medium shadow-sm"
+                >
+                  <ShoppingCart className="h-5 w-5 mr-2" />
+                  {addingToCart ? 'Adding...' : 'Add to Cart'}
+                </Button>
+                <Button
+                  onClick={handleBuyNow}
+                  disabled={addingToCart}
+                  className="w-full h-12 bg-[#EA580C] text-white hover:bg-[#C2410C] text-base font-medium shadow-sm"
+                >
+                  Buy Now
+                </Button>
               </div>
             </div>
 
@@ -440,80 +454,6 @@ function ProductDetailPage() {
                 <Share2 className="h-4 w-4 mr-2" />
                 Share
               </Button>
-            </div>
-          </div>
-
-          <div className="lg:col-span-3">
-            <div className="lg:sticky lg:top-4 space-y-4">
-              <Card className="rounded-2xl border border-slate-200 shadow-sm">
-                <CardContent className="p-5 space-y-4">
-                  <div>
-                    <p className="text-sm text-[#4B5A45] font-medium mb-1">Deal Price</p>
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-3xl font-bold text-[#EA580C]">UGX {price.toLocaleString()}</span>
-                    </div>
-                    <p className="text-xs text-[#6B7C61] line-through mt-1">UGX {originalPrice.toLocaleString()}</p>
-                  </div>
-
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <label className="text-sm font-medium text-[#172B12]">Quantity</label>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setQuantity((prev) => Math.max(1, prev - 1))}
-                        className="h-10 w-10 rounded-xl border border-slate-200 flex items-center justify-center text-[#172B12] hover:bg-slate-50 transition-colors text-lg font-medium"
-                      >
-                        -
-                      </button>
-                      <span className="flex-1 text-center font-semibold text-[#172B12]">{quantity}</span>
-                      <button
-                        type="button"
-                        onClick={() => setQuantity((prev) => prev + 1)}
-                        className="h-10 w-10 rounded-xl border border-slate-200 flex items-center justify-center text-[#172B12] hover:bg-slate-50 transition-colors text-lg font-medium"
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Button
-                      onClick={handleAddToCart}
-                      disabled={addingToCart}
-                      className="w-full h-12 bg-[#172B12] text-white hover:bg-[#0f2409] text-base font-medium shadow-sm"
-                    >
-                      <ShoppingCart className="h-5 w-5 mr-2" />
-                      {addingToCart ? 'Adding...' : 'Add to Cart'}
-                    </Button>
-                    <Button
-                      onClick={handleBuyNow}
-                      disabled={addingToCart}
-                      className="w-full h-12 bg-[#EA580C] text-white hover:bg-[#C2410C] text-base font-medium shadow-sm"
-                    >
-                      Buy Now
-                    </Button>
-                  </div>
-
-                  <div className="border-t border-slate-100 pt-3 space-y-2">
-                    <div className="flex items-center gap-2 text-sm text-[#4B5A45]">
-                      <Truck className="h-4 w-4" />
-                      <span>FREE delivery Thursday, 2 July</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-sm text-[#4B5A45]">
-                      <Shield className="h-4 w-4" />
-                      <span>FREE Returns</span>
-                    </div>
-                  </div>
-
-                  <div className="bg-slate-50 rounded-xl p-3 text-xs text-[#6B7C61]">
-                    <p className="font-medium text-[#172B12] mb-1">Seller Information</p>
-                    <p>Sold by: <span className="font-medium text-[#172B12]">{product.sellerName || product.seller_name || 'Member'}</span></p>
-                    <p>Secure transaction</p>
-                  </div>
-                </CardContent>
-              </Card>
             </div>
           </div>
         </div>
