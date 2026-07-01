@@ -1124,22 +1124,23 @@ const handleOpenPurchase = (product) => {
             </div>
           </div>
 
-          <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
+<div className="flex flex-wrap gap-4 justify-center">
             {recentProducts.length === 0 ? (
-              <Card className="border border-slate-200 bg-white shadow-sm">
-                <CardContent>
+              <Card className="border border-slate-200 bg-white shadow-sm w-full max-w-3xl">
+                <CardContent className="p-6">
                   <p className="text-sm text-[#4B5A45]">No products have been listed yet. Members can add products from their dashboard.</p>
                 </CardContent>
               </Card>
-) : recentProducts.map((product) => (
-                  <ProductCard
-                    key={product.id}
-                    product={product}
-                    getImageUrl={getImageUrl}
-                    onAddToCart={addToCart}
-                    onBuyNow={handleOpenPurchase}
-                  />
-                ))}
+            ) : recentProducts.slice(0, 6).map((product) => (
+              <div key={product.id} className="flex-1 min-w-[160px] max-w-[220px]">
+                <ProductCard
+                  product={product}
+                  getImageUrl={getImageUrl}
+                  onAddToCart={addToCart}
+                  onBuyNow={handleOpenPurchase}
+                />
+              </div>
+            ))}
           </div>
         </section>
       </div>

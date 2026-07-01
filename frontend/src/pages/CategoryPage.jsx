@@ -405,7 +405,7 @@ return (
         </div>
 
 {filteredProducts.length === 0 ? (
-            <Card className="rounded-3xl border border-slate-200 bg-white shadow-sm text-center py-12">
+            <Card className="rounded-3xl border border-slate-200 bg-white shadow-sm text-center py-12 w-full max-w-5xl mx-auto">
               <CardContent>
                 <div className="flex flex-col items-center">
                   <svg className="w-16 h-16 text-[#4B5A45] mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 3h2l.4 2M7 13h14l-1.35 6.75a2 2 0 01-2 1.25H7a2 2 0 01-2-2V5a2 2 0 012-2h14m-5 14a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z" /></svg>
@@ -419,15 +419,16 @@ return (
             </Card>
           ) : (
             <>
-              <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
-{visibleProducts.map((product) => (
-                  <ProductCard
-                    key={product.id}
-                    product={product}
-                    getImageUrl={getImageUrl}
-                    onAddToCart={addToCart}
-                    onBuyNow={handleOpenPurchase}
-                  />
+              <div className="flex flex-wrap gap-4 justify-center">
+                {visibleProducts.slice(0, 6).map((product) => (
+                  <div key={product.id} className="flex-1 min-w-[160px] max-w-[220px]">
+                    <ProductCard
+                      product={product}
+                      getImageUrl={getImageUrl}
+                      onAddToCart={addToCart}
+                      onBuyNow={handleOpenPurchase}
+                    />
+                  </div>
                 ))}
               </div>
 

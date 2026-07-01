@@ -5,8 +5,12 @@ import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
 import { Card, CardContent } from '../components/ui/card';
 import { Badge } from '../components/ui/badge';
+import { Input } from '../components/ui/input';
+import { Textarea } from '../components/ui/textarea';
+import { Label } from '../components/ui/label';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../components/ui/dialog';
 import { Toaster, toast } from 'sonner';
-import { ShoppingCart, Heart, Share2, ChevronLeft, ChevronRight, Star, MapPin, Truck, Shield, ArrowLeft } from 'lucide-react';
+import { ShoppingCart, Heart, Share2, ChevronLeft, ChevronRight, Star, MapPin, Truck, Shield, ArrowLeft, X } from 'lucide-react';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
 
@@ -24,6 +28,13 @@ function ProductDetailPage() {
   const [currentImgIndex, setCurrentImgIndex] = useState(0);
   const [quantity, setQuantity] = useState(1);
   const [addingToCart, setAddingToCart] = useState(false);
+  const [buyNowOpen, setBuyNowOpen] = useState(false);
+  const [buyerName, setBuyerName] = useState('');
+  const [buyerEmail, setBuyerEmail] = useState('');
+  const [buyerPhone, setBuyerPhone] = useState('');
+  const [buyerNote, setBuyerNote] = useState('');
+  const [submittingOrder, setSubmittingOrder] = useState(false);
+  const [expandedDesc, setExpandedDesc] = useState(false);
 
   useEffect(() => {
     const fetchProduct = async () => {
@@ -103,7 +114,7 @@ function ProductDetailPage() {
         });
       }
       localStorage.setItem('cart', JSON.stringify(storedCart));
-      toast.success('Added to cart');
+      toast.success(`${quantity} item(s) added to cart`);
       setQuantity(1);
     } catch (error) {
       toast.error('Failed to add to cart');
@@ -112,31 +123,98 @@ function ProductDetailPage() {
     }
   };
 
-  const handleBuyNow = async () => {
+  const handleBuyNow = () => {
     if (!isAuthenticated) {
       toast.error('Please log in to purchase');
       navigate('/login');
       return;
     }
-    await handleAddToCart();
-    navigate('/dashboard');
+    setBuyerName(user?.name || '');
+    setBuyerEmail(user?.email || '');
+    setBuyerPhone('');
+    setBuyerNote('');
+    setBuyNowOpen(true);
+  };
+
+  const submitBuyNowOrder = async () => {
+    if (!buyerName.trim() || !buyerPhone.trim()) {
+      toast.error('Please enter your name and phone number');
+      return;
+    }
+    setSubmittingOrder(true);
+    try {
+      const orderData = {
+        productId: product.id,
+        productTitle: product.title,
+        productPrice: product.price,
+        sellerName: product.sellerName || product.seller_name || 'Member',
+        buyerName: buyerName,
+        buyerEmail: buyerEmail,
+        buyerPhone: buyerPhone,
+        note: buyerNote,
+        total: Number(product.price) * quantity,
+        status: 'pending',
+        quantity: quantity,
+      };
+      await axios.post(`${API_URL}/api/orders`, orderData);
+      toast.success('Order placed successfully! The seller will contact you shortly.');
+      setBuyNowOpen(false);
+      setQuantity(1);
+    } catch (error) {
+      toast.error('Failed to place order. Please try again.');
+    } finally {
+      setSubmittingOrder(false);
+    }
+  };
+
+  const handleWishlist = () => {
+    const wishlist = JSON.parse(localStorage.getItem('wishlist') || '[]');
+    const exists = wishlist.some(item => item.id === product.id);
+    if (exists) {
+      toast.info('Already in wishlist');
+      return;
+    }
+    wishlist.push({
+      id: product.id,
+      title: product.title,
+      price: product.price,
+      image: allImages[0],
+      sellerName: product.sellerName || product.seller_name || 'Member',
+    });
+    localStorage.setItem('wishlist', JSON.stringify(wishlist));
+    toast.success('Added to wishlist');
   };
 
   const handleShare = async () => {
+    const shareData = {
+      title: product.title,
+      text: product.description,
+      url: window.location.href,
+    };
     if (navigator.share) {
       try {
-        await navigator.share({
-          title: product.title,
-          text: product.description,
-          url: window.location.href,
-        });
+        await navigator.share(shareData);
       } catch (err) {
-        // User cancelled
+        if (err.name !== 'AbortError') {
+          fallbackShare();
+        }
       }
     } else {
-      navigator.clipboard.writeText(window.location.href);
-      toast.success('Link copied to clipboard');
+      fallbackShare();
     }
+  };
+
+  const fallbackShare = async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      toast.success('Product link copied to clipboard');
+    } catch {
+      toast.error('Unable to share this product');
+    }
+  };
+
+  const handleVisitStore = () => {
+    navigate(`/shop?seller=${encodeURIComponent(product.sellerName || product.seller_name || 'Member')}`);
   };
 
   if (loading) {
@@ -260,12 +338,13 @@ function ProductDetailPage() {
                 {product.title}
               </h1>
               <div className="flex items-center gap-3 flex-wrap">
-                <span className="text-sm text-[#4B5A45] underline cursor-pointer hover:text-[#2B6F38] transition-colors">
+                <button
+                  type="button"
+                  onClick={handleVisitStore}
+                  className="text-sm text-[#4B5A45] underline cursor-pointer hover:text-[#2B6F38] transition-colors"
+                >
                   Visit the Store
-                </span>
-                <span className="text-[#EA580C] text-sm font-medium">
-                  Amazon's Choice
-                </span>
+                </button>
               </div>
             </div>
 
@@ -304,14 +383,14 @@ function ProductDetailPage() {
 
             <div className="bg-white rounded-xl border border-slate-200 p-4">
               <h3 className="font-semibold text-[#172B12] mb-3">About this item</h3>
-              <ul className="space-y-2">
-                {(product.description || '').split('. ').filter(Boolean).slice(0, 5).map((text, idx) => (
+              <ul className={`space-y-2 ${!expandedDesc && product.description && product.description.length > 200 ? 'line-clamp-5' : ''}`}>
+                {(product.description || '').split('. ').filter(Boolean).map((text, idx) => (
                   <li key={idx} className="flex items-start gap-2 text-sm text-[#4B5A45]">
                     <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-[#2B6F38]" />
                     <span>{text}{!text.endsWith('.') && '.'}</span>
                   </li>
                 ))}
-                {(!product.description || product.description.split('. ').filter(Boolean).length < 3) && (
+                {(!product.description || product.description.split('. ').filter(Boolean).length === 0) && (
                   <li className="flex items-start gap-2 text-sm text-[#4B5A45]">
                     <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-[#2B6F38]" />
                     <span>{product.description || 'No description available for this product.'}</span>
@@ -321,10 +400,10 @@ function ProductDetailPage() {
               {product.description && product.description.length > 200 && (
                 <button
                   type="button"
-                  onClick={() => toast.info('Full description: ' + product.description)}
+                  onClick={() => setExpandedDesc(!expandedDesc)}
                   className="text-sm text-[#2B6F38] hover:underline mt-3 font-medium"
                 >
-                  Read more
+                  {expandedDesc ? 'Show less' : 'Read more'}
                 </button>
               )}
             </div>
@@ -346,7 +425,7 @@ function ProductDetailPage() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => toast.success('Added to wishlist')}
+                onClick={handleWishlist}
                 className="border-slate-200 text-[#4B5A45] hover:bg-slate-50"
               >
                 <Heart className="h-4 w-4 mr-2" />
@@ -439,6 +518,48 @@ function ProductDetailPage() {
           </div>
         </div>
       </div>
+
+      <Dialog open={buyNowOpen} onOpenChange={setBuyNowOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Complete your purchase</DialogTitle>
+            <DialogDescription>
+              Enter your contact details so the seller can reach you.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="bg-slate-50 rounded-xl p-3 flex items-center gap-3">
+              {allImages[0] && (
+                <img src={getImageUrl(allImages[0])} alt={product.title} className="w-16 h-16 rounded-lg object-cover" />
+              )}
+              <div>
+                <p className="text-sm font-semibold text-[#172B12]">{product.title}</p>
+                <p className="text-xs text-[#4B5A45]">Qty: {quantity}</p>
+                <p className="text-sm font-bold text-[#EA580C]">UGX {(Number(product.price) * quantity).toLocaleString()}</p>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="buyer-name">Full name</Label>
+              <Input id="buyer-name" value={buyerName} onChange={(e) => setBuyerName(e.target.value)} placeholder="Your full name" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="buyer-email">Email (optional)</Label>
+              <Input id="buyer-email" type="email" value={buyerEmail} onChange={(e) => setBuyerEmail(e.target.value)} placeholder="you@example.com" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="buyer-phone">Phone number</Label>
+              <Input id="buyer-phone" value={buyerPhone} onChange={(e) => setBuyerPhone(e.target.value)} placeholder="e.g. 0771 234567" required />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="buyer-note">Message to seller (optional)</Label>
+              <Textarea id="buyer-note" value={buyerNote} onChange={(e) => setBuyerNote(e.target.value)} placeholder="Any special requests or questions" rows={3} />
+            </div>
+            <Button onClick={submitBuyNowOrder} disabled={submittingOrder} className="w-full bg-[#172B12] text-white hover:bg-[#0f2409]">
+              {submittingOrder ? 'Placing order...' : `Place order — UGX ${(Number(product.price) * quantity).toLocaleString()}`}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -49,6 +49,7 @@ import {
   Copy,
   Check,
   Settings,
+  Image as ImageIcon,
 } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
 import {
@@ -261,6 +262,16 @@ const [withdrawalType, setWithdrawalType] = useState('savings');
     };
   }, [user?.name]);
 
+  const getImageUrl = (imageUrl) => {
+    if (!imageUrl) return null;
+    return imageUrl.startsWith('http') ? imageUrl : `${API_URL}${imageUrl}`;
+  };
+
+  const getProductById = (productId) => {
+    if (!productId || !Array.isArray(myProducts)) return null;
+    return myProducts.find(p => p.id === productId);
+  };
+
   const sellerOrders = user?.name
     ? orders.filter((order) => (order.sellerName || '').toLowerCase() === user.name.toLowerCase())
     : orders;
@@ -363,11 +374,6 @@ const [withdrawalType, setWithdrawalType] = useState('savings');
       console.error('Failed to update product:', err);
       toast.error(err.response?.data?.detail || 'Failed to update product');
     }
-  };
-
-  const getImageUrl = (imageUrl) => {
-    if (!imageUrl) return null;
-    return imageUrl.startsWith('http') ? imageUrl : `${API_URL}${imageUrl}`;
   };
 
   // Calculate user's outstanding loan balance
@@ -1783,96 +1789,145 @@ const [withdrawalType, setWithdrawalType] = useState('savings');
                   When a buyer places an order, it appears here for you to approve and contact them.
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
+               <CardContent className="space-y-5">
                 {sellerOrders.length === 0 ? (
                   <div className="rounded-xl border border-[#E8EBE8] bg-[#F7FCF4] p-6 text-sm text-[#4B5A45]">
                     No order requests found yet. Buyers can place orders from the shop page, and they will appear here for review.
                   </div>
                 ) : (
-sellerOrders.map((order) => (
-                    <div key={order.id} className="rounded-3xl border border-[#E8EBE8] bg-white p-6 shadow-sm">
-                      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                        <div className="space-y-2">
-                          <p className="text-xs uppercase tracking-[0.25em] text-[#2B6F38]">Request</p>
-                          {order.products && Array.isArray(order.products) && order.products.length > 0 ? (
-                            <>
-                              <h3 className="text-lg font-semibold text-[#172B12]">
-                                {order.products.map(p => `${p.title} x${p.quantity}`).join(', ')}
-                              </h3>
-                              <div className="mt-1">
-                                {order.products.map((p, idx) => (
-                                  <p key={idx} className="text-xs text-[#4B5A45]">
-                                    {p.title}: UGX {Number(p.price || 0).toLocaleString()} × {p.quantity} = UGX {(p.price * p.quantity).toLocaleString()}
-                                  </p>
-                                ))}
-                                <p className="text-sm font-medium text-[#172B12] mt-1">Total: UGX {Number(order.total || order.products.reduce((sum, p) => sum + p.price * p.quantity, 0) || 0).toLocaleString()}</p>
+                  sellerOrders.map((order) => {
+                    const orderProducts = [];
+                    if (order.products && Array.isArray(order.products) && order.products.length > 0) {
+                      order.products.forEach((p) => {
+                        const known = getProductById(p.productId || p.id);
+                        orderProducts.push({
+                          id: p.productId || p.id,
+                          title: p.title || known?.title || 'Product',
+                          price: p.price || known?.price || 0,
+                          quantity: p.quantity || 1,
+                          image: known?.image_url || known?.image_urls?.[0] || known?.imageUrl || p.image || p.imageUrl || p.imageUrl || null,
+                          description: known?.description || '',
+                          sellerName: known?.sellerName || order.sellerName || 'Member',
+                        });
+                      });
+                    } else if (order.productId || order.productTitle) {
+                      const known = getProductById(order.productId);
+                      orderProducts.push({
+                        id: order.productId,
+                        title: order.productTitle || known?.title || 'Product',
+                        price: order.productPrice || known?.price || 0,
+                        quantity: 1,
+                        image: known?.image_url || known?.image_urls?.[0] || known?.imageUrl || order.productImage || order.productImageUrl || null,
+                        description: known?.description || '',
+                        sellerName: known?.sellerName || order.sellerName || 'Member',
+                      });
+                    }
+
+                    const orderTotal = Number(order.total || orderProducts.reduce((sum, p) => sum + p.price * p.quantity, 0) || 0);
+                    const requestedDate = new Date(order.createdAt).toLocaleString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    });
+
+                    return (
+                      <div key={order.id} className="rounded-3xl border border-[#E8EBE8] bg-white p-6 shadow-sm">
+                        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                          <div className="flex-1 space-y-4">
+                            <div className="flex items-center gap-2">
+                              <p className="text-xs uppercase tracking-[0.25em] text-[#2B6F38]">Request</p>
+                              <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${order.status === 'approved' ? 'bg-[#DEF2DD] text-[#2C5530]' : order.status === 'rejected' ? 'bg-[#FBD7D4] text-[#D05A49]' : 'bg-[#FEF6E8] text-[#C57A17]'}`}>
+                                {order.status === 'pending' ? 'Pending' : order.status === 'approved' ? 'Approved' : 'Rejected'}
+                              </span>
+                            </div>
+
+                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                              {orderProducts.map((p, idx) => (
+                                <div key={idx} className="rounded-xl border border-slate-200 bg-white p-3 flex gap-3">
+                                  {p.image ? (
+                                    <div className="h-16 w-16 shrink-0 rounded-lg overflow-hidden bg-slate-50">
+                                      <img src={getImageUrl(p.image)} alt={p.title} className="h-full w-full object-cover" />
+                                    </div>
+                                  ) : (
+                                    <div className="h-16 w-16 shrink-0 rounded-lg bg-slate-100 flex items-center justify-center">
+                                      <ImageIcon className="h-6 w-6 text-slate-400" />
+                                    </div>
+                                  )}
+                                  <div className="min-w-0">
+                                    <p className="text-sm font-semibold text-[#172B12] line-clamp-2">{p.title}</p>
+                                    <p className="text-xs text-[#4B5A45] mt-0.5">UGX {Number(p.price).toLocaleString()} × {p.quantity}</p>
+                                    <p className="text-sm font-bold text-[#2B6F38] mt-0.5">UGX {(p.price * p.quantity).toLocaleString()}</p>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+
+                            <p className="text-sm font-semibold text-[#172B12]">Order total: <span className="text-[#EA580C]">UGX {orderTotal.toLocaleString()}</span></p>
+
+                            <div className="rounded-2xl bg-[#F7F9F5] p-4 text-sm text-[#4B5A45] space-y-2">
+                              <p>Buyer: <span className="font-semibold text-[#172B12]">{order.buyerName}</span></p>
+                              <p>Phone: <a className="text-[#172B12] underline" href={`tel:${order.buyerPhone}`}>{order.buyerPhone}</a></p>
+                              {order.buyerEmail && (
+                                <p>Email: <a className="text-[#172B12] underline" href={`mailto:${order.buyerEmail}`}>{order.buyerEmail}</a></p>
+                              )}
+                              <p className="text-xs text-[#6B7C61]">Requested {requestedDate}</p>
+                              <div className="flex flex-wrap gap-2 pt-1">
+                                {order.buyerPhone && (
+                                  <a
+                                    className="inline-flex items-center rounded-full border border-[#2C5530] px-3 py-1 text-sm text-[#2C5530] hover:bg-[#2C5530]/5"
+                                    href={buildWhatsAppUrl(order.buyerPhone, `Hello ${order.buyerName}, your order request is being reviewed.`)}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                  >
+                                    Message on WhatsApp
+                                  </a>
+                                )}
+                                {order.buyerEmail && (
+                                  <a className="inline-flex items-center rounded-full border border-[#2C5530] px-3 py-1 text-sm text-[#2C5530] hover:bg-[#2C5530]/5" href={`mailto:${order.buyerEmail}`}>
+                                    Send email
+                                  </a>
+                                )}
                               </div>
-                              <p className="text-sm text-[#4B5A45]">Buyer: <span className="font-semibold text-[#172B12]">{order.buyerName}</span></p>
-                            </>
-                          ) : (
-                            <>
-                              <h3 className="text-lg font-semibold text-[#172B12]">{order.productTitle || (order.products?.[0]?.title)}</h3>
-                              <p className="text-sm text-[#4B5A45]">UGX {Number(order.productPrice || order.products?.[0]?.price || 0).toLocaleString()}</p>
-                              <p className="text-sm text-[#4B5A45]">Buyer: <span className="font-semibold text-[#172B12]">{order.buyerName}</span></p>
-                            </>
-                          )}
-                          <p className="text-sm text-[#4B5A45]">Phone: <a className="text-[#172B12] underline" href={`tel:${order.buyerPhone}`}>{order.buyerPhone}</a></p>
-                          {order.buyerEmail && (
-                            <p className="text-sm text-[#4B5A45]">Email: <a className="text-[#172B12] underline" href={`mailto:${order.buyerEmail}`}>{order.buyerEmail}</a></p>
-                          )}
-                          <div className="flex flex-wrap gap-2">
-                            {order.buyerPhone && (
-                              <a
-                                className="inline-flex items-center rounded-full border border-[#2C5530] px-3 py-1 text-sm text-[#2C5530] hover:bg-[#2C5530]/5"
-                                href={buildWhatsAppUrl(order.buyerPhone, `Hello ${order.buyerName}, your order request is being reviewed.`)}
-                                target="_blank"
-                                rel="noreferrer"
-                              >
-                                Message on WhatsApp
-                              </a>
-                            )}
-                            {order.buyerEmail && (
-                              <a className="inline-flex items-center rounded-full border border-[#2C5530] px-3 py-1 text-sm text-[#2C5530] hover:bg-[#2C5530]/5" href={`mailto:${order.buyerEmail}`}>
-                                Send email
-                              </a>
-                            )}
+                            </div>
+                          </div>
+                          <div className="flex flex-col gap-2 lg:text-right">
+                            <p className="text-xs text-[#6B7C61]">Order #{order.id?.slice(-6).toUpperCase()}</p>
+                            <p className="text-xs text-[#6B7C61]">{requestedDate}</p>
                           </div>
                         </div>
-                        <div className="flex flex-col gap-2 text-right">
-                          <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${order.status === 'approved' ? 'bg-[#DEF2DD] text-[#2C5530]' : order.status === 'rejected' ? 'bg-[#FBD7D4] text-[#D05A49]' : 'bg-[#FEF6E8] text-[#C57A17]'}`}>
-                            {order.status === 'pending' ? 'Pending' : order.status === 'approved' ? 'Approved' : 'Rejected'}
-                          </span>
-                          <p className="text-xs text-[#6B7C61]">Requested {new Date(order.createdAt).toLocaleDateString()}</p>
-                        </div>
+
+                        {order.note && (
+                          <div className="mt-4 rounded-2xl bg-[#F7F9F5] p-4 text-sm text-[#4B5A45]">
+                            <p className="font-semibold text-[#172B12] mb-1">Buyer note</p>
+                            <p>{order.note}</p>
+                          </div>
+                        )}
+
+                        {order.status === 'pending' && (
+                          <div className="mt-4 flex flex-wrap gap-3">
+                            <Button size="sm" className="bg-[#2C5530] text-white hover:bg-[#1A3B20]" onClick={() => handleOrderStatusChange(order.id, 'approved')}>
+                              Approve
+                            </Button>
+                            <Button size="sm" variant="outline" className="border-[#D05A49] text-[#D05A49] hover:bg-[#FDE8E7]" onClick={() => handleOrderStatusChange(order.id, 'rejected')}>
+                              Reject
+                            </Button>
+                            <Button size="sm" variant="outline" className="border-[#9B9B9B] text-[#5C665D] hover:bg-[#F1F1F1]" onClick={() => handleDeleteOrder(order.id)}>
+                              Delete
+                            </Button>
+                          </div>
+                        )}
+                        {order.status !== 'pending' && (
+                          <div className="mt-4 flex flex-wrap gap-3">
+                            <Button size="sm" variant="outline" className="border-[#9B9B9B] text-[#5C665D] hover:bg-[#F1F1F1]" onClick={() => handleDeleteOrder(order.id)}>
+                              Delete
+                            </Button>
+                          </div>
+                        )}
                       </div>
-                      {order.note && (
-                        <div className="mt-4 rounded-2xl bg-[#F7F9F5] p-4 text-sm text-[#4B5A45]">
-                          <p className="font-semibold text-[#172B12] mb-1">Buyer note</p>
-                          <p>{order.note}</p>
-                        </div>
-                      )}
-                      {order.status === 'pending' && (
-                        <div className="mt-4 flex flex-wrap gap-3">
-                          <Button size="sm" className="bg-[#2C5530] text-white hover:bg-[#1A3B20]" onClick={() => handleOrderStatusChange(order.id, 'approved')}>
-                            Approve
-                          </Button>
-                          <Button size="sm" variant="outline" className="border-[#D05A49] text-[#D05A49] hover:bg-[#FDE8E7]" onClick={() => handleOrderStatusChange(order.id, 'rejected')}>
-                            Reject
-                          </Button>
-                          <Button size="sm" variant="outline" className="border-[#9B9B9B] text-[#5C665D] hover:bg-[#F1F1F1]" onClick={() => handleDeleteOrder(order.id)}>
-                            Delete
-                          </Button>
-                        </div>
-                      )}
-                      {order.status !== 'pending' && (
-                        <div className="mt-4 flex flex-wrap gap-3">
-                          <Button size="sm" variant="outline" className="border-[#9B9B9B] text-[#5C665D] hover:bg-[#F1F1F1]" onClick={() => handleDeleteOrder(order.id)}>
-                            Delete
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </CardContent>
             </Card>
