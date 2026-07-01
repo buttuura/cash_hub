@@ -420,7 +420,7 @@ return (
           ) : (
             <>
               <div className="flex flex-wrap gap-4 justify-center">
-                {visibleProducts.slice(0, 6).map((product) => (
+                {visibleProducts.map((product) => (
                   <div key={product.id} className="flex-1 min-w-[160px] max-w-[220px]">
                     <ProductCard
                       product={product}

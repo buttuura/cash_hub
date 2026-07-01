@@ -27,6 +27,20 @@ function ProductDetailPage() {
   const [currentImgIndex, setCurrentImgIndex] = useState(0);
   const [quantity, setQuantity] = useState(1);
   const [addingToCart, setAddingToCart] = useState(false);
+  const [addedToCart, setAddedToCart] = useState(false);
+  const [cartCount, setCartCount] = useState(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem('cash_hub_cart') || '[]');
+      return stored.reduce((sum, item) => sum + (item.quantity || 0), 0);
+    } catch {
+      return 0;
+    }
+  });
+  const [cartItems, setCartItems] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('cash_hub_cart') || '[]'); }
+    catch { return []; }
+  });
+  const [cartOpen, setCartOpen] = useState(false);
   const [buyNowOpen, setBuyNowOpen] = useState(false);
   const [buyerName, setBuyerName] = useState('');
   const [buyerEmail, setBuyerEmail] = useState('');
@@ -61,8 +75,21 @@ function ProductDetailPage() {
         setLoading(false);
       }
     };
+
+    const syncCart = () => {
+      try {
+        const stored = JSON.parse(localStorage.getItem('cash_hub_cart') || '[]');
+        setCartItems(stored);
+        setCartCount(stored.reduce((sum, item) => sum + (item.quantity || 0), 0));
+      } catch {
+        setCartItems([]);
+        setCartCount(0);
+      }
+    };
+
     if (productId) {
       fetchProduct();
+      syncCart();
     } else {
       setLoading(false);
       setProduct(null);
@@ -114,8 +141,13 @@ function ProductDetailPage() {
         });
       }
       localStorage.setItem('cash_hub_cart', JSON.stringify(storedCart));
+      setCartItems(storedCart);
+      const totalQty = storedCart.reduce((sum, item) => sum + (item.quantity || 0), 0);
+      setCartCount(totalQty);
       toast.success(`${quantity} item(s) added to cart`);
+      setAddedToCart(true);
       setQuantity(1);
+      setTimeout(() => setAddedToCart(false), 1500);
     } catch (error) {
       toast.error('Failed to add to cart');
     } finally {
@@ -134,6 +166,41 @@ function ProductDetailPage() {
     setBuyerPhone('');
     setBuyerNote('');
     setBuyNowOpen(true);
+  };
+
+  const getCart = () => {
+    try { return JSON.parse(localStorage.getItem('cash_hub_cart') || '[]'); }
+    catch { return []; }
+  };
+
+  const updateCartItemQuantity = (productId, quantity) => {
+    const storedCart = getCart();
+    if (quantity <= 0) {
+      const filtered = storedCart.filter(item => item.productId !== productId);
+      localStorage.setItem('cash_hub_cart', JSON.stringify(filtered));
+      setCartItems(filtered);
+      const totalQty = filtered.reduce((sum, item) => sum + (item.quantity || 0), 0);
+      setCartCount(totalQty);
+    } else {
+      const updated = storedCart.map(item => item.productId === productId ? { ...item, quantity } : item);
+      localStorage.setItem('cash_hub_cart', JSON.stringify(updated));
+      setCartItems(updated);
+      const totalQty = updated.reduce((sum, item) => sum + (item.quantity || 0), 0);
+      setCartCount(totalQty);
+    }
+  };
+
+  const removeFromCart = (productId) => {
+    const storedCart = getCart();
+    const filtered = storedCart.filter(item => item.productId !== productId);
+    localStorage.setItem('cash_hub_cart', JSON.stringify(filtered));
+    setCartItems(filtered);
+    const totalQty = filtered.reduce((sum, item) => sum + (item.quantity || 0), 0);
+    setCartCount(totalQty);
+  };
+
+  const getCartTotal = () => {
+    return cartItems.reduce((total, item) => total + (item.product?.price || 0) * (item.quantity || 0), 0);
   };
 
   const submitBuyNowOrder = async () => {
@@ -191,6 +258,22 @@ function ProductDetailPage() {
       text: product.description,
       url: window.location.href,
     };
+
+    const firstImage = allImages[0];
+    if (firstImage && navigator.canShare && navigator.canShare({ ...shareData, files: [] })) {
+      try {
+        const response = await fetch(getImageUrl(firstImage));
+        const blob = await response.blob();
+        const file = new File([blob], 'product-image.jpg', { type: blob.type || 'image/jpeg' });
+        if (navigator.canShare({ ...shareData, files: [file] })) {
+          await navigator.share({ ...shareData, files: [file] });
+          return;
+        }
+      } catch (err) {
+        if (err.name === 'AbortError') return;
+      }
+    }
+
     if (navigator.share) {
       try {
         await navigator.share(shareData);
@@ -345,15 +428,24 @@ function ProductDetailPage() {
                 >
                   Visit the Store
                 </button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCartOpen(true)}
+                  className="border-slate-200 text-[#4B5A45] hover:bg-slate-50 relative"
+                >
+                  <ShoppingCart className="h-4 w-4 mr-2" />
+                  Cart ({cartCount})
+                </Button>
               </div>
             </div>
 
             <div className="bg-white rounded-xl border border-slate-200 p-4">
               <div className="flex items-baseline gap-3 mb-3">
-                <span className="text-sm text-[#EA580C] font-medium">{discountPercent}% off</span>
+                <span className="text-sm text-[#2B6F38] font-medium">{discountPercent}% off</span>
                 <span className="text-xs text-[#6B7C61] line-through">UGX {originalPrice.toLocaleString()}</span>
               </div>
-              <p className="text-3xl font-bold text-[#EA580C] mb-4">UGX {price.toLocaleString()}</p>
+              <p className="text-3xl font-bold text-[#2B6F38] mb-4">UGX {price.toLocaleString()}</p>
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
                   <label className="text-sm font-medium text-[#172B12]">Quantity</label>
@@ -380,15 +472,15 @@ function ProductDetailPage() {
                 <Button
                   onClick={handleAddToCart}
                   disabled={addingToCart}
-                  className="w-full h-12 bg-[#172B12] text-white hover:bg-[#0f2409] text-base font-medium shadow-sm"
+                  className={`w-full h-12 text-base font-medium shadow-sm ${addedToCart ? 'bg-[#2B6F38] text-white hover:bg-[#1B5E20]' : 'bg-[#172B12] text-white hover:bg-[#0f2409]'}`}
                 >
                   <ShoppingCart className="h-5 w-5 mr-2" />
-                  {addingToCart ? 'Adding...' : 'Add to Cart'}
+                  {addedToCart ? 'Added ✓' : addingToCart ? 'Adding...' : 'Add to Cart'}
                 </Button>
                 <Button
                   onClick={handleBuyNow}
                   disabled={addingToCart}
-                  className="w-full h-12 bg-[#EA580C] text-white hover:bg-[#C2410C] text-base font-medium shadow-sm"
+                  className="w-full h-12 bg-white text-[#172B12] border border-[#172B12] hover:bg-[#ECF8E9] text-base font-medium shadow-sm"
                 >
                   Buy Now
                 </Button>
@@ -459,6 +551,42 @@ function ProductDetailPage() {
         </div>
       </div>
 
+      <Dialog open={cartOpen} onOpenChange={setCartOpen}>
+        <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Shopping Cart</DialogTitle>
+            <DialogDescription>Review your cart and checkout.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 flex-1">
+            {cartItems.length === 0 ? (
+              <p className="text-sm text-[#4B5A45]">Your cart is empty.</p>
+            ) : (
+              <>
+                <div className="space-y-4">
+                  {cartItems.map(item => (
+                    <div key={item.productId} className="flex items-center justify-between py-2 border-t border-slate-100">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-[#172B12] truncate">{item.product?.title || 'Product'}</p>
+                        <p className="text-xs text-[#4B5A45]">UGX {Number(item.product?.price || 0).toLocaleString()} x {item.quantity}</p>
+                      </div>
+                      <div className="flex items-center gap-2 ml-2">
+                        <button type="button" onClick={() => updateCartItemQuantity(item.productId, item.quantity - 1)} className="px-2 py-1 text-xs border border-slate-300 rounded">-</button>
+                        <span className="text-xs px-2">{item.quantity}</span>
+                        <button type="button" onClick={() => updateCartItemQuantity(item.productId, item.quantity + 1)} className="px-2 py-1 text-xs border border-slate-300 rounded">+</button>
+                        <button type="button" onClick={() => removeFromCart(item.productId)} className="ml-2 text-xs text-red-600 hover:text-red-800">Remove</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="border-t border-slate-200 pt-4">
+                  <p className="text-lg font-semibold text-[#172B12]">Grand Total: UGX {getCartTotal().toLocaleString()}</p>
+                </div>
+              </>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={buyNowOpen} onOpenChange={setBuyNowOpen}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
@@ -475,7 +603,7 @@ function ProductDetailPage() {
               <div>
                 <p className="text-sm font-semibold text-[#172B12]">{product.title}</p>
                 <p className="text-xs text-[#4B5A45]">Qty: {quantity}</p>
-                <p className="text-sm font-bold text-[#EA580C]">UGX {(Number(product.price) * quantity).toLocaleString()}</p>
+                <p className="text-sm font-bold text-[#2B6F38]">UGX {(Number(product.price) * quantity).toLocaleString()}</p>
               </div>
             </div>
             <div className="space-y-2">

@@ -496,8 +496,8 @@ const ShopPage = () => {
   }, {});
 
   const recentProducts = products
-    .sort((a, b) => new Date(b.createdAt || b.created_at) - new Date(a.createdAt || b.created_at))
-    .slice(0, 20);
+    .sort((a, b) => new Date(b.createdAt || b.created_at) - new Date(a.createdAt || a.created_at))
+    .slice(0, 100);
 
   const visibleProducts = products
     .sort((a, b) => new Date(b.createdAt || b.created_at) - new Date(a.createdAt || a.created_at))
@@ -1019,17 +1019,17 @@ const handleOpenPurchase = (product) => {
                                   <button
                                     key={product.id}
                                     type="button"
-                                    onClick={() => handleOpenPurchase(product)}
+                                    onClick={() => navigate(`/product/${product.id}`)}
                                     className="snap-start shrink-0 rounded-2xl border border-slate-200 bg-white text-left shadow-sm transition-all duration-200 hover:shadow-md hover:border-[#2B6F38]/50 w-44 group"
                                   >
                                     {displayImage ? (
                                       <div className="overflow-hidden rounded-t-2xl bg-[#F4F8EF] relative">
-<img
-                                           src={getImageUrl(displayImage)}
-                                           alt={product.title}
-                                           className="h-28 w-full object-cover transition-transform duration-300 group-hover:scale-105"
-                                         />
-                                       </div>
+                                        <img
+                                          src={getImageUrl(displayImage)}
+                                          alt={product.title}
+                                          className="h-28 w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                                        />
+                                      </div>
                                     ) : (
                                       <div className="flex h-28 items-center justify-center rounded-t-2xl bg-gradient-to-br from-[#F4F8EF] to-[#E8F0E3] border-b border-slate-200">
                                         <span className="text-xs text-[#4B5A45]">No image</span>
@@ -1084,42 +1084,38 @@ const handleOpenPurchase = (product) => {
             </CardContent>
           </Card>
 
-          <Card className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-xl">
-                <ShoppingCart className="h-5 w-5 text-[#2B6F38]" /> Sell products
-              </CardTitle>
-              <CardDescription>
-                List your products and reach buyers across the group marketplace.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-[#4B5A45]">
-              Create a listing quickly and keep your inventory visible to the community.
-            </p>
-          </CardContent>
-          <CardFooter>
-            <Button
-              onClick={() => {
-                if (!isAuthenticated) {
-                  navigate('/login');
-                } else {
-                  setAddProductOpen(true);
-                }
-              }}
-              className="bg-[#172B12] text-white hover:bg-[#0f2409]"
-            >
-              {isAuthenticated ? 'List a product' : 'Login to sell'}
-            </Button>
-          </CardFooter>
-        </Card>
+          {isAuthenticated && (
+            <Card className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-xl">
+                  <ShoppingCart className="h-5 w-5 text-[#2B6F38]" /> Sell products
+                </CardTitle>
+                <CardDescription>
+                  List your products and reach buyers across the group marketplace.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-[#4B5A45]">
+                  Create a listing quickly and keep your inventory visible to the community.
+                </p>
+              </CardContent>
+              <CardFooter>
+                <Button
+                  onClick={() => setAddProductOpen(true)}
+                  className="bg-[#172B12] text-white hover:bg-[#0f2409]"
+                >
+                  List a product
+                </Button>
+              </CardFooter>
+            </Card>
+          )}
 
-<section className="space-y-6">
+ <section className="space-y-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-3xl font-semibold text-[#172B12]">New Products on Market</h2>
               <p className="text-sm text-[#4B5A45]">
-                Latest products added by group members. Showing up to 20 most recent items.
+                Latest products added by group members. Showing up to 100 most recent items.
               </p>
             </div>
           </div>
@@ -1131,7 +1127,7 @@ const handleOpenPurchase = (product) => {
                   <p className="text-sm text-[#4B5A45]">No products have been listed yet. Members can add products from their dashboard.</p>
                 </CardContent>
               </Card>
-            ) : recentProducts.slice(0, 6).map((product) => (
+            ) : recentProducts.map((product) => (
               <div key={product.id} className="flex-1 min-w-[160px] max-w-[220px]">
                 <ProductCard
                   product={product}
