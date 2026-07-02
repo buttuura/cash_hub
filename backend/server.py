@@ -433,20 +433,24 @@ async def get_duplicate_normalized_phones() -> List[dict]:
 
 def calculate_months_elapsed(start_date: datetime, end_date: Optional[datetime] = None) -> int:
     end_date = end_date or datetime.now(timezone.utc)
-    return max(0, (end_date - start_date).days // 30)
+    if end_date < start_date:
+        return 0
+
+    months = (end_date.year - start_date.year) * 12 + (end_date.month - start_date.month)
+    if end_date.day < start_date.day:
+        months -= 1
+
+    return max(0, months)
 
 
 def calculate_loan_interest(loan_amount: float, months_elapsed: int) -> float:
-    """Calculate compound loan interest based on duration with tiered monthly rates."""
+    """Calculate fixed loan interest based on duration with tiered monthly rates."""
     if months_elapsed <= 0:
         return 0.0
 
-    balance = loan_amount
-    for month_index in range(1, months_elapsed + 1):
-        rate = LOAN_INTEREST_NORMAL if month_index <= LOAN_NORMAL_PERIOD_MONTHS else LOAN_INTEREST_EXTENDED
-        balance *= 1 + rate
-
-    return balance - loan_amount
+    normal_months = min(months_elapsed, LOAN_NORMAL_PERIOD_MONTHS)
+    extended_months = max(0, months_elapsed - LOAN_NORMAL_PERIOD_MONTHS)
+    return loan_amount * (normal_months * LOAN_INTEREST_NORMAL + extended_months * LOAN_INTEREST_EXTENDED)
 
 
 def get_loan_last_interest_date(loan: dict) -> datetime:
@@ -484,14 +488,9 @@ async def accrue_loan_interest_on_db(loan: dict) -> dict:
     if months_to_accrue <= 0:
         return loan
 
-    months_already_accrued = calculate_months_elapsed(approved_date, last_accrual_date)
-
     current_balance = get_loan_outstanding_balance(loan)
-    new_balance = current_balance
-    for month_offset in range(1, months_to_accrue + 1):
-        month_number = months_already_accrued + month_offset
-        rate = LOAN_INTEREST_NORMAL if month_number <= LOAN_NORMAL_PERIOD_MONTHS else LOAN_INTEREST_EXTENDED
-        new_balance *= 1 + rate
+    interest = calculate_loan_interest(current_balance, months_to_accrue)
+    new_balance = current_balance + interest
 
     update_fields = {
         "outstanding_balance": new_balance,
@@ -1157,7 +1156,7 @@ async def set_user_role(data: RoleUpdate, user: dict = Depends(require_treasurer
 
 @api_router.post("/admin/set-membership")
 async def set_membership_type(data: MembershipUpdate, user: dict = Depends(require_admin)):
-    if data.membership_type not in ["premium", "ordinary"]:
+    if data.membership_type not in ["premium", "ordinary", "seller"]:
         raise HTTPException(status_code=400, detail="Invalid membership type")
     
     target_user = await db.users.find_one({"_id": ObjectId(data.user_id)})
