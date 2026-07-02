@@ -90,9 +90,11 @@ const buildWhatsAppUrl = (phone, message) => {
   return `https://wa.me/${digits}?text=${encodeURIComponent(message)}`;
 };
 
+const CONTACT_ADMIN_PHONE = '+256776944322';
+
 const Dashboard = () => {
   const navigate = useNavigate();
-  const { user, logout, getAuthHeaders, isAdmin, isTreasurer, isPremium, refreshUser } = useAuth();
+  const { user, logout, getAuthHeaders, isAdmin, isTreasurer, isPremium, isSeller, refreshUser } = useAuth();
   const [stats, setStats] = useState(null);
   const [rules, setRules] = useState(null);
   const [financials, setFinancials] = useState(null);
@@ -277,6 +279,16 @@ const [withdrawalType, setWithdrawalType] = useState('savings');
     : orders;
 
   const pendingOrdersCount = sellerOrders?.filter((o) => o.status === 'pending').length || 0;
+  const isSellerMember = Boolean(isSeller || String(user?.membership_type || '').toLowerCase() === 'seller');
+
+  const handleSellerRestriction = useCallback((action = 'this feature') => {
+    const message = `Hello admin, I need help with my seller account access. I was trying to use the ${action} feature and need assistance.`;
+    const url = buildWhatsAppUrl(CONTACT_ADMIN_PHONE, message);
+    if (url) {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+    toast.error('Seller accounts can only use Overview and Orders. Please contact the admin on WhatsApp for other access.');
+  }, []);
 
   useEffect(() => {
     if (pendingOrdersCount > 0) {
@@ -302,6 +314,12 @@ const [withdrawalType, setWithdrawalType] = useState('savings');
       fetchOrders();
     }
   }, [activeTab, fetchMyProducts, fetchOrders]);
+
+  useEffect(() => {
+    if (isSellerMember && !['overview', 'marketplace'].includes(activeTab)) {
+      setActiveTab('overview');
+    }
+  }, [activeTab, isSellerMember]);
 
   const handleOrderStatusChange = async (orderId, status) => {
     try {
@@ -725,22 +743,27 @@ const [withdrawalType, setWithdrawalType] = useState('savings');
     );
   };
 
-  const navItems = [
-    { id: 'overview', label: 'Overview', icon: Wallet },
-    { id: 'financials', label: 'Financials', icon: BarChart3 },
-    { id: 'deposits', label: 'Deposits', icon: TrendingUp },
-    { id: 'loans', label: 'Loans', icon: CreditCard },
-    { id: 'withdrawals', label: 'Withdrawals', icon: TrendingDown },
-    { id: 'members', label: 'Members', icon: Users },
-    { id: 'marketplace', label: 'Orders', icon: ShoppingCart },
-    { id: 'rules', label: 'Rules', icon: Shield },
-  ];
+  const navItems = isSellerMember
+    ? [
+        { id: 'overview', label: 'Overview', icon: Wallet },
+        { id: 'marketplace', label: 'Orders', icon: ShoppingCart },
+      ]
+    : [
+        { id: 'overview', label: 'Overview', icon: Wallet },
+        { id: 'financials', label: 'Financials', icon: BarChart3 },
+        { id: 'deposits', label: 'Deposits', icon: TrendingUp },
+        { id: 'loans', label: 'Loans', icon: CreditCard },
+        { id: 'withdrawals', label: 'Withdrawals', icon: TrendingDown },
+        { id: 'members', label: 'Members', icon: Users },
+        { id: 'marketplace', label: 'Orders', icon: ShoppingCart },
+        { id: 'rules', label: 'Rules', icon: Shield },
+      ];
 
-  if (isAdmin || isTreasurer) {
+  if (!isSellerMember && (isAdmin || isTreasurer)) {
     navItems.push({ id: 'services', label: 'Services', icon: Settings });
   }
 
-  if (isAdmin) {
+  if (!isSellerMember && isAdmin) {
     navItems.push({ id: 'admin', label: 'Admin', icon: Shield });
   }
 
@@ -896,6 +919,29 @@ const [withdrawalType, setWithdrawalType] = useState('savings');
          {/* Overview Tab */}
          {activeTab === 'overview' && (
            <div className="space-y-6 animate-fade-in">
+             {isSellerMember ? (
+               <Card className="bg-white border border-[#E8EBE8] shadow-sm">
+                 <CardContent className="p-8 space-y-4">
+                   <div className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-[#D48C70]/10 text-[#D48C70]">
+                     <Shield className="w-6 h-6" />
+                   </div>
+                   <div className="space-y-2">
+                     <h2 className="text-2xl font-bold font-['Manrope'] text-[#1E231F]">Seller account access is restricted</h2>
+                     <p className="text-[#5C665D]">
+                       Seller accounts can only use Overview and Orders. Financial features are hidden and protected.
+                     </p>
+                   </div>
+                   <Button
+                     onClick={() => handleSellerRestriction('overview')}
+                     className="bg-[#25D366] hover:bg-[#1EA852] text-white"
+                   >
+                     <MessageCircle className="w-4 h-4 mr-2" />
+                     Contact Admin on WhatsApp
+                   </Button>
+                 </CardContent>
+               </Card>
+             ) : (
+               <>
              {/* Stats Cards */}
              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
                {/* Total Group Balance - Only Treasurer can edit */}
@@ -1321,6 +1367,8 @@ const [withdrawalType, setWithdrawalType] = useState('savings');
                 </div>
               </CardContent>
             </Card>
+              </>
+            )}
           </div>
         )}
 
@@ -2631,6 +2679,7 @@ const [withdrawalType, setWithdrawalType] = useState('savings');
                               >
                                 <option value="ordinary">Ordinary</option>
                                 <option value="premium">Premium</option>
+                                <option value="seller">Seller</option>
                               </select>
                             </td>
                             <td className="py-3 px-4">

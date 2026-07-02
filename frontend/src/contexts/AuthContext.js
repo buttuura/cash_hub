@@ -158,6 +158,7 @@ export const AuthProvider = ({ children }) => {
     isAdmin: user?.role === 'admin' || user?.role === 'super_admin' || user?.role === 'treasurer',
     isTreasurer: user?.role === 'super_admin' || user?.role === 'treasurer',
     isPremium: user?.membership_type === 'premium',
+    isSeller: String(user?.membership_type || '').toLowerCase() === 'seller',
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
