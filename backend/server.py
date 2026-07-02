@@ -884,7 +884,7 @@ async def get_orders(user: Optional[dict] = Depends(get_current_user_optional)):
                 {
                     "$or": [
                         {"buyerId": user["id"]},
-                        {"sellerName": user["name"]}
+                        {"sellerName": {"$regex": f"^{re.escape(user['name'])}$", "$options": "i"}}
                     ]
                 }
             ]
