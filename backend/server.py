@@ -822,6 +822,14 @@ async def list_products():
         product.pop("_id", None)
     return products
 
+@api_router.get("/products/me")
+async def list_my_products(user: dict = Depends(get_current_user)):
+    products = await db.products.find({"seller_id": user["id"]}).sort("created_at", -1).to_list(200)
+    for product in products:
+        product["id"] = str(product["_id"])
+        product.pop("_id", None)
+    return products
+
 @api_router.get("/products/{product_id}")
 async def get_product(product_id: str):
     from bson import ObjectId
@@ -1058,14 +1066,6 @@ async def cloudinary_status(user: dict = Depends(require_treasurer)):
         status["message"] = "CLOUDINARY_URL environment variable is not set"
     
     return status
-
-@api_router.get("/products/me")
-async def list_my_products(user: dict = Depends(get_current_user)):
-    products = await db.products.find({"seller_id": user["id"]}).sort("created_at", -1).to_list(200)
-    for product in products:
-        product["id"] = str(product["_id"])
-        product.pop("_id", None)
-    return products
 
 @api_router.delete("/products/{product_id}")
 async def delete_product(product_id: str, user: dict = Depends(get_current_user)):
