@@ -1227,21 +1227,9 @@ const [withdrawalType, setWithdrawalType] = useState('savings');
                   )}
                 </div>
               </CardContent>
-            </Card>
-          </div>
-        )}
-                    <div className="p-3 bg-[#E8B25C]/10 rounded-lg text-sm text-[#5C665D]">
-                      <Percent className="w-4 h-4 inline mr-2 text-[#E8B25C]" />
-                      Return within 4 months at 3% interest/month. Beyond 4 months: 5%/month.
-                    </div>
-                    <Button type="submit" className="w-full bg-[#D48C70] hover:bg-[#BD7B60] rounded-full">
-                      Submit Request
-                    </Button>
-                  </form>
-                </DialogContent>
-              </Dialog>
+             </Card>
 
-              <Dialog open={withdrawalDialogOpen} onOpenChange={setWithdrawalDialogOpen}>
+               <Dialog open={withdrawalDialogOpen} onOpenChange={setWithdrawalDialogOpen}>
                 <DialogTrigger asChild>
                   <Button
                     data-testid="withdrawal-button"

@@ -64,7 +64,7 @@ This app consists of:
 | `JWT_SECRET` | (auto-generated) | Secret for JWT tokens |
 | `ADMIN_EMAIL` | `treasurer@savingsgroup.com` | Treasurer email |
 | `ADMIN_PASSWORD` | Your choice | Treasurer password |
-| `ADMIN_NAME` | `Buttura Isaiah` | Treasurer / super-admin name |
+| `ADMIN_NAME` | `treasurer` | Treasurer / super-admin name |
 | `ADMIN_ROLE` | `super_admin` | Role seeded for the admin account (`super_admin` or `treasurer`) |
 | `CORS_ORIGINS` | `https://your-frontend-url.onrender.com` | Frontend URL |
 | `CLOUDINARY_URL` | `cloudinary://<API_KEY>:<API_SECRET>@<CLOUD_NAME>` | Cloudinary connection string for uploads |

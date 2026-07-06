@@ -66,8 +66,11 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (pathname === '/api/products' || pathname === '/api/products/') {
-    sendJSON(res, 200, products);
+  if (pathname === '/api/products' && req.method === 'GET') {
+    const authHeader = req.headers['authorization'] || '';
+    const isAdmin = authHeader.toLowerCase().includes('admin') || authHeader.toLowerCase().includes('treasurer');
+    const filtered = isAdmin ? products : products.filter(p => !p.sold_out);
+    sendJSON(res, 200, filtered);
     return;
   }
 

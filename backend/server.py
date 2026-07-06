@@ -815,8 +815,12 @@ async def create_product(
     return product_data
 
 @api_router.get("/products")
-async def list_products():
-    products = await db.products.find().sort("created_at", -1).to_list(200)
+async def list_products(user: Optional[dict] = Depends(get_current_user_optional)):
+    query = {}
+    is_admin = user and user.get("role") in ["admin", "super_admin", "treasurer"]
+    if not is_admin:
+        query = {"$or": [{"sold_out": {"$exists": False}}, {"sold_out": False}]}
+    products = await db.products.find(query).sort("created_at", -1).to_list(200)
     for product in products:
         product["id"] = str(product["_id"])
         product.pop("_id", None)
