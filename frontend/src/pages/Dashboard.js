@@ -107,6 +107,7 @@ const Dashboard = () => {
   const [activeTab, setActiveTab] = useState('overview');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [copiedMemberCode, setCopiedMemberCode] = useState(false);
+  const [activeFinancialTab, setActiveFinancialTab] = useState('overview');
 
   // Form states
   const [depositAmount, setDepositAmount] = useState('500');
@@ -1078,10 +1079,180 @@ const [withdrawalType, setWithdrawalType] = useState('savings');
                     </div>
                     <div className={`w-12 h-12 rounded-full flex items-center justify-center ${userLoanBalance > 0 ? 'bg-[#D05A49]/10' : 'bg-[#347242]/10'}`}>
                       <CreditCard className={`w-6 h-6 ${userLoanBalance > 0 ? 'text-[#D05A49]' : 'text-[#347242]'}`} />
-                    </div>
                   </div>
+                </div>
               </CardContent>
             </Card>
+
+            {/* Quick Actions */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Dialog open={depositDialogOpen} onOpenChange={setDepositDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button className="h-full bg-[#347242] hover:bg-[#2C5530] rounded-xl flex items-center justify-center gap-2 py-6">
+                    <ArrowUpRight className="w-5 h-5" />
+                    <span className="font-semibold">New Deposit</span>
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle className="font-['Manrope'] text-[#1E231F]">New Deposit</DialogTitle>
+                    <DialogDescription className="text-[#5C665D]">Submit a deposit request for approval</DialogDescription>
+                  </DialogHeader>
+                  <form onSubmit={handleDeposit} className="space-y-4 mt-4">
+                    <div className="space-y-2">
+                      <Label>Deposit Type</Label>
+                      <Select value={depositType} onValueChange={setDepositType}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="savings">Savings</SelectItem>
+                          <SelectItem value="development_fee">Development Fee</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Amount (UGX)</Label>
+                      <Input
+                        type="number"
+                        value={depositAmount}
+                        onChange={(e) => setDepositAmount(e.target.value)}
+                        placeholder="500"
+                        required
+                        min="1"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Description</Label>
+                      <Textarea
+                        value={depositDescription}
+                        onChange={(e) => setDepositDescription(e.target.value)}
+                        placeholder="Optional description..."
+                      />
+                    </div>
+                    <Button type="submit" className="w-full bg-[#2C5530] hover:bg-[#214024] rounded-full">
+                      Submit Request
+                    </Button>
+                  </form>
+                </DialogContent>
+              </Dialog>
+
+              <Dialog open={loanDialogOpen} onOpenChange={setLoanDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button className="h-full bg-[#D48C70] hover:bg-[#BD7B60] rounded-xl flex items-center justify-center gap-2 py-6" disabled={!isPremium}>
+                    <CreditCard className="w-5 h-5" />
+                    <span className="font-semibold">Request Loan</span>
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle className="font-['Manrope'] text-[#1E231F]">Request Loan</DialogTitle>
+                    <DialogDescription className="text-[#5C665D]">Select a guarantor and submit your loan request</DialogDescription>
+                  </DialogHeader>
+                  <form onSubmit={handleLoan} className="space-y-4 mt-4">
+                    <div className="space-y-2">
+                      <Label>Amount (UGX)</Label>
+                      <Input
+                        type="number"
+                        value={loanAmount}
+                        onChange={(e) => setLoanAmount(e.target.value)}
+                        placeholder="50000"
+                        required
+                        min="1"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Guarantor</Label>
+                      <Select value={loanGuarantor} onValueChange={setLoanGuarantor}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a guarantor" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {members.filter(m => m.id !== user?.id).map((m) => (
+                            <SelectItem key={m.id} value={m.id}>
+                              {m.name} ({m.membership_type})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Reason</Label>
+                      <Textarea
+                        value={loanReason}
+                        onChange={(e) => setLoanReason(e.target.value)}
+                        placeholder="Reason for loan..."
+                      />
+                    </div>
+                    <Button type="submit" className="w-full bg-[#D48C70] hover:bg-[#BD7B60] rounded-full">
+                      Submit Request
+                    </Button>
+                  </form>
+                </DialogContent>
+              </Dialog>
+
+              <Dialog open={withdrawalDialogOpen} onOpenChange={setWithdrawalDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button className="h-full border-[#E8EBE8] hover:bg-[#E8EBE8] rounded-xl flex items-center justify-center gap-2 py-6">
+                    <ArrowDownRight className="w-5 h-5" />
+                    <span className="font-semibold">Request Withdrawal</span>
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle className="font-['Manrope'] text-[#1E231F]">Request Withdrawal</DialogTitle>
+                    <DialogDescription className="text-[#5C665D]">
+                      Available savings: {formatCurrency(user?.total_savings)}
+                    </DialogDescription>
+                  </DialogHeader>
+                  <form onSubmit={handleWithdrawal} className="space-y-4 mt-4">
+                    <div className="space-y-2">
+                      <Label>Withdrawal Type</Label>
+                      <Select value={withdrawalType} onValueChange={setWithdrawalType}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="savings">Regular Withdrawal (Savings only)</SelectItem>
+                          <SelectItem value="leaving_group">Leaving Group (All funds)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Amount (UGX)</Label>
+                      <Input
+                        type="number"
+                        value={withdrawalAmount}
+                        onChange={(e) => setWithdrawalAmount(e.target.value)}
+                        placeholder="50000"
+                        required
+                        min="1"
+                        max={withdrawalType === 'leaving_group'
+                          ? (user?.total_savings || 0) + (user?.development_fund || 0)
+                          : user?.total_savings || 0}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Reason</Label>
+                      <Textarea
+                        value={withdrawalReason}
+                        onChange={(e) => setWithdrawalReason(e.target.value)}
+                        placeholder="Reason for withdrawal..."
+                      />
+                    </div>
+                    {withdrawalType === 'leaving_group' && (
+                      <div className="p-3 bg-[#D05A49]/10 rounded-lg text-sm text-[#D05A49]">
+                        <DoorOpen className="w-4 h-4 inline mr-2" />
+                        Leaving requires 2 months notice, no active loans, and not being a guarantor
+                      </div>
+                    )}
+                    <Button type="submit" className="w-full bg-[#2C5530] hover:bg-[#214024] rounded-full">
+                      Submit Request
+                    </Button>
+                  </form>
+                </DialogContent>
+              </Dialog>
+            </div>
 
             {/* Deposits */}
             <Card className="bg-white border border-[#E8EBE8] shadow-sm">
@@ -1376,13 +1547,55 @@ const [withdrawalType, setWithdrawalType] = useState('savings');
                     Export PDF
                   </Button>
                 )}
-                <Dialog open={depositDialogOpen} onOpenChange={setDepositDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button className="bg-[#2C5530] hover:bg-[#214024] rounded-full">
-                      <Plus className="w-4 h-4 mr-2" />
-                      New Deposit
-                    </Button>
-                  </DialogTrigger>
+                 <Dialog open={depositDialogOpen} onOpenChange={setDepositDialogOpen}>
+                   <DialogTrigger asChild>
+                     <Button className="bg-[#2C5530] hover:bg-[#214024] rounded-full">
+                       <Plus className="w-4 h-4 mr-2" />
+                       New Deposit
+                     </Button>
+                   </DialogTrigger>
+                   <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                      <DialogTitle className="font-['Manrope'] text-[#1E231F]">New Deposit</DialogTitle>
+                      <DialogDescription className="text-[#5C665D]">Submit a deposit request for approval</DialogDescription>
+                    </DialogHeader>
+                    <form onSubmit={handleDeposit} className="space-y-4 mt-4">
+                      <div className="space-y-2">
+                        <Label>Deposit Type</Label>
+                        <Select value={depositType} onValueChange={setDepositType}>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="savings">Savings</SelectItem>
+                            <SelectItem value="development_fee">Development Fee</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Amount (UGX)</Label>
+                        <Input
+                          type="number"
+                          value={depositAmount}
+                          onChange={(e) => setDepositAmount(e.target.value)}
+                          placeholder="500"
+                          required
+                          min="1"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Description</Label>
+                        <Textarea
+                          value={depositDescription}
+                          onChange={(e) => setDepositDescription(e.target.value)}
+                          placeholder="Optional description..."
+                        />
+                      </div>
+                      <Button type="submit" className="w-full bg-[#2C5530] hover:bg-[#214024] rounded-full">
+                        Submit Request
+                      </Button>
+                    </form>
+                  </DialogContent>
                 </Dialog>
               </div>
             </div>
@@ -1470,8 +1683,53 @@ const [withdrawalType, setWithdrawalType] = useState('savings');
                         <Plus className="w-4 h-4 mr-2" />
                         Request Loan
                       </Button>
-                    </DialogTrigger>
-                  </Dialog>
+                  </DialogTrigger>
+                  <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                      <DialogTitle className="font-['Manrope'] text-[#1E231F]">Request Loan</DialogTitle>
+                      <DialogDescription className="text-[#5C665D]">Select a guarantor and submit your loan request</DialogDescription>
+                    </DialogHeader>
+                    <form onSubmit={handleLoan} className="space-y-4 mt-4">
+                      <div className="space-y-2">
+                        <Label>Amount (UGX)</Label>
+                        <Input
+                          type="number"
+                          value={loanAmount}
+                          onChange={(e) => setLoanAmount(e.target.value)}
+                          placeholder="50000"
+                          required
+                          min="1"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Guarantor</Label>
+                        <Select value={loanGuarantor} onValueChange={setLoanGuarantor}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select a guarantor" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {members.filter(m => m.id !== user?.id).map((m) => (
+                              <SelectItem key={m.id} value={m.id}>
+                                {m.name} ({m.membership_type})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Reason</Label>
+                        <Textarea
+                          value={loanReason}
+                          onChange={(e) => setLoanReason(e.target.value)}
+                          placeholder="Reason for loan..."
+                        />
+                      </div>
+                      <Button type="submit" className="w-full bg-[#D48C70] hover:bg-[#BD7B60] rounded-full">
+                        Submit Request
+                      </Button>
+                    </form>
+                  </DialogContent>
+                </Dialog>
                 )}
               </div>
             </div>
@@ -1670,13 +1928,66 @@ const [withdrawalType, setWithdrawalType] = useState('savings');
                     Export PDF
                   </Button>
                 )}
-                <Dialog open={withdrawalDialogOpen} onOpenChange={setWithdrawalDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button variant="outline" className="border-[#E8EBE8] rounded-full">
-                      <Plus className="w-4 h-4 mr-2" />
-                      Request Withdrawal
-                    </Button>
-                  </DialogTrigger>
+                 <Dialog open={withdrawalDialogOpen} onOpenChange={setWithdrawalDialogOpen}>
+                   <DialogTrigger asChild>
+                     <Button variant="outline" className="border-[#E8EBE8] rounded-full">
+                       <Plus className="w-4 h-4 mr-2" />
+                       Request Withdrawal
+                     </Button>
+                   </DialogTrigger>
+                   <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                      <DialogTitle className="font-['Manrope'] text-[#1E231F]">Request Withdrawal</DialogTitle>
+                      <DialogDescription className="text-[#5C665D]">
+                        Available savings: {formatCurrency(user?.total_savings)}
+                      </DialogDescription>
+                    </DialogHeader>
+                    <form onSubmit={handleWithdrawal} className="space-y-4 mt-4">
+                      <div className="space-y-2">
+                        <Label>Withdrawal Type</Label>
+                        <Select value={withdrawalType} onValueChange={setWithdrawalType}>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="savings">Regular Withdrawal (Savings only)</SelectItem>
+                            <SelectItem value="leaving_group">Leaving Group (All funds)</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Amount (UGX)</Label>
+                        <Input
+                          type="number"
+                          value={withdrawalAmount}
+                          onChange={(e) => setWithdrawalAmount(e.target.value)}
+                          placeholder="50000"
+                          required
+                          min="1"
+                          max={withdrawalType === 'leaving_group'
+                            ? (user?.total_savings || 0) + (user?.development_fund || 0)
+                            : user?.total_savings || 0}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Reason</Label>
+                        <Textarea
+                          value={withdrawalReason}
+                          onChange={(e) => setWithdrawalReason(e.target.value)}
+                          placeholder="Reason for withdrawal..."
+                        />
+                      </div>
+                      {withdrawalType === 'leaving_group' && (
+                        <div className="p-3 bg-[#D05A49]/10 rounded-lg text-sm text-[#D05A49]">
+                          <DoorOpen className="w-4 h-4 inline mr-2" />
+                          Leaving requires 2 months notice, no active loans, and not being a guarantor
+                        </div>
+                      )}
+                      <Button type="submit" className="w-full bg-[#2C5530] hover:bg-[#214024] rounded-full">
+                        Submit Request
+                      </Button>
+                    </form>
+                  </DialogContent>
                 </Dialog>
               </div>
             </div>
