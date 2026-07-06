@@ -127,6 +127,7 @@ const [withdrawalType, setWithdrawalType] = useState('savings');
   const [pettyCashCategory, setPettyCashCategory] = useState('general');
   const [myProducts, setMyProducts] = useState([]);
   const [orders, setOrders] = useState([]);
+  const sellerInitialTabSet = useRef(false);
   const wsRef = useRef(null);
 
   const audioRef = useRef(null);
@@ -316,8 +317,19 @@ const [withdrawalType, setWithdrawalType] = useState('savings');
   }, [activeTab, fetchMyProducts, fetchOrders]);
 
   useEffect(() => {
+    sellerInitialTabSet.current = false;
+  }, [user?.name]);
+
+  useEffect(() => {
+    if (isSellerMember && !sellerInitialTabSet.current) {
+      setActiveTab('marketplace');
+      sellerInitialTabSet.current = true;
+    }
+  }, [isSellerMember]);
+
+  useEffect(() => {
     if (isSellerMember && !['overview', 'marketplace'].includes(activeTab)) {
-      setActiveTab('overview');
+      setActiveTab('marketplace');
     }
   }, [activeTab, isSellerMember]);
 
@@ -751,12 +763,8 @@ const [withdrawalType, setWithdrawalType] = useState('savings');
     : [
         { id: 'overview', label: 'Overview', icon: Wallet },
         { id: 'financials', label: 'Financials', icon: BarChart3 },
-        { id: 'deposits', label: 'Deposits', icon: TrendingUp },
-        { id: 'loans', label: 'Loans', icon: CreditCard },
-        { id: 'withdrawals', label: 'Withdrawals', icon: TrendingDown },
         { id: 'members', label: 'Members', icon: Users },
         { id: 'marketplace', label: 'Orders', icon: ShoppingCart },
-        { id: 'rules', label: 'Rules', icon: Shield },
       ];
 
   if (!isSellerMember && (isAdmin || isTreasurer)) {
@@ -1072,165 +1080,156 @@ const [withdrawalType, setWithdrawalType] = useState('savings');
                       <CreditCard className={`w-6 h-6 ${userLoanBalance > 0 ? 'text-[#D05A49]' : 'text-[#347242]'}`} />
                     </div>
                   </div>
-                </CardContent>
-              </Card>
-            </div>
+              </CardContent>
+            </Card>
 
-            {/* Quick Actions */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Dialog open={depositDialogOpen} onOpenChange={(open) => {
-                  if (open && depositType === 'savings') {
-                    setDepositAmount(String(savingsMinAmount));
-                  }
-                  setDepositDialogOpen(open);
-                  if (!open) setDepositTargetUserId(null);
-                }}>
-                <DialogTrigger asChild>
-                  <Button
-                    data-testid="deposit-button"
-                    className="h-14 bg-[#2C5530] hover:bg-[#214024] text-white rounded-xl font-semibold flex items-center justify-center gap-2"
-                  >
-                    <ArrowUpRight className="w-5 h-5" />
-                    Make Deposit
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-md">
-                  <DialogHeader>
-                    <DialogTitle className="font-['Manrope'] text-[#1E231F]">
-                      {depositTargetUserId ? `Deposit for ${members.find((m) => m.id === depositTargetUserId)?.name || 'Member'}` : 'Make Deposit'}
-                    </DialogTitle>
-                    <DialogDescription className="text-[#5C665D]">
-                      {depositTargetUserId
-                        ? 'Submitting a deposit request to the selected member account.'
-                        : `Savings minimum: UGX ${savingsPlaceholder} | Development fee: UGX 3,000`}
-                    </DialogDescription>
-                  </DialogHeader>
-                  <form onSubmit={handleDeposit} className="space-y-4 mt-4">
-                    <div className="space-y-2">
-                      <Label>Deposit Type</Label>
-                      <Select value={depositType} onValueChange={setDepositType}>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="savings">
-                            {targetMembershipType === 'premium'
-                              ? `Monthly Savings (UGX ${savingsMinAmount})`
-                              : 'Savings (Min UGX 500)'}
-                          </SelectItem>
-                          <SelectItem value="development_fee">Development Fee (UGX 3,000)</SelectItem>
-                          <SelectItem value="loan_payment">Pay Back Loan</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Amount (UGX)</Label>
-                      <Input
-                        type="number"
-                        value={depositAmount}
-                        onChange={(e) => setDepositAmount(e.target.value)}
-                        placeholder={depositType === 'savings' ? savingsPlaceholder : depositType === 'development_fee' ? '3000' : '0'}
-                        required
-                        min={depositType === 'savings' ? savingsMinAmount : 1}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Description (Optional)</Label>
-                      <Textarea
-                        value={depositDescription}
-                        onChange={(e) => setDepositDescription(e.target.value)}
-                        placeholder="Monthly contribution..."
-                      />
-                    </div>
-                    <div className="p-3 bg-[#E8B25C]/10 rounded-lg text-sm text-[#5C665D]">
-                      <AlertTriangle className="w-4 h-4 inline mr-2 text-[#E8B25C]" />
-                      Late fee: UGX 3,000 per position if paid after 10th
-                    </div>
-                    <Button type="submit" className="w-full bg-[#2C5530] hover:bg-[#214024] rounded-full">
-                      Submit Deposit
-                    </Button>
-                  </form>
-                </DialogContent>
-              </Dialog>
+            {/* Deposits */}
+            <Card className="bg-white border border-[#E8EBE8] shadow-sm">
+              <CardHeader>
+                <CardTitle className="font-['Manrope'] text-[#1E231F] flex items-center gap-2">
+                  <ArrowUpRight className="w-5 h-5 text-[#347242]" />
+                  Deposits
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-[#E8EBE8] bg-[#FAFAF8]">
+                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Date</th>
+                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Type</th>
+                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Amount</th>
+                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Late Fee</th>
+                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {deposits.slice(0, 20).map((d) => (
+                        <tr key={d.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5] transition-colors">
+                          <td className="py-4 px-6 text-[#1E231F]">
+                            {new Date(d.created_at).toLocaleDateString()}
+                          </td>
+                          <td className="py-4 px-6 text-[#1E231F]">
+                            {d.deposit_type === 'development_fee' ? 'Development' : 'Savings'}
+                          </td>
+                          <td className="py-4 px-6 font-semibold text-[#347242] font-numbers">
+                            {formatCurrency(d.amount)}
+                          </td>
+                          <td className="py-4 px-6 text-[#D05A49] font-numbers">
+                            {d.late_fee > 0 ? formatCurrency(d.late_fee) : '-'}
+                          </td>
+                          <td className="py-4 px-6">{getStatusBadge(d.status)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {deposits.length === 0 && (
+                    <p className="text-center text-[#5C665D] py-8">No deposits yet</p>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
 
-              <Dialog open={loanDialogOpen} onOpenChange={setLoanDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button
-                    data-testid="loan-button"
-                    disabled={!isPremium}
-                    className={`h-14 rounded-xl font-semibold flex items-center justify-center gap-2 ${
-                      isPremium
-                        ? 'bg-[#D48C70] hover:bg-[#BD7B60] text-white'
-                        : 'bg-[#E8EBE8] text-[#5C665D] cursor-not-allowed'
-                    }`}
-                  >
-                    <CreditCard className="w-5 h-5" />
-                    Request Loan
-                    {!isPremium && <span className="text-xs">(Premium Only)</span>}
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-md">
-                  <DialogHeader>
-                    <DialogTitle className="font-['Manrope'] text-[#1E231F]">Request Loan</DialogTitle>
-                    <DialogDescription className="text-[#5C665D]">
-                      Max: UGX 600,000 • Interest: 3%/month (5% after 4 months)
-                    </DialogDescription>
-                  </DialogHeader>
-                  <form onSubmit={handleLoan} className="space-y-4 mt-4">
-                    <div className="space-y-2">
-                      <Label>Amount (UGX)</Label>
-                      <Input
-                        type="number"
-                        value={loanAmount}
-                        onChange={(e) => setLoanAmount(e.target.value)}
-                        placeholder="100000"
-                        required
-                        min="1"
-                        max="600000"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Select Guarantor</Label>
-                      <Select value={loanGuarantor} onValueChange={setLoanGuarantor}>
-                        <SelectTrigger data-testid="loan-guarantor-select">
-                          <SelectValue placeholder="Choose any group member" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {eligibleGuarantors.map((m) => {
-                            const currentGuarantees = loans.filter(l => 
-                              l.guarantor_id === m.id && 
-                              ['pending_guarantor', 'pending_admin', 'approved'].includes(l.status) && 
-                              !l.repaid
-                            ).length;
-                            const maxGuarantees = m.max_guarantees ?? 2;
-                            const slotsLeft = maxGuarantees - currentGuarantees;
-                            return (
-                              <SelectItem key={m.id} value={m.id}>
-                                {m.name} ({slotsLeft} slots left)
-                              </SelectItem>
-                            );
-                          })}
-                        </SelectContent>
-                      </Select>
-                      <p className="text-xs text-[#5C665D]">
-                        Ordinary guarantors must have savings equal to at least 50% of the requested loan amount. Premium guarantors are exempt from this rule.
-                      </p>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Reason</Label>
-                      <Textarea
-                        value={loanReason}
-                        onChange={(e) => setLoanReason(e.target.value)}
-                        placeholder="Reason for loan..."
-                      />
-                    </div>
-                    {loanAmount && parseFloat(loanAmount) > 0 && (
-                      <div className="p-3 bg-[#2C5530]/10 rounded-lg text-sm text-[#1E231F] space-y-1">
-                        <div className="flex justify-between"><span>Loan Amount:</span><span className="font-semibold">{formatCurrency(parseFloat(loanAmount))}</span></div>
-                        <div className="flex justify-between"><span>Interest (3%):</span><span className="font-semibold">{formatCurrency(parseFloat(loanAmount) * 0.03)}</span></div>
-                        <div className="flex justify-between border-t border-[#2C5530]/20 pt-1 mt-1"><span className="font-bold">Total Due:</span><span className="font-bold text-[#2C5530]">{formatCurrency(parseFloat(loanAmount) * 1.03)}</span></div>
-                      </div>
-                    )}
+            {/* Loans */}
+            <Card className="bg-white border border-[#E8EBE8] shadow-sm">
+              <CardHeader>
+                <CardTitle className="font-['Manrope'] text-[#1E231F] flex items-center gap-2">
+                  <CreditCard className="w-5 h-5 text-[#D48C70]" />
+                  Loans
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-[#E8EBE8] bg-[#FAFAF8]">
+                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Date</th>
+                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Amount</th>
+                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Guarantor</th>
+                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Interest</th>
+                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Total Due</th>
+                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {loans.slice(0, 20).map((l) => (
+                        <tr key={l.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5] transition-colors">
+                          <td className="py-4 px-6 text-[#1E231F]">
+                            {new Date(l.created_at).toLocaleDateString()}
+                          </td>
+                          <td className="py-4 px-6 font-semibold text-[#D48C70] font-numbers">
+                            {formatCurrency(l.amount)}
+                          </td>
+                          <td className="py-4 px-6 text-[#1E231F]">
+                            <div className="flex items-center gap-1">
+                              <UserCheck className="w-4 h-4 text-[#5C665D]" />
+                              {l.guarantor_name}
+                            </div>
+                          </td>
+                          <td className="py-4 px-6 text-[#5C665D] font-numbers">
+                            {l.current_interest ? formatCurrency(l.current_interest) : '-'}
+                          </td>
+                          <td className="py-4 px-6 font-semibold text-[#1E231F] font-numbers">
+                            {formatCurrency(l.total_due || l.outstanding_balance || l.initial_total_due || l.amount * 1.03)}
+                          </td>
+                          <td className="py-4 px-6">{getStatusBadge(l.status)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {loans.length === 0 && (
+                    <p className="text-center text-[#5C665D] py-8">No loans yet</p>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Withdrawals */}
+            <Card className="bg-white border border-[#E8EBE8] shadow-sm">
+              <CardHeader>
+                <CardTitle className="font-['Manrope'] text-[#1E231F] flex items-center gap-2">
+                  <ArrowDownRight className="w-5 h-5 text-[#D05A49]" />
+                  Withdrawals
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-[#E8EBE8] bg-[#FAFAF8]">
+                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Date</th>
+                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Amount</th>
+                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Type</th>
+                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Reason</th>
+                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {withdrawals.slice(0, 20).map((w) => (
+                        <tr key={w.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5] transition-colors">
+                          <td className="py-4 px-6 text-[#1E231F]">
+                            {new Date(w.created_at).toLocaleDateString()}
+                          </td>
+                          <td className="py-4 px-6 font-semibold text-[#D05A49] font-numbers">
+                            {formatCurrency(w.amount)}
+                          </td>
+                          <td className="py-4 px-6 text-[#1E231F]">
+                            {w.withdrawal_type === 'leaving_group' ? 'Leaving Group' : 'Regular'}
+                          </td>
+                          <td className="py-4 px-6 text-[#5C665D]">{w.reason || '-'}</td>
+                          <td className="py-4 px-6">{getStatusBadge(w.status)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {withdrawals.length === 0 && (
+                    <p className="text-center text-[#5C665D] py-8">No withdrawals yet</p>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
                     <div className="p-3 bg-[#E8B25C]/10 rounded-lg text-sm text-[#5C665D]">
                       <Percent className="w-4 h-4 inline mr-2 text-[#E8B25C]" />
                       Return within 4 months at 3% interest/month. Beyond 4 months: 5%/month.
@@ -1817,6 +1816,52 @@ const [withdrawalType, setWithdrawalType] = useState('savings');
           </div>
         )}
 
+        {/* Group Rules inside Members */}
+        {(activeTab === 'members' || activeTab === 'rules') && (
+          <div className="space-y-6 animate-fade-in" data-testid="rules-tab">
+            <h2 className="text-2xl font-bold font-['Manrope'] text-[#1E231F]">Group Rules</h2>
+            
+            <Card className="bg-white border border-[#E8EBE8] shadow-sm">
+              <CardContent className="p-6">
+                <div className="space-y-4">
+                  {rules?.rules?.map((rule, index) => (
+                    <div key={index} className="flex items-start gap-3 pb-4 border-b border-[#E8EBE8] last:border-0 last:pb-0">
+                      <div className="w-8 h-8 bg-[#2C5530]/10 rounded-full flex items-center justify-center flex-shrink-0">
+                        <span className="text-sm font-bold text-[#2C5530]">{index + 1}</span>
+                      </div>
+                      <p className="text-[#1E231F]">{rule}</p>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Card className="bg-[#2C5530]/5 border border-[#2C5530]/20">
+                <CardContent className="p-4 text-center">
+                  <Calendar className="w-8 h-8 text-[#2C5530] mx-auto mb-2" />
+                  <p className="text-sm text-[#5C665D]">Year End Date</p>
+                  <p className="font-bold text-[#1E231F]">{rules?.year_end_date}</p>
+                </CardContent>
+              </Card>
+              <Card className="bg-[#D48C70]/5 border border-[#D48C70]/20">
+                <CardContent className="p-4 text-center">
+                  <CreditCard className="w-8 h-8 text-[#D48C70] mx-auto mb-2" />
+                  <p className="text-sm text-[#5C665D]">Max Loan</p>
+                  <p className="font-bold text-[#1E231F]">{formatCurrency(rules?.max_loan_amount)}</p>
+                </CardContent>
+              </Card>
+              <Card className="bg-[#347242]/5 border border-[#347242]/20">
+                <CardContent className="p-4 text-center">
+                  <PiggyBank className="w-8 h-8 text-[#347242] mx-auto mb-2" />
+                  <p className="text-sm text-[#5C665D]">Monthly Savings</p>
+                  <p className="font-bold text-[#1E231F]">{formatCurrency(rules?.monthly_savings)}</p>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        )}
+
         {/* Marketplace Tab */}
         {activeTab === 'marketplace' && (
           <div className="space-y-6 animate-fade-in" data-testid="marketplace-tab">
@@ -2347,6 +2392,152 @@ const [withdrawalType, setWithdrawalType] = useState('savings');
                 ) : (
                   <p className="text-center text-[#5C665D] py-8">No petty cash expenses recorded</p>
                 )}
+              </CardContent>
+            </Card>
+
+            {/* Deposits */}
+            <Card className="bg-white border border-[#E8EBE8] shadow-sm">
+              <CardHeader>
+                <CardTitle className="font-['Manrope'] text-[#1E231F] flex items-center gap-2">
+                  <ArrowUpRight className="w-5 h-5 text-[#347242]" />
+                  Deposits
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-[#E8EBE8] bg-[#FAFAF8]">
+                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Date</th>
+                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Type</th>
+                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Amount</th>
+                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Late Fee</th>
+                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {deposits.slice(0, 20).map((d) => (
+                        <tr key={d.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5] transition-colors">
+                          <td className="py-4 px-6 text-[#1E231F]">
+                            {new Date(d.created_at).toLocaleDateString()}
+                          </td>
+                          <td className="py-4 px-6 text-[#1E231F]">
+                            {d.deposit_type === 'development_fee' ? 'Development' : 'Savings'}
+                          </td>
+                          <td className="py-4 px-6 font-semibold text-[#347242] font-numbers">
+                            {formatCurrency(d.amount)}
+                          </td>
+                          <td className="py-4 px-6 text-[#D05A49] font-numbers">
+                            {d.late_fee > 0 ? formatCurrency(d.late_fee) : '-'}
+                          </td>
+                          <td className="py-4 px-6">{getStatusBadge(d.status)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {deposits.length === 0 && (
+                    <p className="text-center text-[#5C665D] py-8">No deposits yet</p>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Loans */}
+            <Card className="bg-white border border-[#E8EBE8] shadow-sm">
+              <CardHeader>
+                <CardTitle className="font-['Manrope'] text-[#1E231F] flex items-center gap-2">
+                  <CreditCard className="w-5 h-5 text-[#D48C70]" />
+                  Loans
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-[#E8EBE8] bg-[#FAFAF8]">
+                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Date</th>
+                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Amount</th>
+                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Guarantor</th>
+                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Interest</th>
+                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Total Due</th>
+                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {loans.slice(0, 20).map((l) => (
+                        <tr key={l.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5] transition-colors">
+                          <td className="py-4 px-6 text-[#1E231F]">
+                            {new Date(l.created_at).toLocaleDateString()}
+                          </td>
+                          <td className="py-4 px-6 font-semibold text-[#D48C70] font-numbers">
+                            {formatCurrency(l.amount)}
+                          </td>
+                          <td className="py-4 px-6 text-[#1E231F]">
+                            <div className="flex items-center gap-1">
+                              <UserCheck className="w-4 h-4 text-[#5C665D]" />
+                              {l.guarantor_name}
+                            </div>
+                          </td>
+                          <td className="py-4 px-6 text-[#5C665D] font-numbers">
+                            {l.current_interest ? formatCurrency(l.current_interest) : '-'}
+                          </td>
+                          <td className="py-4 px-6 font-semibold text-[#1E231F] font-numbers">
+                            {formatCurrency(l.total_due || l.outstanding_balance || l.initial_total_due || l.amount * 1.03)}
+                          </td>
+                          <td className="py-4 px-6">{getStatusBadge(l.status)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {loans.length === 0 && (
+                    <p className="text-center text-[#5C665D] py-8">No loans yet</p>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Withdrawals */}
+            <Card className="bg-white border border-[#E8EBE8] shadow-sm">
+              <CardHeader>
+                <CardTitle className="font-['Manrope'] text-[#1E231F] flex items-center gap-2">
+                  <ArrowDownRight className="w-5 h-5 text-[#D05A49]" />
+                  Withdrawals
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-[#E8EBE8] bg-[#FAFAF8]">
+                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Date</th>
+                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Amount</th>
+                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Type</th>
+                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Reason</th>
+                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {withdrawals.slice(0, 20).map((w) => (
+                        <tr key={w.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5] transition-colors">
+                          <td className="py-4 px-6 text-[#1E231F]">
+                            {new Date(w.created_at).toLocaleDateString()}
+                          </td>
+                          <td className="py-4 px-6 font-semibold text-[#D05A49] font-numbers">
+                            {formatCurrency(w.amount)}
+                          </td>
+                          <td className="py-4 px-6 text-[#1E231F]">
+                            {w.withdrawal_type === 'leaving_group' ? 'Leaving Group' : 'Regular'}
+                          </td>
+                          <td className="py-4 px-6 text-[#5C665D]">{w.reason || '-'}</td>
+                          <td className="py-4 px-6">{getStatusBadge(w.status)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {withdrawals.length === 0 && (
+                    <p className="text-center text-[#5C665D] py-8">No withdrawals yet</p>
+                  )}
+                </div>
               </CardContent>
             </Card>
           </div>

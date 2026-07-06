@@ -747,8 +747,8 @@ const handleOpenPurchase = (product) => {
 {/* Top Navigation Bar */}
         <nav className="sticky top-0 z-40 backdrop-blur border-b border-slate-200 mb-6">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            {/* Mobile top bar - hamburger on left, cart on right */}
-            <div className="flex md:hidden items-center justify-between py-2">
+            {/* Mobile top bar - search + cart on right, hamburger on left */}
+            <div className="flex md:hidden items-center gap-2 py-2">
               <button
                 type="button"
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -756,12 +756,25 @@ const handleOpenPurchase = (product) => {
               >
                 {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
               </button>
+              <Input
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Search products..."
+                className="flex-1 rounded-full border border-slate-300 bg-[#F7FAF3] px-4 py-2 text-sm focus:border-[#2B6F38] focus:ring-2 focus:ring-[#2B6F38]/20"
+              />
+              <Button
+                type="button"
+                onClick={() => { if (searchQuery.trim()) navigate(`/category/all?search=${encodeURIComponent(searchQuery.trim())}`); }}
+                className="bg-[#172B12] text-white hover:bg-[#0f2409] rounded-full px-3"
+              >
+                <Search className="h-4 w-4" />
+              </Button>
               <Button
                 onClick={() => setCartOpen(true)}
                 className="bg-white text-[#172B12] border border-[#172B12] hover:bg-[#ECF8E9] relative"
               >
-                <ShoppingCart className="h-4 w-4 mr-2" />
-                Cart ({cart.length})
+                <ShoppingCart className="h-4 w-4" />
+                <span className="sr-only">Cart</span>
               </Button>
             </div>
            
@@ -850,25 +863,10 @@ const handleOpenPurchase = (product) => {
              </div>
            </div>
            
-{/* Mobile: Search and category dropdown - scrollable */}
-            {mobileMenuOpen && (
-              <div className="md:hidden pb-4 space-y-4 overflow-y-auto max-h-96 w-full">
-                <div className="flex items-center gap-2">
-                  <Input
-                    value={searchQuery}
-                    onChange={(event) => setSearchQuery(event.target.value)}
-                    placeholder="Search products, sellers, or descriptions"
-                    className="flex-1 rounded-full border border-slate-300 bg-[#F7FAF3] px-4 py-2 text-sm focus:border-[#2B6F38] focus:ring-2 focus:ring-[#2B6F38]/20"
-                  />
-                  <Button
-                    type="button"
-                    onClick={() => { if (searchQuery.trim()) navigate(`/category/all?search=${encodeURIComponent(searchQuery.trim())}`); }}
-                    className="bg-[#172B12] text-white hover:bg-[#0f2409] rounded-full px-4"
-                  >
-                    <Search className="h-4 w-4" />
-                  </Button>
-                </div>
-                <div className="flex flex-col gap-2 max-h-64 overflow-y-auto">
+            {/* Mobile: Category dropdown - scrollable */}
+             {mobileMenuOpen && (
+               <div className="md:hidden pb-4 space-y-4 overflow-y-auto max-h-96 w-full">
+                 <div className="flex flex-col gap-2 max-h-64 overflow-y-auto">
                               <button
                                 type="button"
                                 onClick={() => { navigate('/'); setMobileMenuOpen(false); }}
