@@ -2398,13 +2398,13 @@ const [withdrawalType, setWithdrawalType] = useState('savings');
           </div>
         )}
 
-        {/* Admin Tab */}
+{/* Admin Tab */}
         {activeTab === 'admin' && isAdmin && (
           <div className="space-y-8 animate-fade-in" data-testid="admin-tab">
             <h2 className="text-2xl font-bold font-['Manrope'] text-[#1E231F]">Admin Panel</h2>
-
+            
             {/* Pending Approvals */}
-            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-6">
               {/* Pending Deposits */}
               <Card className="bg-white border border-[#E8EBE8] shadow-sm">
                 <CardHeader className="pb-2">
@@ -2448,7 +2448,56 @@ const [withdrawalType, setWithdrawalType] = useState('savings');
                   )}
                 </CardContent>
               </Card>
-
+            
+              {/* Loans Awaiting Guarantor Approval */}
+              <Card className="bg-white border border-[#E8EBE8] shadow-sm">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-lg font-['Manrope'] text-[#1E231F] flex items-center gap-2">
+                    <UserCheck className="w-5 h-5 text-[#E8B25C]" />
+                    Loans Awaiting Guarantor ({loans.filter(l => l.status === 'pending_guarantor').length})
+                  </CardTitle>
+                  <p className="text-xs text-[#5C665D]">Loans waiting for selected guarantor to approve</p>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {loans.filter(l => l.status === 'pending_guarantor').map((l) => (
+                    <div key={l.id} className="p-3 bg-[#FAFAF8] rounded-xl">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="font-medium text-[#1E231F]">{l.user_name}</span>
+                        <span className="font-semibold text-[#D48C70] font-numbers">{formatCurrency(l.amount)}</span>
+                      </div>
+                      <p className="text-xs text-[#5C665D] mb-1">
+                        <UserCheck className="w-3 h-3 inline mr-1" />
+                        Guarantor: {l.guarantor_name}
+                      </p>
+                      <p className="text-xs text-[#5C665D] mb-2">
+                        Total Due: <span className="font-semibold text-[#1E231F]">{formatCurrency(l.total_due || l.outstanding_balance || l.initial_total_due || l.amount * 1.03)}</span>
+                      </p>
+                      {l.reason && <p className="text-xs text-[#5C665D] mb-2 italic">Reason: "{l.reason}"</p>}
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          onClick={() => handleApproveTransaction('loans', l.id, true)}
+                          className="flex-1 bg-[#347242] hover:bg-[#2C5530] text-xs"
+                        >
+                          Approve Directly
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleApproveTransaction('loans', l.id, false)}
+                          className="flex-1 border-[#D05A49] text-[#D05A49] hover:bg-[#D05A49]/10 text-xs"
+                        >
+                          Reject
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                  {loans.filter(l => l.status === 'pending_guarantor').length === 0 && (
+                    <p className="text-center text-[#5C665D] py-4 text-sm">No loans awaiting guarantor</p>
+                  )}
+                </CardContent>
+              </Card>
+            
               {/* Pending Loans - awaiting admin (after guarantor approved) */}
               <Card className="bg-white border border-[#E8EBE8] shadow-sm">
                 <CardHeader className="pb-2">
@@ -2496,7 +2545,7 @@ const [withdrawalType, setWithdrawalType] = useState('savings');
                   )}
                 </CardContent>
               </Card>
-
+            
               {/* Pending Quick Loans */}
               <Card className="bg-white border border-[#E8EBE8] shadow-sm">
                 <CardHeader className="pb-2">

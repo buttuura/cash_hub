@@ -1746,14 +1746,38 @@ async def approve_loan(approval: TransactionApproval, user: dict = Depends(requi
     if not loan:
         raise HTTPException(status_code=404, detail="Loan not found")
     
-    # Admin can only act after guarantor approves
-    if loan["status"] != "pending_admin":
-        if loan["status"] == "pending_guarantor":
-            raise HTTPException(status_code=400, detail="Loan must be approved by guarantor first")
+    # Admin can approve loans in pending_guarantor or pending_admin status
+    if loan["status"] not in ["pending_guarantor", "pending_admin"]:
         raise HTTPException(status_code=400, detail="Loan already processed")
     
-    new_status = "approved" if approval.approved else "rejected"
+    # If admin rejects a pending_guarantor loan, mark as rejected_by_guarantor
+    if loan["status"] == "pending_guarantor" and not approval.approved:
+        await db.loans.update_one(
+            {"_id": ObjectId(approval.transaction_id)},
+            {"$set": {
+                "guarantor_approved": False,
+                "guarantor_approved_at": datetime.now(timezone.utc).isoformat(),
+                "guarantor_notes": "Rejected by admin",
+                "status": "rejected_by_guarantor"
+            }}
+        )
+        return {"message": "Loan rejected"}
     
+    # If loan is in pending_guarantor and admin approves, approve on behalf of guarantor first
+    if loan["status"] == "pending_guarantor":
+        await db.loans.update_one(
+            {"_id": ObjectId(approval.transaction_id)},
+            {"$set": {
+                "guarantor_approved": True,
+                "guarantor_approved_at": datetime.now(timezone.utc).isoformat(),
+                "guarantor_notes": "Approved by admin",
+                "status": "pending_admin"
+            }}
+        )
+        loan = await db.loans.find_one({"_id": ObjectId(approval.transaction_id)})
+    
+    # Now process admin approval
+    new_status = "approved" if approval.approved else "rejected"
     update_data = {
         "status": new_status,
         "approved_at": datetime.now(timezone.utc).isoformat(),
@@ -1762,13 +1786,10 @@ async def approve_loan(approval: TransactionApproval, user: dict = Depends(requi
     }
     
     if approval.approved:
-        # Set due date (4 months from approval)
         due_date = datetime.now(timezone.utc) + timedelta(days=120)
         update_data["due_date"] = due_date.isoformat()
         update_data["last_interest_accrual_at"] = datetime.now(timezone.utc).isoformat()
         update_data["outstanding_balance"] = loan["amount"] * (1 + LOAN_INTEREST_NORMAL)
-        
-        # Increment guarantor's guarantee count
         await db.users.update_one(
             {"_id": ObjectId(loan["guarantor_id"])},
             {"$inc": {"guarantees_given": 1}}
