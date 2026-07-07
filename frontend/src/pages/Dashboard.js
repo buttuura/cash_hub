@@ -770,6 +770,7 @@ const Dashboard = () => {
     : [
         { id: 'overview', label: 'Overview', icon: Wallet },
         { id: 'financials', label: 'Financials', icon: BarChart3 },
+        { id: 'petty-cash', label: 'Petty Cash', icon: Receipt },
         { id: 'members', label: 'Members', icon: Users },
         { id: 'marketplace', label: 'Orders', icon: ShoppingCart },
       ];
@@ -2394,6 +2395,14 @@ const Dashboard = () => {
               >
                 Withdrawals
               </button>
+              {isAdmin && (
+                <button 
+                  onClick={() => setActiveFinancialTab('petty-cash')}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition ${activeFinancialTab === 'petty-cash' ? 'bg-white text-[#1E231F] shadow-sm' : 'text-[#5C665D] hover:text-[#1E231F]'}`}
+                >
+                  Petty Cash
+                </button>
+              )}
             </div>
 
             {activeFinancialTab === 'overview' && (
@@ -2764,10 +2773,199 @@ const Dashboard = () => {
               </CardContent>
             </Card>
             )}
+
+            {activeFinancialTab === 'petty-cash' && isAdmin && (
+            <Card className="bg-white border border-[#E8EBE8] shadow-sm">
+              <CardHeader>
+                <CardTitle className="font-['Manrope'] text-[#1E231F] flex items-center gap-2">
+                  <Receipt className="w-5 h-5 text-[#D48C70]" />
+                  Petty Cash Expenses
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-[#E8EBE8] bg-[#FAFAF8]">
+                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Date</th>
+                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Amount</th>
+                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Category</th>
+                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Description</th>
+                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(financials?.petty_cash_items || []).map((pc) => (
+                        <tr key={pc.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5] transition-colors">
+                          <td className="py-4 px-6 text-[#1E231F]">
+                            {new Date(pc.created_at).toLocaleDateString()}
+                          </td>
+                          <td className="py-4 px-6 font-semibold text-[#D48C70] font-numbers">
+                            {formatCurrency(pc.amount)}
+                          </td>
+                          <td className="py-4 px-6 text-[#1E231F]">
+                            {pc.category ? pc.category.charAt(0).toUpperCase() + pc.category.slice(1) : '-'}
+                          </td>
+                          <td className="py-4 px-6 text-[#5C665D]">{pc.description || '-'}</td>
+                          <td className="py-4 px-6">
+                            <button
+                              onClick={() => handleDeleteRecord('petty-cash', pc.id)}
+                              data-testid={`delete-petty-cash-${pc.id}`}
+                              title="Delete petty cash entry"
+                              className="p-1.5 rounded-full text-[#D05A49] hover:bg-[#D05A49]/10 transition-colors"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {(!financials?.petty_cash_items || financials.petty_cash_items.length === 0) && (
+                    <p className="text-center text-[#5C665D] py-8">No petty cash expenses yet</p>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+            )}
           </div>
         )}
 
-        {/* Rules Tab */}
+        {/* Petty Cash Tab */}
+        {activeTab === 'petty-cash' && isAdmin && (
+          <div className="space-y-6 animate-fade-in" data-testid="petty-cash-tab">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <h2 className="text-2xl font-bold font-['Manrope'] text-[#1E231F]">Petty Cash Management</h2>
+              <div className="flex items-center gap-2">
+                {financials?.petty_cash_items?.length > 0 && (
+                  <Button
+                    variant="outline"
+                    onClick={() => exportPettyCashPDF(financials.petty_cash_items)}
+                    data-testid="export-petty-cash-pdf-tab"
+                    className="border-[#E8EBE8] rounded-full"
+                  >
+                    <FileDown className="w-4 h-4 mr-2" />
+                    Export PDF
+                  </Button>
+                )}
+                <Dialog open={pettyCashDialogOpen} onOpenChange={setPettyCashDialogOpen}>
+                  <DialogTrigger asChild>
+                    <Button className="bg-[#D48C70] hover:bg-[#BD7B60] rounded-full">
+                      <Plus className="w-4 h-4 mr-2" />
+                      Add Petty Cash
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                      <DialogTitle className="text-[#1E231F]">Add Petty Cash Expense</DialogTitle>
+                      <DialogDescription className="text-[#5C665D]">
+                        Record group expenses (stationary, transport, etc.)
+                      </DialogDescription>
+                    </DialogHeader>
+                    <form onSubmit={handleAddPettyCash} className="space-y-4 mt-4">
+                      <div className="space-y-2">
+                        <Label className="text-[#1E231F]">Amount (UGX)</Label>
+                        <Input
+                          type="number"
+                          value={pettyCashAmount}
+                          onChange={(e) => setPettyCashAmount(e.target.value)}
+                          placeholder="5000"
+                          required
+                          min="1"
+                          className="bg-white border-[#E8EBE8] text-[#1E231F]"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-[#1E231F]">Category</Label>
+                        <Select value={pettyCashCategory} onValueChange={setPettyCashCategory}>
+                          <SelectTrigger className="bg-white">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="general">General</SelectItem>
+                            <SelectItem value="transport">Transport</SelectItem>
+                            <SelectItem value="stationary">Stationary</SelectItem>
+                            <SelectItem value="refreshments">Refreshments</SelectItem>
+                            <SelectItem value="communication">Communication</SelectItem>
+                            <SelectItem value="other">Other</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-[#1E231F]">Description</Label>
+                        <Textarea
+                          value={pettyCashDescription}
+                          onChange={(e) => setPettyCashDescription(e.target.value)}
+                          placeholder="What was the expense for?"
+                          required
+                          className="bg-white border-[#E8EBE8] text-[#1E231F]"
+                        />
+                      </div>
+                      <Button type="submit" className="w-full bg-[#D48C70] hover:bg-[#BD7B60] rounded-full">
+                        Add Expense
+                      </Button>
+                    </form>
+                  </DialogContent>
+                </Dialog>
+              </div>
+            </div>
+
+            <Card className="bg-white border border-[#E8EBE8] shadow-sm">
+              <CardHeader>
+                <CardTitle className="font-['Manrope'] text-[#1E231F] flex items-center gap-2">
+                  <Receipt className="w-5 h-5 text-[#D48C70]" />
+                  All Petty Cash Expenses
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-[#E8EBE8] bg-[#FAFAF8]">
+                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Date</th>
+                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Amount</th>
+                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Category</th>
+                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Description</th>
+                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(financials?.petty_cash_items || []).map((pc) => (
+                        <tr key={pc.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5] transition-colors">
+                          <td className="py-4 px-6 text-[#1E231F]">
+                            {new Date(pc.created_at).toLocaleDateString()}
+                          </td>
+                          <td className="py-4 px-6 font-semibold text-[#D48C70] font-numbers">
+                            {formatCurrency(pc.amount)}
+                          </td>
+                          <td className="py-4 px-6 text-[#1E231F]">
+                            {pc.category ? pc.category.charAt(0).toUpperCase() + pc.category.slice(1) : '-'}
+                          </td>
+                          <td className="py-4 px-6 text-[#5C665D]">{pc.description || '-'}</td>
+                          <td className="py-4 px-6">
+                            <button
+                              onClick={() => handleDeleteRecord('petty-cash', pc.id)}
+                              data-testid={`delete-petty-cash-main-${pc.id}`}
+                              title="Delete petty cash entry"
+                              className="p-1.5 rounded-full text-[#D05A49] hover:bg-[#D05A49]/10 transition-colors"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {(!financials?.petty_cash_items || financials.petty_cash_items.length === 0) && (
+                    <p className="text-center text-[#5C665D] py-8">No petty cash expenses yet</p>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Rules Tab */
         {activeTab === 'rules' && (
           <div className="space-y-6 animate-fade-in" data-testid="rules-tab">
             <h2 className="text-2xl font-bold font-['Manrope'] text-[#1E231F]">Group Rules</h2>
