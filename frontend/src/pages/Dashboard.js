@@ -2370,39 +2370,41 @@ const Dashboard = () => {
               </div>
             </div>
 
-            <div className="flex items-center gap-1 bg-[#F5F7F5] p-1 rounded-xl w-fit">
-              <button 
-                onClick={() => setActiveFinancialTab('overview')}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition ${activeFinancialTab === 'overview' ? 'bg-white text-[#1E231F] shadow-sm' : 'text-[#5C665D] hover:text-[#1E231F]'}`}
-              >
-                Financials
-              </button>
-              <button 
-                onClick={() => setActiveFinancialTab('deposits')}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition ${activeFinancialTab === 'deposits' ? 'bg-white text-[#1E231F] shadow-sm' : 'text-[#5C665D] hover:text-[#1E231F]'}`}
-              >
-                Deposits
-              </button>
-              <button 
-                onClick={() => setActiveFinancialTab('loans')}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition ${activeFinancialTab === 'loans' ? 'bg-white text-[#1E231F] shadow-sm' : 'text-[#5C665D] hover:text-[#1E231F]'}`}
-              >
-                Loans
-              </button>
-              <button 
-                onClick={() => setActiveFinancialTab('withdrawals')}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition ${activeFinancialTab === 'withdrawals' ? 'bg-white text-[#1E231F] shadow-sm' : 'text-[#5C665D] hover:text-[#1E231F]'}`}
-              >
-                Withdrawals
-              </button>
-              {isAdmin && (
+            <div className="overflow-x-auto">
+              <div className="flex items-center gap-1 bg-[#F5F7F5] p-1 rounded-xl w-fit min-w-max">
                 <button 
-                  onClick={() => setActiveFinancialTab('petty-cash')}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition ${activeFinancialTab === 'petty-cash' ? 'bg-white text-[#1E231F] shadow-sm' : 'text-[#5C665D] hover:text-[#1E231F]'}`}
+                  onClick={() => setActiveFinancialTab('overview')}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition ${activeFinancialTab === 'overview' ? 'bg-white text-[#1E231F] shadow-sm' : 'text-[#5C665D] hover:text-[#1E231F]'}`}
                 >
-                  Petty Cash
+                  Financials
                 </button>
-              )}
+                <button 
+                  onClick={() => setActiveFinancialTab('deposits')}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition ${activeFinancialTab === 'deposits' ? 'bg-white text-[#1E231F] shadow-sm' : 'text-[#5C665D] hover:text-[#1E231F]'}`}
+                >
+                  Deposits
+                </button>
+                <button 
+                  onClick={() => setActiveFinancialTab('loans')}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition ${activeFinancialTab === 'loans' ? 'bg-white text-[#1E231F] shadow-sm' : 'text-[#5C665D] hover:text-[#1E231F]'}`}
+                >
+                  Loans
+                </button>
+                <button 
+                  onClick={() => setActiveFinancialTab('withdrawals')}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition ${activeFinancialTab === 'withdrawals' ? 'bg-white text-[#1E231F] shadow-sm' : 'text-[#5C665D] hover:text-[#1E231F]'}`}
+                >
+                  Withdrawals
+                </button>
+                {isAdmin && (
+                  <button 
+                    onClick={() => setActiveFinancialTab('petty-cash')}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium transition ${activeFinancialTab === 'petty-cash' ? 'bg-white text-[#1E231F] shadow-sm' : 'text-[#5C665D] hover:text-[#1E231F]'}`}
+                  >
+                    Petty Cash
+                  </button>
+                )}
+              </div>
             </div>
 
             {activeFinancialTab === 'overview' && (
