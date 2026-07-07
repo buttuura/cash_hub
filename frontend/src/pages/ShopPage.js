@@ -144,7 +144,7 @@ const extractPersonName = (label) => {
 
 const ShopPage = () => {
   const navigate = useNavigate();
-  const { user, isAuthenticated, isAdmin } = useAuth();
+  const { user, isAuthenticated, isAdmin, isSeller } = useAuth();
   const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
   const [selectedCategory, setSelectedCategory] = useState('food');
   const [products, setProducts] = useState(DEFAULT_PRODUCTS);
@@ -282,6 +282,19 @@ const ShopPage = () => {
     const headers = { Authorization: `Bearer ${localStorage.getItem('access_token')}` };
     const response = await axios.post(`${API_URL}/api/orders`, orderData, { headers });
     return response.data;
+  };
+
+  const fetchOrders = async () => {
+    try {
+      const res = await axios.get(`${API_URL}/api/orders`, { headers: { Authorization: `Bearer ${localStorage.getItem('access_token')}` } });
+      if (user?.name) {
+        setOrders(res.data.filter(o => (o.sellerName || '').toLowerCase() === user.name.toLowerCase()));
+      } else {
+        setOrders([]);
+      }
+    } catch (err) {
+      console.warn('Unable to load orders:', err);
+    }
   };
 
   const handleCartCheckout = async () => {
@@ -452,6 +465,12 @@ const ShopPage = () => {
   useEffect(() => {
     window.localStorage.setItem('shopProducts', JSON.stringify(products));
   }, [products]);
+
+  useEffect(() => {
+    if (user?.name && String(user?.membership_type || '').toLowerCase() === 'seller') {
+      fetchOrders();
+    }
+  }, [user?.name]);
 
   // WebSocket connection for real-time order notifications
   useEffect(() => {
@@ -1503,6 +1522,40 @@ const handleOpenPurchase = (product) => {
           </div>
         </DialogContent>
       </Dialog>
+
+      {isSeller && (
+        <div className="max-w-7xl mx-auto mt-8 space-y-4">
+          <Card className="bg-white border border-slate-200 shadow-sm">
+            <CardHeader>
+              <CardTitle className="text-lg">My Incoming Orders</CardTitle>
+              <CardDescription>Purchase requests for products you are selling.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {orders.length === 0 ? (
+                <p className="text-sm text-[#4B5A45] py-4">No incoming orders yet.</p>
+              ) : (
+                <div className="space-y-4">
+                  {orders.map(order => (
+                    <div key={order.id} className="rounded-xl border border-slate-200 p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-medium text-[#172B12]">{order.buyerName || 'A buyer'}</p>
+                          <p className="text-xs text-[#4B5A45]">{new Date(order.created_at).toLocaleString()}</p>
+                        </div>
+                        <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${order.status === 'approved' ? 'bg-[#DEF2DD] text-[#2C5530]' : order.status === 'rejected' ? 'bg-[#FBD7D4] text-[#D05A49]' : 'bg-[#FEF6E8] text-[#C57A17]'}`}>
+                          {order.status === 'pending' ? 'Pending' : order.status === 'approved' ? 'Approved' : 'Rejected'}
+                        </span>
+                      </div>
+                      <p className="text-sm text-[#4B5A45] mt-2">Total: UGX {Number(order.total || 0).toLocaleString()}</p>
+                      {order.note && <p className="text-xs text-[#4B5A45] mt-1">Note: {order.note}</p>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   );
 };

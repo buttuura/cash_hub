@@ -118,8 +118,11 @@ const Dashboard = () => {
   const [loanGuarantor, setLoanGuarantor] = useState('');
   const [loanReason, setLoanReason] = useState('');
   const [withdrawalAmount, setWithdrawalAmount] = useState('');
-const [withdrawalType, setWithdrawalType] = useState('savings');
+  const [withdrawalType, setWithdrawalType] = useState('savings');
   const [withdrawalReason, setWithdrawalReason] = useState('');
+  const [payBackLoan, setPayBackLoan] = useState(false);
+  const [repayLoanId, setRepayLoanId] = useState('');
+  const [loanRepaymentAmount, setLoanRepaymentAmount] = useState('');
   const [newGroupBalance, setNewGroupBalance] = useState('');
   const [balanceReason, setBalanceReason] = useState('');
   const [distributingInterest, setDistributingInterest] = useState(false);
@@ -445,10 +448,27 @@ const [withdrawalType, setWithdrawalType] = useState('savings');
         { headers: getAuthHeaders() }
       );
       toast.success('Deposit request submitted for approval');
+
+      if (payBackLoan && repayLoanId && parseFloat(loanRepaymentAmount) > 0) {
+        try {
+          await axios.post(
+            `${API_URL}/api/loans/${repayLoanId}/repay?amount=${parseFloat(loanRepaymentAmount)}`,
+            {},
+            { headers: getAuthHeaders() }
+          );
+          toast.success('Loan payment recorded');
+        } catch (repayErr) {
+          toast.error(repayErr.response?.data?.detail || 'Failed to record loan payment');
+        }
+      }
+
       setDepositDialogOpen(false);
       setDepositTargetUserId(null);
       setDepositAmount(depositType === 'savings' ? String(savingsMinAmount) : depositType === 'development_fee' ? '3000' : '0');
       setDepositDescription('');
+      setPayBackLoan(false);
+      setRepayLoanId('');
+      setLoanRepaymentAmount('');
       fetchData();
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Failed to submit deposit');
@@ -1129,10 +1149,66 @@ const [withdrawalType, setWithdrawalType] = useState('savings');
                         onChange={(e) => setDepositDescription(e.target.value)}
                         placeholder="Optional description..."
                       />
-                    </div>
-                    <Button type="submit" className="w-full bg-[#2C5530] hover:bg-[#214024] rounded-full">
-                      Submit Request
-                    </Button>
+                     </div>
+                     <div className="flex items-center gap-2">
+                       <input
+                         type="checkbox"
+                         id="payBackLoan"
+                         checked={payBackLoan}
+                         onChange={(e) => setPayBackLoan(e.target.checked)}
+                         className="w-4 h-4 rounded border-[#E8EBE8] text-[#2C5530] focus:ring-[#2C5530]"
+                       />
+                       <Label htmlFor="payBackLoan" className="cursor-pointer">Pay back loan with this deposit</Label>
+                     </div>
+                     {payBackLoan && (
+                       <div className="space-y-3 p-3 bg-[#FAFAF8] rounded-lg border border-[#E8EBE8]">
+                       <p className="text-xs text-[#5C665D]">Outstanding loan balance: {formatCurrency(userLoanBalance)}</p>
+                       {loans.filter(l => l.user_id === user?.id && l.status === 'approved' && !l.repaid).length > 0 ? (
+                         <>
+                           <div className="space-y-2">
+                             <Label>Select Loan</Label>
+                             <Select value={repayLoanId} onValueChange={setRepayLoanId}>
+                               <SelectTrigger>
+                                 <SelectValue placeholder="Select a loan" />
+                               </SelectTrigger>
+                               <SelectContent>
+                                 {loans.filter(l => l.user_id === user?.id && l.status === 'approved' && !l.repaid).map((l) => {
+                                   const total_repaid = (l.amount_repaid || 0) + (l.interest_repaid || 0);
+                                   const outstanding = Math.max(0, (l.total_due || l.outstanding_balance || 0) - total_repaid);
+                                   return (
+                                     <SelectItem key={l.id} value={l.id}>
+                                       {formatCurrency(l.amount)} - {l.guarantor_name} (Due: {formatCurrency(outstanding)})
+                                     </SelectItem>
+                                   );
+                                 })}
+                               </SelectContent>
+                             </Select>
+                           </div>
+                           <div className="space-y-2">
+                             <Label>Repayment Amount (UGX)</Label>
+                             <Input
+                               type="number"
+                               value={loanRepaymentAmount}
+                               onChange={(e) => setLoanRepaymentAmount(e.target.value)}
+                               placeholder="0"
+                               min="1"
+                               max={repayLoanId ? (() => {
+                                 const loan = loans.find(l => l.id === repayLoanId);
+                                 if (!loan) return 0;
+                                 const total_repaid = (loan.amount_repaid || 0) + (loan.interest_repaid || 0);
+                                 return Math.max(0, (loan.total_due || loan.outstanding_balance || 0) - total_repaid);
+                               })() : 0}
+                             />
+                           </div>
+                         </>
+                       ) : (
+                         <p className="text-xs text-[#5C665D]">You have no active loans to repay.</p>
+                       )}
+                     </div>
+                     )}
+                     <Button type="submit" className="w-full bg-[#2C5530] hover:bg-[#214024] rounded-full">
+                       Submit Request
+                     </Button>
                   </form>
                 </DialogContent>
               </Dialog>
@@ -1590,10 +1666,66 @@ const [withdrawalType, setWithdrawalType] = useState('savings');
                           onChange={(e) => setDepositDescription(e.target.value)}
                           placeholder="Optional description..."
                         />
-                      </div>
-                      <Button type="submit" className="w-full bg-[#2C5530] hover:bg-[#214024] rounded-full">
-                        Submit Request
-                      </Button>
+                       </div>
+                       <div className="flex items-center gap-2">
+                         <input
+                           type="checkbox"
+                           id="payBackLoan2"
+                           checked={payBackLoan}
+                           onChange={(e) => setPayBackLoan(e.target.checked)}
+                           className="w-4 h-4 rounded border-[#E8EBE8] text-[#2C5530] focus:ring-[#2C5530]"
+                         />
+                         <Label htmlFor="payBackLoan2" className="cursor-pointer">Pay back loan with this deposit</Label>
+                       </div>
+                       {payBackLoan && (
+                         <div className="space-y-3 p-3 bg-[#FAFAF8] rounded-lg border border-[#E8EBE8]">
+                           <p className="text-xs text-[#5C665D]">Outstanding loan balance: {formatCurrency(userLoanBalance)}</p>
+                           {loans.filter(l => l.user_id === user?.id && l.status === 'approved' && !l.repaid).length > 0 ? (
+                             <>
+                               <div className="space-y-2">
+                                 <Label>Select Loan</Label>
+                                 <Select value={repayLoanId} onValueChange={setRepayLoanId}>
+                                   <SelectTrigger>
+                                     <SelectValue placeholder="Select a loan" />
+                                   </SelectTrigger>
+                                   <SelectContent>
+                                     {loans.filter(l => l.user_id === user?.id && l.status === 'approved' && !l.repaid).map((l) => {
+                                       const total_repaid = (l.amount_repaid || 0) + (l.interest_repaid || 0);
+                                       const outstanding = Math.max(0, (l.total_due || l.outstanding_balance || 0) - total_repaid);
+                                       return (
+                                         <SelectItem key={l.id} value={l.id}>
+                                           {formatCurrency(l.amount)} - {l.guarantor_name} (Due: {formatCurrency(outstanding)})
+                                         </SelectItem>
+                                       );
+                                     })}
+                                   </SelectContent>
+                                 </Select>
+                               </div>
+                               <div className="space-y-2">
+                                 <Label>Repayment Amount (UGX)</Label>
+                                 <Input
+                                   type="number"
+                                   value={loanRepaymentAmount}
+                                   onChange={(e) => setLoanRepaymentAmount(e.target.value)}
+                                   placeholder="0"
+                                   min="1"
+                                   max={repayLoanId ? (() => {
+                                     const loan = loans.find(l => l.id === repayLoanId);
+                                     if (!loan) return 0;
+                                     const total_repaid = (loan.amount_repaid || 0) + (loan.interest_repaid || 0);
+                                     return Math.max(0, (loan.total_due || loan.outstanding_balance || 0) - total_repaid);
+                                   })() : 0}
+                                 />
+                               </div>
+                             </>
+                           ) : (
+                             <p className="text-xs text-[#5C665D]">You have no active loans to repay.</p>
+                           )}
+                         </div>
+                       )}
+                       <Button type="submit" className="w-full bg-[#2C5530] hover:bg-[#214024] rounded-full">
+                         Submit Request
+                       </Button>
                     </form>
                   </DialogContent>
                 </Dialog>

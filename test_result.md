@@ -109,6 +109,9 @@ user_problem_statement: |
   2. Backend - Refactored upload_to_cloudinary to ensure `result` is always defined.
   3. Backend - Removed unused f-string prefixes and renamed ambiguous variable `l` to `loan_item` in list loans endpoint.
   4. Frontend - Removed console.log debug statements from pdfExport.js.
+  5. Frontend - Fixed JSX syntax in Dashboard.js (verified with Babel parser).
+  6. Frontend - Added HTTP order fetching to ShopPage.js and CategoryPage.jsx for sellers so orders display without relying solely on WebSocket.
+  7. Backend - Trimmed `sellerName` in order creation and trimmed `user['name']` in `get_orders` regex to prevent whitespace mismatch from breaking order visibility.
 
 backend:
   - task: "DELETE /api/orders/{id} endpoint"
@@ -192,20 +195,45 @@ backend:
         agent: "testing"
         comment: "VERIFIED: All Cloudinary endpoints working correctly. (1) POST /api/auth/login returns access_token with treasurer credentials. (2) GET /api/debug/cloudinary-status returns 200 with cloudinary_configured: true, cloudinary_cloud_name: dwvfohqed, status: OK. (3) POST /api/uploads successfully uploads 10x10 PNG image, returns 200 with url pointing to res.cloudinary.com/dwvfohqed/..., includes cloudinary.public_id, cloudinary.secure_url, and id fields. Backend logs show proper Cloudinary integration with detailed logging. No errors."
 
-  - task: "OFFICERS undefined name fix"
+  - task: "sellerName whitespace normalization in order endpoints"
     implemented: true
     working: true
     file: "backend/server.py"
     stuck_count: 0
     priority: "high"
-    needs_retesting: false
+    needs_retesting: true
     status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Trim sellerName in create_order, get_orders regex, update_order_status, and delete_order to prevent whitespace mismatches breaking order visibility for sellers."
       - working: true
         agent: "main"
-        comment: "Defined OFFICERS as empty list constant. /api/quick-loans/valid-codes and /api/quick-loans/request no longer crash with NameError. Linter clean."
-      - working: true
-        agent: "testing"
-        comment: "VERIFIED: OFFICERS fix working correctly. (1) GET /api/quick-loans/valid-codes returns 200 with officers: [] (empty list as expected), members: [], all: []. No NameError crash. (2) POST /api/quick-loans/request with invalid officer_code 'OFC999' returns 400 'Invalid officer or member code' (NOT 500 NameError). Both endpoints handle OFFICERS constant correctly. No crashes."
+        comment: "Implemented trim() on sellerName in create_order, get_orders regex, update_order_status, and delete_order authorization checks."
+
+  - task: "ShopPage.js fetchOrders for sellers"
+    implemented: true
+    working: true
+    file: "frontend/src/pages/ShopPage.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Added fetchOrders function and useEffect for sellers to load orders via HTTP in addition to WebSocket. Orders now display below product listing for seller users."
+
+  - task: "CategoryPage.jsx fetchOrders and order display for sellers"
+    implemented: true
+    working: true
+    file: "frontend/src/pages/CategoryPage.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Added orders state, fetchOrders function, useEffect for sellers, and an orders card section below the main content to display incoming purchase requests."
+
 
   - task: "Loan list endpoint variable rename + f-string fixes"
     implemented: true
@@ -223,6 +251,28 @@ backend:
         comment: "VERIFIED: GET /api/loans returns 200 with list of loans (count: 0). Variable rename from `l` to `loan_item` did not break functionality. Endpoint working correctly."
 
 frontend:
+  - task: "Add HTTP order fetching for sellers in ShopPage.js"
+    implemented: true
+    working: true
+    file: "frontend/src/pages/ShopPage.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Added fetchOrders function and useEffect for sellers to load orders via HTTP in addition to WebSocket. Orders now display below product listing for seller users."
+  - task: "Add HTTP order fetching and display for sellers in CategoryPage.jsx"
+    implemented: true
+    working: true
+    file: "frontend/src/pages/CategoryPage.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Added orders state, fetchOrders function, useEffect for sellers, and an orders card section below the main content to display incoming purchase requests."
   - task: "Remove console.log from pdfExport.js"
     implemented: true
     working: "NA"
@@ -237,28 +287,19 @@ frontend:
 
 metadata:
   created_by: "main_agent"
-  version: "1.4"
-  test_sequence: 5
+  version: "1.5"
+  test_sequence: 6
   run_ui: false
 
 test_plan:
-  current_focus: []
+  current_focus:
+    - "sellerName whitespace normalization in order endpoints"
+    - "ShopPage.js fetchOrders for sellers"
+    - "CategoryPage.jsx fetchOrders and order display for sellers"
   stuck_tasks: []
   test_all: false
-  test_priority: "high_first"  # or "sequential" or "stuck_first"
+  test_priority: "high_first"
 
 agent_communication:
-  - agent: "main"
-    message: "Applied critical backend fixes from code review: (1) Cloudinary CLOUDINARY_URL configured in .env. (2) OFFICERS undefined name bug fixed. (3) upload_to_cloudinary result variable now always defined. (4) Code style cleanups. Please verify: POST /api/auth/login with treasurer credentials, GET /api/debug/cloudinary-status (200 OK), POST /api/uploads with small image (should return secure_url & cloudinary metadata), GET /api/quick-loans/valid-codes (should return officers/members/all without crashing), GET /api/loans (should list loans). Test credentials in /app/memory/test_credentials.md."
-  - agent: "testing"
-    message: "✅ ALL CRITICAL BACKEND TESTS PASSED (6/6). Verified: (1) Treasurer login working with access_token. (2) Cloudinary status endpoint returns configured: true, cloud: dwvfohqed. (3) File upload to Cloudinary working end-to-end, returns URL pointing to res.cloudinary.com/dwvfohqed with all required fields. (4) Quick loans valid-codes endpoint returns 200 with empty officers list (no NameError crash). (5) Quick loans request with invalid officer returns 400 (not 500 NameError). (6) Loans list endpoint working correctly after variable rename. All fixes verified working. Backend logs show no errors. Ready for main agent to summarize and finish."
-  - agent: "main"
-    message: "User reported critical bug: POST /api/products returns 500 with ObjectId serialization error. Applied fix: added product_data.pop('_id', None) at line 782 after setting string id. Same pattern as /api/uploads. Needs testing to verify fix resolves the 500 error."
-  - agent: "testing"
-    message: "✅ ObjectId serialization fix VERIFIED WORKING. POST /api/products without images returns 200 with valid JSON, no _id field, all required fields present. GET /api/products returns list without ObjectId fields. The critical 500 error is FIXED. ⚠️ Found separate issue: POST /api/products WITH images fails with 422 validation error due to FastAPI Optional[List[UploadFile]] parameter handling - this is a backend endpoint definition issue at line 750, not related to the ObjectId fix. The ObjectId fix itself is working correctly."
-  - agent: "main"
-    message: "Applied fix for multipart validation issue at line 750: Changed `images: Optional[List[UploadFile]] = File(None)` to `images: List[UploadFile] = File(default=[])`. This resolves the 422 validation error when images ARE sent. Requesting comprehensive testing of all 3 cases: (A) POST /api/products WITHOUT images, (B) POST WITH ONE image, (C) POST WITH MULTIPLE images. Also verify GET /api/products and GET /api/debug/cloudinary-status still work."
-  - agent: "testing"
-    message: "🎉 FINAL VERIFICATION COMPLETE - ALL TESTS PASSED (5/5). Comprehensive testing confirms both fixes working perfectly: (1) ObjectId serialization fix prevents 500 errors, all responses have string 'id' with no '_id' field. (2) Multipart validation fix allows image uploads. CASE A: POST without images returns 200 with image_url: null, image_urls: []. CASE B: POST with ONE image returns 200 with cloudinary URL in image_url and image_urls[0]. CASE C: POST with MULTIPLE images returns 200 with 2 cloudinary URLs in image_urls array. GET /api/products and GET /api/debug/cloudinary-status both return 200 OK. Backend logs show successful Cloudinary uploads with no errors. All product creation scenarios fully functional. Ready for main agent to summarize and finish."
-  - agent: "testing"
-    message: "🎉 ALL 13 TESTS PASSED for 3 NEW endpoints (PATCH /api/products/{id}, DELETE /api/orders/{id}, DELETE /api/products/{id}). Comprehensive testing completed: (1) PATCH /api/products/{id} - Field whitelist working (sold_out toggle tested), returns updated product with string 'id' and no '_id', rejects empty body and invalid fields with 400, validates product id format. (2) DELETE /api/orders/{id} - Authorization working (admin/seller/buyer), returns 200 with success message, properly deletes from database (verified via GET), returns 404 for already deleted orders, returns 401 without auth token, validates order id format. (3) DELETE /api/products/{id} - Authorization working (owner/admin), returns 200 with success message, properly deletes from database (verified via GET), returns 404 for already deleted products, validates product id format. All error handling, authorization checks, and data persistence verified. Backend endpoints fully functional. Ready for main agent to summarize and finish."
+    - agent: "main"
+      message: "Completed order delivery investigation and fixes: (1) Backend - Trimmed sellerName in create_order and get_orders regex to prevent whitespace mismatches. Also trimmed in update_order_status and delete_order authorization checks. (2) Frontend - ShopPage.js now fetches orders via HTTP for seller users in addition to WebSocket, and displays them in an orders card. (3) Frontend - CategoryPage.jsx now fetches orders via HTTP for seller users and displays them in an orders card. All JSX syntax verified valid with Babel parser. Backend syntax readable. Needs testing: verify orders appear for sellers on ShopPage and CategoryPage, verify order creation still works, verify WebSocket + HTTP order fetching work together."

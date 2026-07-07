@@ -59,8 +59,10 @@ const CategoryPage = () => {
   const searchParams = new URLSearchParams(location.search);
   const initialSearch = searchParams.get('search') || '';
   const { user, isAuthenticated } = useAuth();
+  const isSeller = String(user?.membership_type || '').toLowerCase() === 'seller';
   const [categories] = useState(DEFAULT_CATEGORIES);
   const [products, setProducts] = useState([]);
+  const [orders, setOrders] = useState([]);
   const [searchQuery, setSearchQuery] = useState(initialSearch);
   const [displayCount, setDisplayCount] = useState(PRODUCTS_PER_PAGE);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -121,7 +123,26 @@ const CategoryPage = () => {
     setSelectedCategory(categoryId || 'all');
   }, [categoryId, location.search]);
 
+  useEffect(() => {
+    if (isSeller) {
+      fetchOrders();
+    }
+  }, [isSeller]);
+
   const saveCart = (items) => { window.localStorage.setItem('cash_hub_cart', JSON.stringify(items)); };
+
+  const fetchOrders = async () => {
+    try {
+      const res = await axios.get(`${API_URL}/api/orders`, { headers: { Authorization: `Bearer ${localStorage.getItem('access_token')}` } });
+      if (user?.name) {
+        setOrders(res.data.filter(o => (o.sellerName || '').toLowerCase() === user.name.toLowerCase()));
+      } else {
+        setOrders([]);
+      }
+    } catch (err) {
+      console.warn('Unable to load orders:', err);
+    }
+  };
 
   const addToCart = (product) => {
     setCart(prev => {
@@ -546,11 +567,45 @@ return (
                 <Button onClick={handleCartCheckout} className="bg-[#172B12] text-white hover:bg-[#0f2409]" disabled={cart.length === 0}>{orderSubmitting ? 'Sending requests...' : `Send orders to ${Object.keys(getCartItemsBySeller()).length} seller(s)`}</Button>
               </>
             )}
-</div>
-          </DialogContent>
-        </Dialog>
-      </div>
-   );
-};
+          </div>
+        </DialogContent>
+      </Dialog>
 
-export default CategoryPage;
+      {isSeller && (
+        <div className="max-w-7xl mx-auto mt-8">
+          <Card className="bg-white border border-slate-200 shadow-sm">
+            <CardHeader>
+              <CardTitle className="text-lg">My Incoming Orders</CardTitle>
+              <CardDescription>Purchase requests for products you are selling.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {orders.length === 0 ? (
+                <p className="text-sm text-[#4B5A45] py-4">No incoming orders yet.</p>
+              ) : (
+                <div className="space-y-4">
+                  {orders.map(order => (
+                    <div key={order.id} className="rounded-xl border border-slate-200 p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-medium text-[#172B12]">{order.buyerName || 'A buyer'}</p>
+                          <p className="text-xs text-[#4B5A45]">{new Date(order.created_at).toLocaleString()}</p>
+                        </div>
+                        <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${order.status === 'approved' ? 'bg-[#DEF2DD] text-[#2C5530]' : order.status === 'rejected' ? 'bg-[#FBD7D4] text-[#D05A49]' : 'bg-[#FEF6E8] text-[#C57A17]'}`}>
+                          {order.status === 'pending' ? 'Pending' : order.status === 'approved' ? 'Approved' : 'Rejected'}
+                        </span>
+                      </div>
+                      <p className="text-sm text-[#4B5A45] mt-2">Total: UGX {Number(order.total || 0).toLocaleString()}</p>
+                      {order.note && <p className="text-xs text-[#4B5A45] mt-1">Note: {order.note}</p>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+    </div>
+   );
+ };
+
+ export default CategoryPage;

@@ -853,7 +853,7 @@ async def create_order(order: OrderCreate, user: Optional[dict] = Depends(get_cu
         "productId": order.productId,
         "productTitle": order.productTitle,
         "productPrice": order.productPrice,
-        "sellerName": order.sellerName,
+        "sellerName": (order.sellerName or "").strip(),
         "buyerId": order.buyerId,
         "buyerName": order.buyerName,
         "buyerEmail": order.buyerEmail,
@@ -896,7 +896,7 @@ async def get_orders(user: Optional[dict] = Depends(get_current_user_optional)):
                 {
                     "$or": [
                         {"buyerId": user["id"]},
-                        {"sellerName": {"$regex": f"^{re.escape(user['name'])}$", "$options": "i"}}
+                        {"sellerName": {"$regex": f"^{re.escape((user['name'] or '').strip())}$", "$options": "i"}}
                     ]
                 }
             ]
@@ -917,7 +917,7 @@ async def update_order_status(order_id: str, data: OrderStatusUpdate, user: Opti
         raise HTTPException(status_code=404, detail="Order not found")
 
     is_admin = user.get("role") in ["admin", "super_admin", "treasurer"]
-    is_seller = order.get("sellerName", "").lower() == user.get("name", "").lower()
+    is_seller = (order.get("sellerName") or "").strip().lower() == (user.get("name") or "").strip().lower()
 
     if not is_admin and not is_seller:
         raise HTTPException(status_code=403, detail="You can only update your own orders")
@@ -952,7 +952,7 @@ async def delete_order(order_id: str, user: Optional[dict] = Depends(get_current
         raise HTTPException(status_code=404, detail="Order not found")
 
     is_admin = user.get("role") in ["admin", "super_admin", "treasurer"]
-    is_seller = (order.get("sellerName") or "").lower() == (user.get("name") or "").lower()
+    is_seller = (order.get("sellerName") or "").strip().lower() == (user.get("name") or "").strip().lower()
     is_buyer = order.get("buyerId") == user.get("id") or order.get("created_by") == user.get("id")
 
     if not (is_admin or is_seller or is_buyer):
