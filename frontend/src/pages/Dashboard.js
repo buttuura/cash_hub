@@ -2965,7 +2965,7 @@ const Dashboard = () => {
           </div>
         )}
 
-        {/* Rules Tab */
+        {/* Rules Tab */}
         {activeTab === 'rules' && (
           <div className="space-y-6 animate-fade-in" data-testid="rules-tab">
             <h2 className="text-2xl font-bold font-['Manrope'] text-[#1E231F]">Group Rules</h2>
