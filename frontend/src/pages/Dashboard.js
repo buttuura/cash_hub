@@ -125,6 +125,9 @@ const Dashboard = () => {
   const [pettyCashAmount, setPettyCashAmount] = useState('');
   const [pettyCashDescription, setPettyCashDescription] = useState('');
   const [pettyCashCategory, setPettyCashCategory] = useState('general');
+  const [withdrawalAmount, setWithdrawalAmount] = useState('');
+  const [withdrawalType, setWithdrawalType] = useState('savings');
+  const [withdrawalReason, setWithdrawalReason] = useState('');
   const [myProducts, setMyProducts] = useState([]);
   const [orders, setOrders] = useState([]);
   const sellerInitialTabSet = useRef(false);
@@ -522,6 +525,7 @@ const Dashboard = () => {
       toast.success('Withdrawal request submitted');
       setWithdrawalDialogOpen(false);
       setWithdrawalAmount('');
+      setWithdrawalType('savings');
       setWithdrawalReason('');
       fetchData();
     } catch (err) {
