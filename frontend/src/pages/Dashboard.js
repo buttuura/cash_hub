@@ -112,6 +112,8 @@ const Dashboard = () => {
   // Form states
   const [depositAmount, setDepositAmount] = useState('500');
   const [depositType, setDepositType] = useState('savings');
+  const [depositTargetUserId, setDepositTargetUserId] = useState(null);
+  const [depositDescription, setDepositDescription] = useState('');
   const [repayLoanId, setRepayLoanId] = useState('');
   const [loanRepaymentAmount, setLoanRepaymentAmount] = useState('');
   const [newGroupBalance, setNewGroupBalance] = useState('');
