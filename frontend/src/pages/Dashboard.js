@@ -2591,26 +2591,44 @@ const Dashboard = () => {
                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Amount</th>
                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Late Fee</th>
                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Status</th>
+                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Action</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {deposits.slice(0, 20).map((d) => (
-                        <tr key={d.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5] transition-colors">
-                          <td className="py-4 px-6 text-[#1E231F]">
-                            {new Date(d.created_at).toLocaleDateString()}
-                          </td>
-                          <td className="py-4 px-6 text-[#1E231F]">
-                            {d.deposit_type === 'development_fee' ? 'Development' : d.deposit_type === 'loan_payment' ? 'Loan Payment' : 'Savings'}
-                          </td>
-                          <td className="py-4 px-6 font-semibold text-[#347242] font-numbers">
-                            {formatCurrency(d.amount)}
-                          </td>
-                          <td className="py-4 px-6 text-[#D05A49] font-numbers">
-                            {d.late_fee > 0 ? formatCurrency(d.late_fee) : '-'}
-                          </td>
-                          <td className="py-4 px-6">{getStatusBadge(d.status)}</td>
-                        </tr>
-                      ))}
+                      {deposits.slice(0, 20).map((d) => {
+                        const canDelete = d.user_id === user?.id || isTreasurer;
+                        return (
+                          <tr key={d.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5] transition-colors">
+                            <td className="py-4 px-6 text-[#1E231F]">
+                              {new Date(d.created_at).toLocaleDateString()}
+                            </td>
+                            <td className="py-4 px-6 text-[#1E231F]">
+                              {d.deposit_type === 'development_fee' ? 'Development' : d.deposit_type === 'loan_payment' ? 'Loan Payment' : 'Savings'}
+                            </td>
+                            <td className="py-4 px-6 font-semibold text-[#347242] font-numbers">
+                              {formatCurrency(d.amount)}
+                            </td>
+                            <td className="py-4 px-6 text-[#D05A49] font-numbers">
+                              {d.late_fee > 0 ? formatCurrency(d.late_fee) : '-'}
+                            </td>
+                            <td className="py-4 px-6">{getStatusBadge(d.status)}</td>
+                            <td className="py-4 px-6">
+                              {canDelete ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteRecord('deposits', d.id)}
+                                  title="Delete deposit"
+                                  className="p-1.5 rounded-full text-[#D05A49] hover:bg-[#D05A49]/10 transition-colors"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              ) : (
+                                <span className="text-[#5C665D] text-xs">-</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                   {deposits.length === 0 && (
@@ -2691,32 +2709,50 @@ const Dashboard = () => {
                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Interest</th>
                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Total Due</th>
                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Status</th>
+                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Action</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {loans.slice(0, 20).map((l) => (
-                        <tr key={l.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5] transition-colors">
-                          <td className="py-4 px-6 text-[#1E231F]">
-                            {new Date(l.created_at).toLocaleDateString()}
-                          </td>
-                          <td className="py-4 px-6 font-semibold text-[#D48C70] font-numbers">
-                            {formatCurrency(l.amount)}
-                          </td>
-                          <td className="py-4 px-6 text-[#1E231F]">
-                            <div className="flex items-center gap-1">
-                              <UserCheck className="w-4 h-4 text-[#5C665D]" />
-                              {l.guarantor_name}
-                            </div>
-                          </td>
-                          <td className="py-4 px-6 text-[#5C665D] font-numbers">
-                            {l.current_interest ? formatCurrency(l.current_interest) : '-'}
-                          </td>
-                          <td className="py-4 px-6 font-semibold text-[#1E231F] font-numbers">
-                            {formatCurrency(l.total_due || l.outstanding_balance || l.initial_total_due || l.amount * 1.03)}
-                          </td>
-                          <td className="py-4 px-6">{getStatusBadge(l.status)}</td>
-                        </tr>
-                      ))}
+                      {loans.slice(0, 20).map((l) => {
+                        const canDelete = l.user_id === user?.id || isTreasurer;
+                        return (
+                          <tr key={l.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5] transition-colors">
+                            <td className="py-4 px-6 text-[#1E231F]">
+                              {new Date(l.created_at).toLocaleDateString()}
+                            </td>
+                            <td className="py-4 px-6 font-semibold text-[#D48C70] font-numbers">
+                              {formatCurrency(l.amount)}
+                            </td>
+                            <td className="py-4 px-6 text-[#1E231F]">
+                              <div className="flex items-center gap-1">
+                                <UserCheck className="w-4 h-4 text-[#5C665D]" />
+                                {l.guarantor_name}
+                              </div>
+                            </td>
+                            <td className="py-4 px-6 text-[#5C665D] font-numbers">
+                              {l.current_interest ? formatCurrency(l.current_interest) : '-'}
+                            </td>
+                            <td className="py-4 px-6 font-semibold text-[#1E231F] font-numbers">
+                              {formatCurrency(l.total_due || l.outstanding_balance || l.initial_total_due || l.amount * 1.03)}
+                            </td>
+                            <td className="py-4 px-6">{getStatusBadge(l.status)}</td>
+                            <td className="py-4 px-6">
+                              {canDelete ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteRecord('loans', l.id)}
+                                  title="Delete loan"
+                                  className="p-1.5 rounded-full text-[#D05A49] hover:bg-[#D05A49]/10 transition-colors"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              ) : (
+                                <span className="text-[#5C665D] text-xs">-</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                   {loans.length === 0 && (
@@ -2746,24 +2782,42 @@ const Dashboard = () => {
                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Type</th>
                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Reason</th>
                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Status</th>
+                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Action</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {withdrawals.slice(0, 20).map((w) => (
-                        <tr key={w.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5] transition-colors">
-                          <td className="py-4 px-6 text-[#1E231F]">
-                            {new Date(w.created_at).toLocaleDateString()}
-                          </td>
-                          <td className="py-4 px-6 font-semibold text-[#D05A49] font-numbers">
-                            {formatCurrency(w.amount)}
-                          </td>
-                          <td className="py-4 px-6 text-[#1E231F]">
-                            {w.withdrawal_type === 'leaving_group' ? 'Leaving Group' : 'Regular'}
-                          </td>
-                          <td className="py-4 px-6 text-[#5C665D]">{w.reason || '-'}</td>
-                          <td className="py-4 px-6">{getStatusBadge(w.status)}</td>
-                        </tr>
-                      ))}
+                      {withdrawals.slice(0, 20).map((w) => {
+                        const canDelete = w.user_id === user?.id || isTreasurer;
+                        return (
+                          <tr key={w.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5] transition-colors">
+                            <td className="py-4 px-6 text-[#1E231F]">
+                              {new Date(w.created_at).toLocaleDateString()}
+                            </td>
+                            <td className="py-4 px-6 font-semibold text-[#D05A49] font-numbers">
+                              {formatCurrency(w.amount)}
+                            </td>
+                            <td className="py-4 px-6 text-[#1E231F]">
+                              {w.withdrawal_type === 'leaving_group' ? 'Leaving Group' : 'Regular'}
+                            </td>
+                            <td className="py-4 px-6 text-[#5C665D]">{w.reason || '-'}</td>
+                            <td className="py-4 px-6">{getStatusBadge(w.status)}</td>
+                            <td className="py-4 px-6">
+                              {canDelete ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteRecord('withdrawals', w.id)}
+                                  title="Delete withdrawal"
+                                  className="p-1.5 rounded-full text-[#D05A49] hover:bg-[#D05A49]/10 transition-colors"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              ) : (
+                                <span className="text-[#5C665D] text-xs">-</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                   {withdrawals.length === 0 && (
