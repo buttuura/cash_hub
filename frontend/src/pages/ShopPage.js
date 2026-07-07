@@ -959,7 +959,7 @@ const handleOpenPurchase = (product) => {
             </p>
           </CardContent>
           <CardFooter>
-            <Button onClick={() => setQuickLoanOpen(true)} className="bg-[#172B12] text-white hover:bg-[#0f2409]">Request quick loan</Button>
+            <Button onClick={() => setQuickLoanOpen(true)} className="bg-[#172B12] text-white hover:bg-[#0f2409] rounded-full">Request quick loan</Button>
           </CardFooter>
         </Card>
         
@@ -1289,17 +1289,9 @@ const handleOpenPurchase = (product) => {
                   <p><span className="font-semibold">Amount:</span> UGX {Number(loanRequestData?.loanAmount || loanRequestData?.amount || 0).toLocaleString()}</p>
                 </div>
               </div>
-              <div className="flex flex-col gap-3">
-                <Button type="button" className="bg-[#172B12] text-white hover:bg-[#0f2409]" onClick={handleDownloadLoanAgreement}>
-                  Download loan agreement
-                </Button>
-                <Button type="button" className="border border-slate-300 text-slate-700 hover:bg-slate-100" onClick={() => setQuickLoanOpen(false)}>
-                  Close
-                </Button>
-              </div>
             </div>
           ) : (
-            <form onSubmit={handleRequestQuickLoan} className="space-y-4">
+            <form id="quick-loan-form" onSubmit={handleRequestQuickLoan} className="space-y-4">
               <div className="mb-4">
                 <Label className="text-sm font-medium text-slate-700">Loan type</Label>
                 <div className="flex items-center gap-4 mt-2">
@@ -1399,10 +1391,22 @@ const handleOpenPurchase = (product) => {
                   </div>
                 </>
               )}
-
-              <Button type="submit" className="w-full">Submit Request</Button>
             </form>
           )}
+          </div>
+          <div className="flex flex-col gap-3 pt-4 border-t border-[#E8EBE8]">
+            {loanRequestSubmitted ? (
+              <>
+                <Button type="button" className="bg-[#172B12] text-white hover:bg-[#0f2409]" onClick={handleDownloadLoanAgreement}>
+                  Download loan agreement
+                </Button>
+                <Button type="button" className="border border-slate-300 text-slate-700 hover:bg-slate-100" onClick={() => setQuickLoanOpen(false)}>
+                  Close
+                </Button>
+              </>
+            ) : (
+              <Button type="submit" form="quick-loan-form" className="w-full bg-[#172B12] text-white hover:bg-[#0f2409]">Submit Request</Button>
+            )}
           </div>
         </DialogContent>
       </Dialog>

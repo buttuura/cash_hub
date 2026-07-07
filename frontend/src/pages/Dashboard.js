@@ -112,15 +112,6 @@ const Dashboard = () => {
   // Form states
   const [depositAmount, setDepositAmount] = useState('500');
   const [depositType, setDepositType] = useState('savings');
-  const [depositDescription, setDepositDescription] = useState('');
-  const [depositTargetUserId, setDepositTargetUserId] = useState(null);
-  const [loanAmount, setLoanAmount] = useState('');
-  const [loanGuarantor, setLoanGuarantor] = useState('');
-  const [loanReason, setLoanReason] = useState('');
-  const [withdrawalAmount, setWithdrawalAmount] = useState('');
-  const [withdrawalType, setWithdrawalType] = useState('savings');
-  const [withdrawalReason, setWithdrawalReason] = useState('');
-  const [payBackLoan, setPayBackLoan] = useState(false);
   const [repayLoanId, setRepayLoanId] = useState('');
   const [loanRepaymentAmount, setLoanRepaymentAmount] = useState('');
   const [newGroupBalance, setNewGroupBalance] = useState('');
@@ -431,7 +422,7 @@ const Dashboard = () => {
   const savingsMinAmount = targetMembershipType === 'premium' ? 52000 * targetDepositSlots : 500;
   const savingsPlaceholder = targetMembershipType === 'premium' ? String(savingsMinAmount) : '500';
 
-  const handleDeposit = async (e) => {
+   const handleDeposit = async (e) => {
     e.preventDefault();
     try {
       const payload = {
@@ -449,24 +440,10 @@ const Dashboard = () => {
       );
       toast.success('Deposit request submitted for approval');
 
-      if (payBackLoan && repayLoanId && parseFloat(loanRepaymentAmount) > 0) {
-        try {
-          await axios.post(
-            `${API_URL}/api/loans/${repayLoanId}/repay?amount=${parseFloat(loanRepaymentAmount)}`,
-            {},
-            { headers: getAuthHeaders() }
-          );
-          toast.success('Loan payment recorded');
-        } catch (repayErr) {
-          toast.error(repayErr.response?.data?.detail || 'Failed to record loan payment');
-        }
-      }
-
       setDepositDialogOpen(false);
       setDepositTargetUserId(null);
       setDepositAmount(depositType === 'savings' ? String(savingsMinAmount) : depositType === 'development_fee' ? '3000' : '0');
       setDepositDescription('');
-      setPayBackLoan(false);
       setRepayLoanId('');
       setLoanRepaymentAmount('');
       fetchData();
@@ -1103,6 +1080,7 @@ const Dashboard = () => {
                 </div>
               </CardContent>
             </Card>
+            </div>
 
             {/* Quick Actions */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -1121,15 +1099,16 @@ const Dashboard = () => {
                   <form onSubmit={handleDeposit} className="space-y-4 mt-4">
                     <div className="space-y-2">
                       <Label>Deposit Type</Label>
-                      <Select value={depositType} onValueChange={setDepositType}>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="savings">Savings</SelectItem>
-                          <SelectItem value="development_fee">Development Fee</SelectItem>
-                        </SelectContent>
-                      </Select>
+                       <Select value={depositType} onValueChange={setDepositType}>
+                         <SelectTrigger>
+                           <SelectValue />
+                         </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="savings">Savings</SelectItem>
+                            <SelectItem value="development_fee">Development Fee</SelectItem>
+                            <SelectItem value="loan_payment">Pay Back Loan</SelectItem>
+                          </SelectContent>
+                       </Select>
                     </div>
                     <div className="space-y-2">
                       <Label>Amount (UGX)</Label>
@@ -1150,65 +1129,55 @@ const Dashboard = () => {
                         placeholder="Optional description..."
                       />
                      </div>
-                     <div className="flex items-center gap-2">
-                       <input
-                         type="checkbox"
-                         id="payBackLoan"
-                         checked={payBackLoan}
-                         onChange={(e) => setPayBackLoan(e.target.checked)}
-                         className="w-4 h-4 rounded border-[#E8EBE8] text-[#2C5530] focus:ring-[#2C5530]"
-                       />
-                       <Label htmlFor="payBackLoan" className="cursor-pointer">Pay back loan with this deposit</Label>
-                     </div>
-                     {payBackLoan && (
-                       <div className="space-y-3 p-3 bg-[#FAFAF8] rounded-lg border border-[#E8EBE8]">
-                       <p className="text-xs text-[#5C665D]">Outstanding loan balance: {formatCurrency(userLoanBalance)}</p>
-                       {loans.filter(l => l.user_id === user?.id && l.status === 'approved' && !l.repaid).length > 0 ? (
-                         <>
-                           <div className="space-y-2">
-                             <Label>Select Loan</Label>
-                             <Select value={repayLoanId} onValueChange={setRepayLoanId}>
-                               <SelectTrigger>
-                                 <SelectValue placeholder="Select a loan" />
-                               </SelectTrigger>
-                               <SelectContent>
-                                 {loans.filter(l => l.user_id === user?.id && l.status === 'approved' && !l.repaid).map((l) => {
-                                   const total_repaid = (l.amount_repaid || 0) + (l.interest_repaid || 0);
-                                   const outstanding = Math.max(0, (l.total_due || l.outstanding_balance || 0) - total_repaid);
-                                   return (
-                                     <SelectItem key={l.id} value={l.id}>
-                                       {formatCurrency(l.amount)} - {l.guarantor_name} (Due: {formatCurrency(outstanding)})
-                                     </SelectItem>
-                                   );
-                                 })}
-                               </SelectContent>
-                             </Select>
-                           </div>
-                           <div className="space-y-2">
-                             <Label>Repayment Amount (UGX)</Label>
-                             <Input
-                               type="number"
-                               value={loanRepaymentAmount}
-                               onChange={(e) => setLoanRepaymentAmount(e.target.value)}
-                               placeholder="0"
-                               min="1"
-                               max={repayLoanId ? (() => {
-                                 const loan = loans.find(l => l.id === repayLoanId);
-                                 if (!loan) return 0;
-                                 const total_repaid = (loan.amount_repaid || 0) + (loan.interest_repaid || 0);
-                                 return Math.max(0, (loan.total_due || loan.outstanding_balance || 0) - total_repaid);
-                               })() : 0}
-                             />
-                           </div>
-                         </>
-                       ) : (
-                         <p className="text-xs text-[#5C665D]">You have no active loans to repay.</p>
-                       )}
-                     </div>
-                     )}
-                     <Button type="submit" className="w-full bg-[#2C5530] hover:bg-[#214024] rounded-full">
-                       Submit Request
-                     </Button>
+                      {depositType === 'loan_payment' && (
+                        <div className="space-y-3 p-3 bg-[#FAFAF8] rounded-lg border border-[#E8EBE8]">
+                        <p className="text-xs text-[#5C665D]">Outstanding loan balance: {formatCurrency(userLoanBalance)}</p>
+                        {loans.filter(l => l.user_id === user?.id && l.status === 'approved' && !l.repaid).length > 0 ? (
+                          <>
+                            <div className="space-y-2">
+                              <Label>Select Loan</Label>
+                              <Select value={repayLoanId} onValueChange={setRepayLoanId}>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select a loan" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {loans.filter(l => l.user_id === user?.id && l.status === 'approved' && !l.repaid).map((l) => {
+                                    const total_repaid = (l.amount_repaid || 0) + (l.interest_repaid || 0);
+                                    const outstanding = Math.max(0, (l.total_due || l.outstanding_balance || 0) - total_repaid);
+                                    return (
+                                      <SelectItem key={l.id} value={l.id}>
+                                        {formatCurrency(l.amount)} - {l.guarantor_name} (Due: {formatCurrency(outstanding)})
+                                      </SelectItem>
+                                    );
+                                  })}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Repayment Amount (UGX)</Label>
+                              <Input
+                                type="number"
+                                value={loanRepaymentAmount}
+                                onChange={(e) => setLoanRepaymentAmount(e.target.value)}
+                                placeholder="0"
+                                min="1"
+                                max={repayLoanId ? (() => {
+                                  const loan = loans.find(l => l.id === repayLoanId);
+                                  if (!loan) return 0;
+                                  const total_repaid = (loan.amount_repaid || 0) + (loan.interest_repaid || 0);
+                                  return Math.max(0, (loan.total_due || loan.outstanding_balance || 0) - total_repaid);
+                                })() : 0}
+                              />
+                            </div>
+                          </>
+                        ) : (
+                          <p className="text-xs text-[#5C665D]">You have no active loans to repay.</p>
+                        )}
+                      </div>
+                      )}
+                      <Button type="submit" className="w-full bg-[#2C5530] hover:bg-[#214024] rounded-full">
+                        Submit Request
+                      </Button>
                   </form>
                 </DialogContent>
               </Dialog>
@@ -1269,7 +1238,7 @@ const Dashboard = () => {
 
               <Dialog open={withdrawalDialogOpen} onOpenChange={setWithdrawalDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button className="h-full border-[#E8EBE8] hover:bg-[#E8EBE8] rounded-xl flex items-center justify-center gap-2 py-6">
+                  <Button className="h-full bg-[#5C665D] hover:bg-[#4A584A] rounded-xl flex items-center justify-center gap-2 py-6 text-white">
                     <ArrowDownRight className="w-5 h-5" />
                     <span className="font-semibold">Request Withdrawal</span>
                   </Button>
@@ -1330,220 +1299,7 @@ const Dashboard = () => {
               </Dialog>
             </div>
 
-            {/* Deposits */}
-            <Card className="bg-white border border-[#E8EBE8] shadow-sm">
-              <CardHeader>
-                <CardTitle className="font-['Manrope'] text-[#1E231F] flex items-center gap-2">
-                  <ArrowUpRight className="w-5 h-5 text-[#347242]" />
-                  Deposits
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b border-[#E8EBE8] bg-[#FAFAF8]">
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Date</th>
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Type</th>
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Amount</th>
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Late Fee</th>
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {deposits.slice(0, 20).map((d) => (
-                        <tr key={d.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5] transition-colors">
-                          <td className="py-4 px-6 text-[#1E231F]">
-                            {new Date(d.created_at).toLocaleDateString()}
-                          </td>
-                          <td className="py-4 px-6 text-[#1E231F]">
-                            {d.deposit_type === 'development_fee' ? 'Development' : 'Savings'}
-                          </td>
-                          <td className="py-4 px-6 font-semibold text-[#347242] font-numbers">
-                            {formatCurrency(d.amount)}
-                          </td>
-                          <td className="py-4 px-6 text-[#D05A49] font-numbers">
-                            {d.late_fee > 0 ? formatCurrency(d.late_fee) : '-'}
-                          </td>
-                          <td className="py-4 px-6">{getStatusBadge(d.status)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  {deposits.length === 0 && (
-                    <p className="text-center text-[#5C665D] py-8">No deposits yet</p>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Loans */}
-            <Card className="bg-white border border-[#E8EBE8] shadow-sm">
-              <CardHeader>
-                <CardTitle className="font-['Manrope'] text-[#1E231F] flex items-center gap-2">
-                  <CreditCard className="w-5 h-5 text-[#D48C70]" />
-                  Loans
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b border-[#E8EBE8] bg-[#FAFAF8]">
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Date</th>
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Amount</th>
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Guarantor</th>
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Interest</th>
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Total Due</th>
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {loans.slice(0, 20).map((l) => (
-                        <tr key={l.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5] transition-colors">
-                          <td className="py-4 px-6 text-[#1E231F]">
-                            {new Date(l.created_at).toLocaleDateString()}
-                          </td>
-                          <td className="py-4 px-6 font-semibold text-[#D48C70] font-numbers">
-                            {formatCurrency(l.amount)}
-                          </td>
-                          <td className="py-4 px-6 text-[#1E231F]">
-                            <div className="flex items-center gap-1">
-                              <UserCheck className="w-4 h-4 text-[#5C665D]" />
-                              {l.guarantor_name}
-                            </div>
-                          </td>
-                          <td className="py-4 px-6 text-[#5C665D] font-numbers">
-                            {l.current_interest ? formatCurrency(l.current_interest) : '-'}
-                          </td>
-                          <td className="py-4 px-6 font-semibold text-[#1E231F] font-numbers">
-                            {formatCurrency(l.total_due || l.outstanding_balance || l.initial_total_due || l.amount * 1.03)}
-                          </td>
-                          <td className="py-4 px-6">{getStatusBadge(l.status)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  {loans.length === 0 && (
-                    <p className="text-center text-[#5C665D] py-8">No loans yet</p>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Withdrawals */}
-            <Card className="bg-white border border-[#E8EBE8] shadow-sm">
-              <CardHeader>
-                <CardTitle className="font-['Manrope'] text-[#1E231F] flex items-center gap-2">
-                  <ArrowDownRight className="w-5 h-5 text-[#D05A49]" />
-                  Withdrawals
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b border-[#E8EBE8] bg-[#FAFAF8]">
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Date</th>
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Amount</th>
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Type</th>
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Reason</th>
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {withdrawals.slice(0, 20).map((w) => (
-                        <tr key={w.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5] transition-colors">
-                          <td className="py-4 px-6 text-[#1E231F]">
-                            {new Date(w.created_at).toLocaleDateString()}
-                          </td>
-                          <td className="py-4 px-6 font-semibold text-[#D05A49] font-numbers">
-                            {formatCurrency(w.amount)}
-                          </td>
-                          <td className="py-4 px-6 text-[#1E231F]">
-                            {w.withdrawal_type === 'leaving_group' ? 'Leaving Group' : 'Regular'}
-                          </td>
-                          <td className="py-4 px-6 text-[#5C665D]">{w.reason || '-'}</td>
-                          <td className="py-4 px-6">{getStatusBadge(w.status)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  {withdrawals.length === 0 && (
-                    <p className="text-center text-[#5C665D] py-8">No withdrawals yet</p>
-                  )}
-                </div>
-              </CardContent>
-             </Card>
-
-               <Dialog open={withdrawalDialogOpen} onOpenChange={setWithdrawalDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button
-                    data-testid="withdrawal-button"
-                    variant="outline"
-                    className="h-14 border-[#E8EBE8] text-[#1E231F] hover:bg-[#E8EBE8] rounded-xl font-semibold flex items-center justify-center gap-2"
-                  >
-                    <ArrowDownRight className="w-5 h-5" />
-                    Request Withdrawal
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-md">
-                  <DialogHeader>
-                    <DialogTitle className="font-['Manrope'] text-[#1E231F]">Request Withdrawal</DialogTitle>
-                    <DialogDescription className="text-[#5C665D]">
-                      Available savings: {formatCurrency(user?.total_savings)}
-                    </DialogDescription>
-                  </DialogHeader>
-                  <form onSubmit={handleWithdrawal} className="space-y-4 mt-4">
-                    <div className="space-y-2">
-                      <Label>Withdrawal Type</Label>
-                      <Select value={withdrawalType} onValueChange={setWithdrawalType}>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="savings">Regular Withdrawal (Savings only)</SelectItem>
-                          <SelectItem value="leaving_group">Leaving Group (All funds)</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Amount (UGX)</Label>
-                      <Input
-                        type="number"
-                        value={withdrawalAmount}
-                        onChange={(e) => setWithdrawalAmount(e.target.value)}
-                        placeholder="50000"
-                        required
-                        min="1"
-                        max={withdrawalType === 'leaving_group' 
-                          ? (user?.total_savings || 0) + (user?.development_fund || 0)
-                          : user?.total_savings || 0}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Reason</Label>
-                      <Textarea
-                        value={withdrawalReason}
-                        onChange={(e) => setWithdrawalReason(e.target.value)}
-                        placeholder="Reason for withdrawal..."
-                      />
-                    </div>
-                    {withdrawalType === 'leaving_group' && (
-                      <div className="p-3 bg-[#D05A49]/10 rounded-lg text-sm text-[#D05A49]">
-                        <DoorOpen className="w-4 h-4 inline mr-2" />
-                        Leaving requires 2 months notice, no active loans, and not being a guarantor
-                      </div>
-                    )}
-                    <Button type="submit" className="w-full bg-[#2C5530] hover:bg-[#214024] rounded-full">
-                      Submit Request
-                    </Button>
-                  </form>
-                </DialogContent>
-              </Dialog>
-            </div>
-
-            {/* Recent Activity */}
+             {/* Recent Activity */}
             <Card className="bg-white border border-[#E8EBE8] shadow-sm">
               <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle className="font-['Manrope'] text-[#1E231F]">My Recent Activity</CardTitle>
@@ -1572,7 +1328,7 @@ const Dashboard = () => {
                         </div>
                         <div>
                           <p className="font-medium text-[#1E231F]">
-                            {d.deposit_type === 'development_fee' ? 'Development Fee' : 'Savings Deposit'}
+                             {d.deposit_type === 'development_fee' ? 'Development Fee' : d.deposit_type === 'loan_payment' ? 'Loan Payment' : 'Savings Deposit'}
                           </p>
                           <p className="text-sm text-[#5C665D]">{d.description || d.month}</p>
                         </div>
@@ -1666,66 +1422,56 @@ const Dashboard = () => {
                           onChange={(e) => setDepositDescription(e.target.value)}
                           placeholder="Optional description..."
                         />
-                       </div>
-                       <div className="flex items-center gap-2">
-                         <input
-                           type="checkbox"
-                           id="payBackLoan2"
-                           checked={payBackLoan}
-                           onChange={(e) => setPayBackLoan(e.target.checked)}
-                           className="w-4 h-4 rounded border-[#E8EBE8] text-[#2C5530] focus:ring-[#2C5530]"
-                         />
-                         <Label htmlFor="payBackLoan2" className="cursor-pointer">Pay back loan with this deposit</Label>
-                       </div>
-                       {payBackLoan && (
-                         <div className="space-y-3 p-3 bg-[#FAFAF8] rounded-lg border border-[#E8EBE8]">
-                           <p className="text-xs text-[#5C665D]">Outstanding loan balance: {formatCurrency(userLoanBalance)}</p>
-                           {loans.filter(l => l.user_id === user?.id && l.status === 'approved' && !l.repaid).length > 0 ? (
-                             <>
-                               <div className="space-y-2">
-                                 <Label>Select Loan</Label>
-                                 <Select value={repayLoanId} onValueChange={setRepayLoanId}>
-                                   <SelectTrigger>
-                                     <SelectValue placeholder="Select a loan" />
-                                   </SelectTrigger>
-                                   <SelectContent>
-                                     {loans.filter(l => l.user_id === user?.id && l.status === 'approved' && !l.repaid).map((l) => {
-                                       const total_repaid = (l.amount_repaid || 0) + (l.interest_repaid || 0);
-                                       const outstanding = Math.max(0, (l.total_due || l.outstanding_balance || 0) - total_repaid);
-                                       return (
-                                         <SelectItem key={l.id} value={l.id}>
-                                           {formatCurrency(l.amount)} - {l.guarantor_name} (Due: {formatCurrency(outstanding)})
-                                         </SelectItem>
-                                       );
-                                     })}
-                                   </SelectContent>
-                                 </Select>
-                               </div>
-                               <div className="space-y-2">
-                                 <Label>Repayment Amount (UGX)</Label>
-                                 <Input
-                                   type="number"
-                                   value={loanRepaymentAmount}
-                                   onChange={(e) => setLoanRepaymentAmount(e.target.value)}
-                                   placeholder="0"
-                                   min="1"
-                                   max={repayLoanId ? (() => {
-                                     const loan = loans.find(l => l.id === repayLoanId);
-                                     if (!loan) return 0;
-                                     const total_repaid = (loan.amount_repaid || 0) + (loan.interest_repaid || 0);
-                                     return Math.max(0, (loan.total_due || loan.outstanding_balance || 0) - total_repaid);
-                                   })() : 0}
-                                 />
-                               </div>
-                             </>
-                           ) : (
-                             <p className="text-xs text-[#5C665D]">You have no active loans to repay.</p>
-                           )}
-                         </div>
-                       )}
-                       <Button type="submit" className="w-full bg-[#2C5530] hover:bg-[#214024] rounded-full">
-                         Submit Request
-                       </Button>
+                        </div>
+                        {depositType === 'loan_payment' && (
+                          <div className="space-y-3 p-3 bg-[#FAFAF8] rounded-lg border border-[#E8EBE8]">
+                            <p className="text-xs text-[#5C665D]">Outstanding loan balance: {formatCurrency(userLoanBalance)}</p>
+                            {loans.filter(l => l.user_id === user?.id && l.status === 'approved' && !l.repaid).length > 0 ? (
+                              <>
+                                <div className="space-y-2">
+                                  <Label>Select Loan</Label>
+                                  <Select value={repayLoanId} onValueChange={setRepayLoanId}>
+                                    <SelectTrigger>
+                                      <SelectValue placeholder="Select a loan" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {loans.filter(l => l.user_id === user?.id && l.status === 'approved' && !l.repaid).map((l) => {
+                                        const total_repaid = (l.amount_repaid || 0) + (l.interest_repaid || 0);
+                                        const outstanding = Math.max(0, (l.total_due || l.outstanding_balance || 0) - total_repaid);
+                                        return (
+                                          <SelectItem key={l.id} value={l.id}>
+                                            {formatCurrency(l.amount)} - {l.guarantor_name} (Due: {formatCurrency(outstanding)})
+                                          </SelectItem>
+                                        );
+                                      })}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div className="space-y-2">
+                                  <Label>Repayment Amount (UGX)</Label>
+                                  <Input
+                                    type="number"
+                                    value={loanRepaymentAmount}
+                                    onChange={(e) => setLoanRepaymentAmount(e.target.value)}
+                                    placeholder="0"
+                                    min="1"
+                                    max={repayLoanId ? (() => {
+                                      const loan = loans.find(l => l.id === repayLoanId);
+                                      if (!loan) return 0;
+                                      const total_repaid = (loan.amount_repaid || 0) + (loan.interest_repaid || 0);
+                                      return Math.max(0, (loan.total_due || loan.outstanding_balance || 0) - total_repaid);
+                                    })() : 0}
+                                  />
+                                </div>
+                              </>
+                            ) : (
+                              <p className="text-xs text-[#5C665D]">You have no active loans to repay.</p>
+                            )}
+                          </div>
+                        )}
+                        <Button type="submit" className="w-full bg-[#2C5530] hover:bg-[#214024] rounded-full">
+                          Submit Request
+                        </Button>
                     </form>
                   </DialogContent>
                 </Dialog>
@@ -1755,7 +1501,7 @@ const Dashboard = () => {
                             {new Date(d.created_at).toLocaleDateString()}
                           </td>
                           <td className="py-4 px-6 text-[#1E231F]">
-                            {d.deposit_type === 'development_fee' ? 'Development' : 'Savings'}
+                            {d.deposit_type === 'development_fee' ? 'Development' : d.deposit_type === 'loan_payment' ? 'Loan Payment' : 'Savings'}
                           </td>
                           <td className="py-4 px-6 font-semibold text-[#347242] font-numbers">
                             {formatCurrency(d.amount)}
@@ -2062,10 +1808,10 @@ const Dashboard = () => {
                 )}
                  <Dialog open={withdrawalDialogOpen} onOpenChange={setWithdrawalDialogOpen}>
                    <DialogTrigger asChild>
-                     <Button variant="outline" className="border-[#E8EBE8] rounded-full">
-                       <Plus className="w-4 h-4 mr-2" />
-                       Request Withdrawal
-                     </Button>
+                      <Button className="bg-[#5C665D] hover:bg-[#4A584A] rounded-full text-white">
+                        <Plus className="w-4 h-4 mr-2" />
+                        Request Withdrawal
+                      </Button>
                    </DialogTrigger>
                    <DialogContent className="sm:max-w-md">
                     <DialogHeader>
@@ -2614,6 +2360,35 @@ const Dashboard = () => {
               </div>
             </div>
 
+            <div className="flex items-center gap-1 bg-[#F5F7F5] p-1 rounded-xl w-fit">
+              <button 
+                onClick={() => setActiveFinancialTab('overview')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition ${activeFinancialTab === 'overview' ? 'bg-white text-[#1E231F] shadow-sm' : 'text-[#5C665D] hover:text-[#1E231F]'}`}
+              >
+                Financials
+              </button>
+              <button 
+                onClick={() => setActiveFinancialTab('deposits')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition ${activeFinancialTab === 'deposits' ? 'bg-white text-[#1E231F] shadow-sm' : 'text-[#5C665D] hover:text-[#1E231F]'}`}
+              >
+                Deposits
+              </button>
+              <button 
+                onClick={() => setActiveFinancialTab('loans')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition ${activeFinancialTab === 'loans' ? 'bg-white text-[#1E231F] shadow-sm' : 'text-[#5C665D] hover:text-[#1E231F]'}`}
+              >
+                Loans
+              </button>
+              <button 
+                onClick={() => setActiveFinancialTab('withdrawals')}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition ${activeFinancialTab === 'withdrawals' ? 'bg-white text-[#1E231F] shadow-sm' : 'text-[#5C665D] hover:text-[#1E231F]'}`}
+              >
+                Withdrawals
+              </button>
+            </div>
+
+            {activeFinancialTab === 'overview' && (
+            <div className="space-y-6">
             {/* Total Group Balance Card */}
             <Card className="bg-[#2C5530] border-none shadow-lg">
               <CardContent className="p-6">
@@ -2777,56 +2552,10 @@ const Dashboard = () => {
                 </CardContent>
               </Card>
             </div>
+            </div>
+            )}
 
-            {/* Petty Cash History */}
-            <Card className="bg-white border border-[#E8EBE8] shadow-sm">
-              <CardHeader>
-                <CardTitle className="font-['Manrope'] text-[#1E231F] flex items-center gap-2">
-                  <Receipt className="w-5 h-5 text-[#D48C70]" />
-                  Petty Cash Expenses
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {financials?.petty_cash_items?.length > 0 ? (
-                  <div className="space-y-3">
-                    {financials.petty_cash_items.map((item) => (
-                      <div key={item.id} className="flex items-center justify-between p-3 bg-[#FAFAF8] rounded-xl">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 bg-[#D05A49]/10 rounded-full flex items-center justify-center">
-                            <Receipt className="w-5 h-5 text-[#D05A49]" />
-                          </div>
-                          <div>
-                            <p className="font-medium text-[#1E231F]">{item.description}</p>
-                            <p className="text-xs text-[#5C665D]">
-                              {item.category} • {item.added_by_name} • {new Date(item.created_at).toLocaleDateString()}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <span className="font-semibold text-[#D05A49] font-numbers">
-                            -{formatCurrency(item.amount)}
-                          </span>
-                          {isTreasurer && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => handleDeletePettyCash(item.id)}
-                              className="text-[#D05A49] hover:bg-[#D05A49]/10"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-center text-[#5C665D] py-8">No petty cash expenses recorded</p>
-                )}
-              </CardContent>
-            </Card>
-
-            {/* Deposits */}
+            {activeFinancialTab === 'deposits' && (
             <Card className="bg-white border border-[#E8EBE8] shadow-sm">
               <CardHeader>
                 <CardTitle className="font-['Manrope'] text-[#1E231F] flex items-center gap-2">
@@ -2853,7 +2582,7 @@ const Dashboard = () => {
                             {new Date(d.created_at).toLocaleDateString()}
                           </td>
                           <td className="py-4 px-6 text-[#1E231F]">
-                            {d.deposit_type === 'development_fee' ? 'Development' : 'Savings'}
+                            {d.deposit_type === 'development_fee' ? 'Development' : d.deposit_type === 'loan_payment' ? 'Loan Payment' : 'Savings'}
                           </td>
                           <td className="py-4 px-6 font-semibold text-[#347242] font-numbers">
                             {formatCurrency(d.amount)}
@@ -2872,8 +2601,60 @@ const Dashboard = () => {
                 </div>
               </CardContent>
             </Card>
+            )}
 
-            {/* Loans */}
+            {activeFinancialTab === 'loans' && (
+            <div className="space-y-6">
+            {/* Loans Awaiting Your Guarantor Approval */}
+            {pendingGuarantorLoans.length > 0 && (
+              <Card className="bg-[#D48C70]/10 border border-[#D48C70]/30" data-testid="guarantor-pending-section">
+                <CardHeader>
+                  <CardTitle className="text-[#1E231F] flex items-center gap-2 text-lg">
+                    <UserCheck className="w-5 h-5 text-[#D48C70]" />
+                    Awaiting Your Guarantor Approval
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {pendingGuarantorLoans.map((l) => (
+                    <div key={l.id} className="bg-white p-4 rounded-xl border border-[#E8EBE8]">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <p className="font-semibold text-[#1E231F]">{l.user_name}</p>
+                          <p className="text-sm text-[#5C665D]">
+                            Amount: <span className="font-bold text-[#D48C70]">{formatCurrency(l.amount)}</span>
+                            {' • '}
+                            Total Due: <span className="font-bold">{formatCurrency(l.total_due || l.outstanding_balance || l.initial_total_due || l.amount * 1.03)}</span>
+                          </p>
+                          {l.reason && <p className="text-xs text-[#5C665D] mt-1 italic">"{l.reason}"</p>}
+                        </div>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            onClick={() => handleGuarantorApproval(l.id, true)}
+                            data-testid={`guarantor-approve-${l.id}`}
+                            className="bg-[#347242] hover:bg-[#2C5530] rounded-full"
+                          >
+                            <CheckCircle className="w-4 h-4 mr-1" />
+                            Accept
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={() => handleGuarantorApproval(l.id, false)}
+                            data-testid={`guarantor-reject-${l.id}`}
+                            variant="outline"
+                            className="border-[#D05A49] text-[#D05A49] hover:bg-[#D05A49]/10 rounded-full"
+                          >
+                            <XCircle className="w-4 h-4 mr-1" />
+                            Decline
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            )}
+
             <Card className="bg-white border border-[#E8EBE8] shadow-sm">
               <CardHeader>
                 <CardTitle className="font-['Manrope'] text-[#1E231F] flex items-center gap-2">
@@ -2926,8 +2707,10 @@ const Dashboard = () => {
                 </div>
               </CardContent>
             </Card>
+            </div>
+            )}
 
-            {/* Withdrawals */}
+            {activeFinancialTab === 'withdrawals' && (
             <Card className="bg-white border border-[#E8EBE8] shadow-sm">
               <CardHeader>
                 <CardTitle className="font-['Manrope'] text-[#1E231F] flex items-center gap-2">
@@ -2971,6 +2754,7 @@ const Dashboard = () => {
                 </div>
               </CardContent>
             </Card>
+            )}
           </div>
         )}
 
