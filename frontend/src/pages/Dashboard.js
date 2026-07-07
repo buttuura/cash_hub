@@ -114,6 +114,9 @@ const Dashboard = () => {
   const [depositType, setDepositType] = useState('savings');
   const [depositTargetUserId, setDepositTargetUserId] = useState(null);
   const [depositDescription, setDepositDescription] = useState('');
+  const [loanAmount, setLoanAmount] = useState('');
+  const [loanGuarantor, setLoanGuarantor] = useState('');
+  const [loanReason, setLoanReason] = useState('');
   const [repayLoanId, setRepayLoanId] = useState('');
   const [loanRepaymentAmount, setLoanRepaymentAmount] = useState('');
   const [newGroupBalance, setNewGroupBalance] = useState('');
