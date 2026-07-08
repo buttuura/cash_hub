@@ -306,10 +306,11 @@ function ProductDetailPage() {
   };
 
   const handleShare = async () => {
+    const previewUrl = `${window.location.origin}/product/${product?.id || productId}`;
     const shareData = {
       title: product.title,
       text: `Check out this amazing ${product.title} on Class One Savings Group — a great deal you won't want to miss!`,
-      url: window.location.href,
+      url: previewUrl,
     };
 
     const shareImageUrl = productImageUrl || `${window.location.origin}/classOne-logo.png`;

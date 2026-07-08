@@ -7,7 +7,7 @@ load_dotenv(ROOT_DIR / '.env')
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Depends, Form, File, UploadFile, Body, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
 from motor.motor_asyncio import AsyncIOMotorClient
 from bson import ObjectId
 import os
@@ -2576,6 +2576,68 @@ if static_dir.exists():
 
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
+
+    @app.get("/product/{product_id}")
+    async def serve_product_preview(product_id: str, request: Request):
+        from bson import ObjectId
+        from urllib.parse import quote
+
+        if request.query_params.get("preview") == "1":
+            index_path = static_dir / "index.html"
+            if index_path.exists():
+                return FileResponse(str(index_path))
+            raise HTTPException(status_code=404, detail="Not found")
+
+        product = None
+        if ObjectId.is_valid(product_id):
+            product = await db.products.find_one({"_id": ObjectId(product_id)})
+
+        if product:
+            product["id"] = str(product["_id"])
+            product.pop("_id", None)
+
+        base_url = str(request.base_url).rstrip("/")
+        product_url = f"{base_url}/product/{product_id}?preview=1"
+        title = product.get("title", "Class One Savings Group") if product else "Class One Savings Group"
+        description = (product.get("description") or f"Discover {title} on Class One Savings Group.").strip()
+        image_url = product.get("image_url") or (product.get("image_urls") or [None])[0] if product else None
+        if image_url and not str(image_url).startswith(("http://", "https://", "data:")):
+            image_url = f"{base_url}/{image_url.lstrip('/')}"
+        elif not image_url:
+            image_url = f"{base_url}/classOne-logo.png"
+
+        escaped_title = title.replace("&", "&amp;").replace("\"", "&quot;")
+        escaped_description = description.replace("&", "&amp;").replace("\"", "&quot;")
+        escaped_image_url = str(image_url).replace("&", "&amp;")
+        escaped_product_url = product_url.replace("&", "&amp;")
+
+        html = f"""<!doctype html>
+<html lang=\"en\">
+  <head>
+    <meta charset=\"utf-8\" />
+    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
+    <title>{escaped_title} | Class One Savings Group</title>
+    <meta name=\"description\" content=\"{escaped_description}\" />
+    <meta property=\"og:title\" content=\"{escaped_title} | Class One Savings Group\" />
+    <meta property=\"og:description\" content=\"{escaped_description}\" />
+    <meta property=\"og:type\" content=\"product\" />
+    <meta property=\"og:url\" content=\"{escaped_product_url}\" />
+    <meta property=\"og:image\" content=\"{escaped_image_url}\" />
+    <meta property=\"og:image:secure_url\" content=\"{escaped_image_url}\" />
+    <meta property=\"og:image:alt\" content=\"{escaped_title} on Class One Savings Group\" />
+    <meta name=\"twitter:card\" content=\"summary_large_image\" />
+    <meta name=\"twitter:title\" content=\"{escaped_title} | Class One Savings Group\" />
+    <meta name=\"twitter:description\" content=\"{escaped_description}\" />
+    <meta name=\"twitter:image\" content=\"{escaped_image_url}\" />
+    <meta name=\"twitter:image:alt\" content=\"{escaped_title} on Class One Savings Group\" />
+    <meta http-equiv=\"refresh\" content=\"0;url={escaped_product_url}\" />
+    <script>window.location.replace('{escaped_product_url}');</script>
+  </head>
+  <body>
+    <p>Redirecting to the product page…</p>
+  </body>
+</html>"""
+        return HTMLResponse(content=html)
     
     @app.head("/{full_path:path}")
     @app.get("/{full_path:path}")
