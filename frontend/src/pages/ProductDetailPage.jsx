@@ -15,7 +15,18 @@ const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
 
 function getImageUrl(imageUrl) {
   if (!imageUrl) return null;
-  return imageUrl.startsWith('http') ? imageUrl : `${API_URL}${imageUrl}`;
+  if (imageUrl.startsWith('data:image/')) return imageUrl;
+  if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://') || imageUrl.startsWith('//')) {
+    return imageUrl.startsWith('//') ? `https:${imageUrl}` : imageUrl;
+  }
+
+  const normalizedBase = (process.env.REACT_APP_BACKEND_URL || '').trim();
+  if (normalizedBase) {
+    const base = normalizedBase.replace(/\/$/, '');
+    return `${base}/${imageUrl.replace(/^\/+/, '')}`;
+  }
+
+  return `${window.location.origin}/${imageUrl.replace(/^\/+/, '')}`;
 }
 
 function ProductDetailPage() {
@@ -136,12 +147,15 @@ function ProductDetailPage() {
     setMetaTag('meta[property="og:title"]', 'property', 'og:title', title);
     setMetaTag('meta[property="og:description"]', 'property', 'og:description', description);
     setMetaTag('meta[property="og:image"]', 'property', 'og:image', imageUrl);
+    setMetaTag('meta[property="og:image:secure_url"]', 'property', 'og:image:secure_url', imageUrl);
+    setMetaTag('meta[property="og:image:alt"]', 'property', 'og:image:alt', `${product.title} on Class One Savings Group`);
     setMetaTag('meta[property="og:url"]', 'property', 'og:url', window.location.href);
     setMetaTag('meta[property="og:type"]', 'property', 'og:type', 'product');
     setMetaTag('meta[name="twitter:card"]', 'name', 'twitter:card', 'summary_large_image');
     setMetaTag('meta[name="twitter:title"]', 'name', 'twitter:title', title);
     setMetaTag('meta[name="twitter:description"]', 'name', 'twitter:description', description);
     setMetaTag('meta[name="twitter:image"]', 'name', 'twitter:image', imageUrl);
+    setMetaTag('meta[name="twitter:image:alt"]', 'name', 'twitter:image:alt', `${product.title} on Class One Savings Group`);
   }, [product, productImageUrl]);
 
   const goToPrev = (e) => {
@@ -298,12 +312,14 @@ function ProductDetailPage() {
       url: window.location.href,
     };
 
-    if (productImageUrl && navigator.canShare && navigator.canShare({ ...shareData, files: [] })) {
+    const shareImageUrl = productImageUrl || `${window.location.origin}/classOne-logo.png`;
+
+    if (typeof File !== 'undefined' && typeof navigator !== 'undefined' && navigator.canShare && navigator.canShare({ files: [new File(['test'], 'test.png', { type: 'image/png' })] })) {
       try {
-        const response = await fetch(productImageUrl);
+        const response = await fetch(shareImageUrl, { mode: 'cors' });
         if (!response.ok) throw new Error('Failed to fetch product image');
         const blob = await response.blob();
-        const file = new File([blob], 'product-image.jpg', { type: blob.type || 'image/jpeg' });
+        const file = new File([blob], `product-${product?.id || 'share'}.jpg`, { type: blob.type || 'image/jpeg' });
         if (navigator.canShare({ ...shareData, files: [file] })) {
           await navigator.share({ ...shareData, files: [file] });
           return;
