@@ -770,7 +770,6 @@ const Dashboard = () => {
     : [
         { id: 'overview', label: 'Overview', icon: Wallet },
         { id: 'financials', label: 'Financials', icon: BarChart3 },
-        { id: 'petty-cash', label: 'Petty Cash', icon: Receipt },
         { id: 'members', label: 'Members', icon: Users },
         { id: 'marketplace', label: 'Orders', icon: ShoppingCart },
       ];
@@ -2396,14 +2395,12 @@ const Dashboard = () => {
                 >
                   Withdrawals
                 </button>
-                {isAdmin && (
-                  <button 
-                    onClick={() => setActiveFinancialTab('petty-cash')}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition ${activeFinancialTab === 'petty-cash' ? 'bg-white text-[#1E231F] shadow-sm' : 'text-[#5C665D] hover:text-[#1E231F]'}`}
-                  >
-                    Petty Cash
-                  </button>
-                )}
+                <button 
+                  onClick={() => setActiveFinancialTab('petty-cash')}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition ${activeFinancialTab === 'petty-cash' ? 'bg-white text-[#1E231F] shadow-sm' : 'text-[#5C665D] hover:text-[#1E231F]'}`}
+                >
+                  Petty Cash
+                </button>
               </div>
             </div>
 
@@ -2830,13 +2827,74 @@ const Dashboard = () => {
             </Card>
             )}
 
-            {activeFinancialTab === 'petty-cash' && isAdmin && (
+            {activeFinancialTab === 'petty-cash' && (
             <Card className="bg-white border border-[#E8EBE8] shadow-sm">
-              <CardHeader>
+              <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <CardTitle className="font-['Manrope'] text-[#1E231F] flex items-center gap-2">
                   <Receipt className="w-5 h-5 text-[#D48C70]" />
                   Petty Cash Expenses
                 </CardTitle>
+                {isAdmin && (
+                  <Dialog open={pettyCashDialogOpen} onOpenChange={setPettyCashDialogOpen}>
+                    <DialogTrigger asChild>
+                      <Button className="bg-[#D48C70] hover:bg-[#BD7B60] rounded-full">
+                        <Plus className="w-4 h-4 mr-2" />
+                        Add Petty Cash
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="sm:max-w-md">
+                      <DialogHeader>
+                        <DialogTitle className="text-[#1E231F]">Add Petty Cash Expense</DialogTitle>
+                        <DialogDescription className="text-[#5C665D]">
+                          Record group expenses (stationary, transport, etc.)
+                        </DialogDescription>
+                      </DialogHeader>
+                      <form onSubmit={handleAddPettyCash} className="space-y-4 mt-4">
+                        <div className="space-y-2">
+                          <Label className="text-[#1E231F]">Amount (UGX)</Label>
+                          <Input
+                            type="number"
+                            value={pettyCashAmount}
+                            onChange={(e) => setPettyCashAmount(e.target.value)}
+                            placeholder="5000"
+                            required
+                            min="1"
+                            className="bg-white border-[#E8EBE8] text-[#1E231F]"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-[#1E231F]">Category</Label>
+                          <Select value={pettyCashCategory} onValueChange={setPettyCashCategory}>
+                            <SelectTrigger className="bg-white">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="general">General</SelectItem>
+                              <SelectItem value="transport">Transport</SelectItem>
+                              <SelectItem value="stationary">Stationary</SelectItem>
+                              <SelectItem value="refreshments">Refreshments</SelectItem>
+                              <SelectItem value="communication">Communication</SelectItem>
+                              <SelectItem value="other">Other</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-[#1E231F]">Description</Label>
+                          <Textarea
+                            value={pettyCashDescription}
+                            onChange={(e) => setPettyCashDescription(e.target.value)}
+                            placeholder="What was the expense for?"
+                            required
+                            className="bg-white border-[#E8EBE8] text-[#1E231F]"
+                          />
+                        </div>
+                        <Button type="submit" className="w-full bg-[#D48C70] hover:bg-[#BD7B60] rounded-full">
+                          Add Expense
+                        </Button>
+                      </form>
+                    </DialogContent>
+                  </Dialog>
+                )}
               </CardHeader>
               <CardContent className="p-0">
                 <div className="overflow-x-auto">
@@ -2847,7 +2905,7 @@ const Dashboard = () => {
                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Amount</th>
                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Category</th>
                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Description</th>
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Action</th>
+                        {isAdmin && <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Action</th>}
                       </tr>
                     </thead>
                     <tbody>
@@ -2863,16 +2921,18 @@ const Dashboard = () => {
                             {pc.category ? pc.category.charAt(0).toUpperCase() + pc.category.slice(1) : '-'}
                           </td>
                           <td className="py-4 px-6 text-[#5C665D]">{pc.description || '-'}</td>
-                          <td className="py-4 px-6">
-                            <button
-                              onClick={() => handleDeleteRecord('petty-cash', pc.id)}
-                              data-testid={`delete-petty-cash-${pc.id}`}
-                              title="Delete petty cash entry"
-                              className="p-1.5 rounded-full text-[#D05A49] hover:bg-[#D05A49]/10 transition-colors"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </td>
+                          {isAdmin && (
+                            <td className="py-4 px-6">
+                              <button
+                                onClick={() => handleDeleteRecord('petty-cash', pc.id)}
+                                data-testid={`delete-petty-cash-${pc.id}`}
+                                title="Delete petty cash entry"
+                                className="p-1.5 rounded-full text-[#D05A49] hover:bg-[#D05A49]/10 transition-colors"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </td>
+                          )}
                         </tr>
                       ))}
                     </tbody>

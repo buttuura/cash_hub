@@ -105,6 +105,45 @@ function ProductDetailPage() {
     allImages.push(product.imageUrl);
   }
 
+  const productImageUrl = getImageUrl(allImages[0]) || null;
+
+  useEffect(() => {
+    if (!product) {
+      document.title = 'Class One Savings Group';
+      return;
+    }
+
+    const title = `${product.title} | Class One Savings Group`;
+    const description = product.description || `Discover ${product.title} on Class One Savings Group.`;
+    const imageUrl = productImageUrl || `${window.location.origin}/classOne-logo.png`;
+
+    const setMetaTag = (selector, attrName, attrValue, content) => {
+      let tag = document.querySelector(selector);
+      if (!tag) {
+        tag = document.createElement('meta');
+        if (selector.startsWith('meta[')) {
+          tag.setAttribute(attrName, attrValue);
+        } else {
+          tag.setAttribute('name', attrValue);
+        }
+        document.head.appendChild(tag);
+      }
+      tag.setAttribute('content', content);
+    };
+
+    document.title = title;
+    setMetaTag('meta[name="description"]', 'name', 'description', description);
+    setMetaTag('meta[property="og:title"]', 'property', 'og:title', title);
+    setMetaTag('meta[property="og:description"]', 'property', 'og:description', description);
+    setMetaTag('meta[property="og:image"]', 'property', 'og:image', imageUrl);
+    setMetaTag('meta[property="og:url"]', 'property', 'og:url', window.location.href);
+    setMetaTag('meta[property="og:type"]', 'property', 'og:type', 'product');
+    setMetaTag('meta[name="twitter:card"]', 'name', 'twitter:card', 'summary_large_image');
+    setMetaTag('meta[name="twitter:title"]', 'name', 'twitter:title', title);
+    setMetaTag('meta[name="twitter:description"]', 'name', 'twitter:description', description);
+    setMetaTag('meta[name="twitter:image"]', 'name', 'twitter:image', imageUrl);
+  }, [product, productImageUrl]);
+
   const goToPrev = (e) => {
     e.preventDefault();
     setCurrentImgIndex((prev) => (prev === 0 ? allImages.length - 1 : prev - 1));
@@ -255,14 +294,14 @@ function ProductDetailPage() {
   const handleShare = async () => {
     const shareData = {
       title: product.title,
-      text: product.description,
+      text: `Check out this amazing ${product.title} on Class One Savings Group — a great deal you won't want to miss!`,
       url: window.location.href,
     };
 
-    const firstImage = allImages[0];
-    if (firstImage && navigator.canShare && navigator.canShare({ ...shareData, files: [] })) {
+    if (productImageUrl && navigator.canShare && navigator.canShare({ ...shareData, files: [] })) {
       try {
-        const response = await fetch(getImageUrl(firstImage));
+        const response = await fetch(productImageUrl);
+        if (!response.ok) throw new Error('Failed to fetch product image');
         const blob = await response.blob();
         const file = new File([blob], 'product-image.jpg', { type: blob.type || 'image/jpeg' });
         if (navigator.canShare({ ...shareData, files: [file] })) {
