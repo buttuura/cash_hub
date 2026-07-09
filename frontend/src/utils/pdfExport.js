@@ -193,9 +193,10 @@ y += 8;
   if (isGuaranteed) {
    const borrowerName = loanData?.loan_name || '____';
    const loanAmount = fmtUGX(loanData?.amount);
-   const loanPurpose = loanData?.loan_purpose || '____';
+   const loanPurpose = loanData?.purpose || loanData?.loan_purpose || loanData?.loanPurpose || 'N/A';
+   const officerNumber = officer?.code || loanData?.officer_code || loanData?.officerCode || 'N/A';
    
-   const p1 = `This loan agreement is made between Class One Group, represented by ${officer?.name || 'the loans officer'}, and Borrower ${borrowerName} for a principal amount of ${loanAmount}.`;
+   const p1 = `This loan agreement is made between Class One Group, represented by ${officer?.name || 'the loans officer'} (${officerNumber}), and Borrower ${borrowerName} for a principal amount of ${loanAmount}.`;
    const p2 = `Purpose of loan: ${loanPurpose}.`;
    const p3 = `The borrower agrees to repay the loan as per the terms set by Class One Group.`;
 
@@ -205,6 +206,13 @@ y += 8;
    doc.text(p2Lines, 14, y); y += lineHeight * p2Lines.length + 2;
    const p3Lines = doc.splitTextToSize(p3, 180);
    doc.text(p3Lines, 14, y); y += lineHeight * p3Lines.length + 4;
+
+   doc.setFont(undefined, 'bold');
+   doc.setFontSize(11);
+   doc.text(`Loan officer code: ${officerNumber}`, 14, y);
+   y += 6;
+   doc.text(`Loan purpose: ${loanPurpose}`, 14, y);
+   y += 10;
  } else {
    const sellerName = loanData?.loan_name || loanData?.user_name || '____';
    const sellerAddress = loanData?.loan_phone ||  loanData?.loan_email || '____';
@@ -272,16 +280,25 @@ if (collateralImageData) {
   // 6. SIGNATURES
   y += 4;
   doc.setFontSize(10);
-  doc.text(`Date: ${new Date().toLocaleDateString()}`, 14, y); y += 12;
-  
-  doc.text(isCollateralBacked ? 'Seller Signature: ___________________' : 'Borrower Signature: ____', 14, y);
-  doc.text('Buyer Signature: ____________________', 110, y);
-  y += 10;
-  
-  if (isCollateralBacked) {
+  doc.text(`Date: ${new Date().toLocaleDateString()}`, 14, y);
+  y += 12;
+
+  if (isGuaranteed) {
+    doc.text('Borrower Signature: ________________________________', 14, y);
+    doc.text('Loan Officer Signature: ___________________________', 14, y + 10);
+    y += 20;
     doc.setFontSize(9);
-    doc.text('Seller Name: ________________________', 14, y);
-    doc.text('Buyer Name: ________________________', 110, y);
+    doc.text('Borrower Name: _________________________________', 14, y);
+    doc.text('Officer Name: __________________________________', 14, y + 8);
+    y += 12;
+    doc.text('Officer Code: _________________________________', 14, y);
+  } else {
+    doc.text('Seller Signature: ________________________________', 14, y);
+    doc.text('Buyer Signature: _________________________________', 14, y + 10);
+    y += 20;
+    doc.setFontSize(9);
+    doc.text('Seller Name: _________________________________', 14, y);
+    doc.text('Buyer Name: _________________________________', 14, y + 8);
   }
 
   if (options.download !== false) {
