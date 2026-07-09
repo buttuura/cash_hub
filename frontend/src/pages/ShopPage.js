@@ -14,6 +14,7 @@ import { ShoppingCart, FastForward, Cpu, Sparkles, ShoppingBag, HardHat, PenTool
 import ProductCard from '../components/ProductCard';
 import { exportLoanAgreementPDF } from '../utils/pdfExport';
 import { OFFICERS } from '../data/officers';
+import { resolveImageUrl } from '../lib/utils';
 
 const ICON_MAP = {
   'food': ShoppingBag,
@@ -407,8 +408,7 @@ const ShopPage = () => {
   };
 
   const getImageUrl = (imageUrl) => {
-    if (!imageUrl) return null;
-    return imageUrl.startsWith('http') ? imageUrl : `${API_URL}${imageUrl}`;
+    return resolveImageUrl(imageUrl, API_URL);
   };
 
   useEffect(() => {

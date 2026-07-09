@@ -25,6 +25,7 @@ import {
 import { Toaster, toast } from 'sonner';
 import { exportLoanAgreementPDF, exportSellerReceiptPDF, exportOrderReceiptPDF } from '../utils/pdfExport';
 import { OFFICERS } from '../data/officers';
+import { resolveImageUrl } from '../lib/utils';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
 
@@ -214,8 +215,7 @@ const ServicesManagement = () => {
   };
 
   const getImageUrl = (imageUrl) => {
-    if (!imageUrl) return null;
-    return imageUrl.startsWith('http') ? imageUrl : `${API_URL}${imageUrl}`;
+    return resolveImageUrl(imageUrl, API_URL);
   };
 
   const exportOrdersPDF = () => {

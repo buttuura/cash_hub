@@ -10,23 +10,12 @@ import { Label } from '../components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../components/ui/dialog';
 import { Toaster, toast } from 'sonner';
 import { ShoppingCart, Heart, Share2, ChevronLeft, ChevronRight, MapPin, Shield, ArrowLeft, X } from 'lucide-react';
+import { resolveImageUrl } from '../lib/utils';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
 
 function getImageUrl(imageUrl) {
-  if (!imageUrl) return null;
-  if (imageUrl.startsWith('data:image/')) return imageUrl;
-  if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://') || imageUrl.startsWith('//')) {
-    return imageUrl.startsWith('//') ? `https:${imageUrl}` : imageUrl;
-  }
-
-  const normalizedBase = (process.env.REACT_APP_BACKEND_URL || '').trim();
-  if (normalizedBase) {
-    const base = normalizedBase.replace(/\/$/, '');
-    return `${base}/${imageUrl.replace(/^\/+/, '')}`;
-  }
-
-  return `${window.location.origin}/${imageUrl.replace(/^\/+/, '')}`;
+  return resolveImageUrl(imageUrl, process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000');
 }
 
 function ProductDetailPage() {

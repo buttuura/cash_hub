@@ -14,6 +14,7 @@ import { ShoppingCart, Search, Menu, X, Sparkles } from 'lucide-react';
 import ProductCard from '../components/ProductCard';
 import { exportLoanAgreementPDF } from '../utils/pdfExport';
 import { OFFICERS } from '../data/officers';
+import { resolveImageUrl } from '../lib/utils';
 
 const ICON_MAP = {
   'food': Sparkles,
@@ -276,7 +277,7 @@ const CategoryPage = () => {
   };
 
   const handleOpenPurchase = (product) => { setPurchaseProduct(product); setPurchaseOpen(true); };
-  const getImageUrl = (imageUrl) => { if (!imageUrl) return null; return imageUrl.startsWith('http') ? imageUrl : `${API_URL}${imageUrl}`; };
+  const getImageUrl = (imageUrl) => { return resolveImageUrl(imageUrl, API_URL); };
 
   const category = categories.find(c => c.id === categoryId);
   const categoryProducts = products.filter(p => p.category === categoryId || (categoryId === 'all'));

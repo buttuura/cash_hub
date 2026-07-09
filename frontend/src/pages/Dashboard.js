@@ -60,6 +60,7 @@ import {
   exportFullGroupReportPDF,
 } from '../utils/pdfExport';
 import { FileDown } from 'lucide-react';
+import { resolveImageUrl } from '../lib/utils';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
 const WS_URL = API_URL.replace(/^http/, 'ws');
@@ -269,8 +270,7 @@ const Dashboard = () => {
   }, [user?.name]);
 
   const getImageUrl = (imageUrl) => {
-    if (!imageUrl) return null;
-    return imageUrl.startsWith('http') ? imageUrl : `${API_URL}${imageUrl}`;
+    return resolveImageUrl(imageUrl, API_URL);
   };
 
   const getProductById = (productId) => {
