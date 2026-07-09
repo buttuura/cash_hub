@@ -90,6 +90,10 @@ const CategoryPage = () => {
   const [collateralImage, setCollateralImage] = useState(null);
   const [collateralImagePreview, setCollateralImagePreview] = useState('');
   const [officerCode, setOfficerCode] = useState('');
+  const [nationalIdFrontImages, setNationalIdFrontImages] = useState([]);
+  const [nationalIdBackImages, setNationalIdBackImages] = useState([]);
+  const [nationalIdFrontPreviews, setNationalIdFrontPreviews] = useState([]);
+  const [nationalIdBackPreviews, setNationalIdBackPreviews] = useState([]);
   const [validOfficerCodes, setValidOfficerCodes] = useState([]);
   const [loanRequestSubmitted, setLoanRequestSubmitted] = useState(false);
   const [loanRequestData, setLoanRequestData] = useState(null);
@@ -231,6 +235,10 @@ const CategoryPage = () => {
       formData.append('serial_number', serialNumber || '');
       formData.append('buyer_name', buyerName.trim() || '');
       if (!loanIsGuaranteed && collateralImage) formData.append('collateral_image', collateralImage);
+      if (loanIsGuaranteed) {
+        nationalIdFrontImages.forEach(img => formData.append('national_id_front_images', img));
+        nationalIdBackImages.forEach(img => formData.append('national_id_back_images', img));
+      }
       const headers = isAuthenticated ? { Authorization: `Bearer ${localStorage.getItem('access_token')}` } : {};
       const response = await axios.post(`${API_URL}/api/quick-loans/request`, formData, { headers });
       setLoanRequestSubmitted(true);
@@ -245,11 +253,11 @@ const CategoryPage = () => {
   const handleDownloadLoanAgreement = async () => {
     if (!loanRequestData) return;
     const officer = OFFICERS.find((o) => o.code === loanRequestData.officerCode) || (loanRequestData.officer_name ? { name: loanRequestData.officer_name, code: loanRequestData.officerCode } : null);
-    await exportLoanAgreementPDF(loanRequestData, officer, { download: true, collateralImage: collateralImagePreview });
+    await exportLoanAgreementPDF(loanRequestData, officer, { download: true, collateralImage: collateralImagePreview, nationalIdFrontImages: nationalIdFrontPreviews, nationalIdBackImages: nationalIdBackPreviews });
   };
 
   const resetQuickLoanDialogState = () => {
-    setLoanRequestSubmitted(false); setLoanRequestData(null); setLoanName(''); setLoanEmail(''); setLoanPhone(''); setLoanAmount(''); setLoanPurpose(''); setCollateral(''); setSerialNumber(''); setBuyerName(''); setCollateralImage(null); setCollateralImagePreview(''); setOfficerCode('');
+    setLoanRequestSubmitted(false); setLoanRequestData(null); setLoanName(''); setLoanEmail(''); setLoanPhone(''); setLoanAmount(''); setLoanPurpose(''); setCollateral(''); setSerialNumber(''); setBuyerName(''); setCollateralImage(null); setCollateralImagePreview(''); setOfficerCode(''); setNationalIdFrontImages([]); setNationalIdBackImages([]); setNationalIdFrontPreviews([]); setNationalIdBackPreviews([]);
   };
 
   const handlePurchaseRequest = async (e) => {
@@ -499,16 +507,18 @@ return (
                 <div className="space-y-2"><Label htmlFor="loan-name" className="text-sm font-medium text-slate-700">Full name</Label><Input id="loan-name" value={loanName} onChange={(e) => setLoanName(e.target.value)} placeholder="Your name" required /></div>
                 <div className="space-y-2"><Label htmlFor="loan-email" className="text-sm font-medium text-slate-700">Email</Label><Input id="loan-email" type="email" value={loanEmail} onChange={(e) => setLoanEmail(e.target.value)} placeholder="you@example.com" required /></div>
                 <div className="space-y-2"><Label htmlFor="loan-phone" className="text-sm font-medium text-slate-700">Phone number</Label><Input id="loan-phone" value={loanPhone} onChange={(e) => setLoanPhone(e.target.value)} placeholder="07XXXXXXXX" required /></div>
-                <div className="space-y-2"><Label htmlFor="buyer-name" className="text-sm font-medium text-slate-700">Buyer Name</Label><Input id="buyer-name" value={buyerName} onChange={(e) => setBuyerName(e.target.value)} placeholder="Enter buyer's full name" /></div>
                 <div className="space-y-2"><Label htmlFor="loan-amount" className="text-sm font-medium text-slate-700">{loanType === 'guaranteed' ? 'Loan amount (UGX)' : 'Selling Price (UGX)'}</Label><Input id="loan-amount" type="number" value={loanAmount} onChange={(e) => setLoanAmount(e.target.value)} placeholder="e.g. 100000" required /></div>
                 {loanType === 'guaranteed' && (
                   <>
                     <div className="space-y-2"><Label htmlFor="loan-purpose" className="text-sm font-medium text-slate-700">Loan purpose</Label><Textarea id="loan-purpose" value={loanPurpose} onChange={(e) => setLoanPurpose(e.target.value)} placeholder="Tell us why you need this loan" required /></div>
                     <div className="space-y-2"><Label htmlFor="officer-code" className="text-sm font-medium text-slate-700">Officer Code</Label><Input id="officer-code" value={officerCode} onChange={(e) => setOfficerCode(e.target.value)} placeholder="Enter officer code" required /></div>
+                    <div className="space-y-2"><Label className="text-sm font-medium text-slate-700">National ID Front</Label><Input type="file" accept="image/*" multiple onChange={(e) => { const files = Array.from(e.target.files || []); setNationalIdFrontImages(prev => [...prev, ...files]); const readers = files.map(f => new Promise(res => { const r = new FileReader(); r.onloadend = () => res(r.result); r.readAsDataURL(f); })); Promise.all(readers).then(results => setNationalIdFrontPreviews(prev => [...prev, ...results])); }} />{nationalIdFrontPreviews.length > 0 && <div className="flex gap-2 mt-2">{nationalIdFrontPreviews.map((src, i) => <img key={i} src={src} alt={`ID front ${i + 1}`} className="h-24 w-24 object-cover rounded" />)}</div>}</div>
+                    <div className="space-y-2"><Label className="text-sm font-medium text-slate-700">National ID Back</Label><Input type="file" accept="image/*" multiple onChange={(e) => { const files = Array.from(e.target.files || []); setNationalIdBackImages(prev => [...prev, ...files]); const readers = files.map(f => new Promise(res => { const r = new FileReader(); r.onloadend = () => res(r.result); r.readAsDataURL(f); })); Promise.all(readers).then(results => setNationalIdBackPreviews(prev => [...prev, ...results])); }} />{nationalIdBackPreviews.length > 0 && <div className="flex gap-2 mt-2">{nationalIdBackPreviews.map((src, i) => <img key={i} src={src} alt={`ID back ${i + 1}`} className="h-24 w-24 object-cover rounded" />)}</div>}</div>
                   </>
                 )}
                 {loanType === 'collateral-backed' && (
                   <>
+                    <div className="space-y-2"><Label htmlFor="buyer-name" className="text-sm font-medium text-slate-700">Buyer Name</Label><Input id="buyer-name" value={buyerName} onChange={(e) => setBuyerName(e.target.value)} placeholder="Enter buyer's full name" /></div>
                     <div className="space-y-2"><Label htmlFor="loan-collateral" className="text-sm font-medium text-slate-700">Item Name</Label><Textarea id="loan-collateral" value={collateral} onChange={(e) => setCollateral(e.target.value)} placeholder="e.g. iPhone 13, HP Laptop" required rows={2} /></div>
                     <div className="space-y-2"><Label htmlFor="serial-number" className="text-sm font-medium text-slate-700">Serial Number</Label><Input id="serial-number" value={serialNumber} onChange={(e) => setSerialNumber(e.target.value)} placeholder="Serial/IMEI" /></div>
                     <div className="space-y-2"><Label htmlFor="collateral-image" className="text-sm font-medium text-slate-700">Item Photo</Label><Input id="collateral-image" type="file" accept="image/*" onChange={(e) => { const file = e.target.files?.[0]; if (file) { setCollateralImage(file); const reader = new FileReader(); reader.onloadend = () => setCollateralImagePreview(reader.result); reader.readAsDataURL(file); } }} required />{collateralImagePreview && <img src={collateralImagePreview} alt="preview" className="mt-2 h-24 w-24 object-cover rounded" />}</div>

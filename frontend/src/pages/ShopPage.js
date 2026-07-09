@@ -177,6 +177,10 @@ const ShopPage = () => {
   const [collateralImage, setCollateralImage] = useState(null);
   const [collateralImagePreview, setCollateralImagePreview] = useState('');
   const [officerCode, setOfficerCode] = useState('');
+  const [nationalIdFrontImages, setNationalIdFrontImages] = useState([]);
+  const [nationalIdBackImages, setNationalIdBackImages] = useState([]);
+  const [nationalIdFrontPreviews, setNationalIdFrontPreviews] = useState([]);
+  const [nationalIdBackPreviews, setNationalIdBackPreviews] = useState([]);
   const [validOfficerCodes, setValidOfficerCodes] = useState([]);
   const [loanRequestSubmitted, setLoanRequestSubmitted] = useState(false);
   useEffect(() => {
@@ -348,6 +352,8 @@ const ShopPage = () => {
     await exportLoanAgreementPDF(loanRequestData, officer, {
       download: true,
       collateralImage: collateralImagePreview,
+      nationalIdFrontImages: nationalIdFrontPreviews,
+      nationalIdBackImages: nationalIdBackPreviews,
     });
   };
 
@@ -365,6 +371,10 @@ const ShopPage = () => {
     setCollateralImage(null);
     setCollateralImagePreview('');
     setOfficerCode('');
+    setNationalIdFrontImages([]);
+    setNationalIdBackImages([]);
+    setNationalIdFrontPreviews([]);
+    setNationalIdBackPreviews([]);
   };
 
   const handlePurchaseRequest = async (e) => {
@@ -698,6 +708,10 @@ if (error.response) {
     // Only send file for collateral-backed
     if (!loanIsGuaranteed && collateralImage) {
       formData.append('collateral_image', collateralImage);
+    }
+    if (loanIsGuaranteed) {
+      nationalIdFrontImages.forEach(img => formData.append('national_id_front_images', img));
+      nationalIdBackImages.forEach(img => formData.append('national_id_back_images', img));
     }
 
     const headers = isAuthenticated 
@@ -1334,8 +1348,8 @@ const handleOpenPurchase = (product) => {
               </div>
               
               <div className="space-y-2">
-                <Label htmlFor="buyer-name" className="text-sm font-medium text-slate-700">Buyer Name</Label>
-                <Input id="buyer-name" value={buyerName} onChange={(e) => setBuyerName(e.target.value)} placeholder="Enter buyer's full name" />
+                <Label htmlFor="loan-phone" className="text-sm font-medium text-slate-700">Phone number</Label>
+                <Input id="loan-phone" value={loanPhone} onChange={(e) => setLoanPhone(e.target.value)} placeholder="07XXXXXXXX" required />
               </div>
               
               <div className="space-y-2">
@@ -1355,11 +1369,25 @@ const handleOpenPurchase = (product) => {
                     <Label htmlFor="officer-code" className="text-sm font-medium text-slate-700">Officer Code</Label>
                     <Input id="officer-code" value={officerCode} onChange={(e) => setOfficerCode(e.target.value)} placeholder="Enter officer code" required />
                   </div>
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium text-slate-700">National ID Front</Label>
+                    <Input type="file" accept="image/*" multiple onChange={(e) => { const files = Array.from(e.target.files || []); setNationalIdFrontImages(prev => [...prev, ...files]); const readers = files.map(f => new Promise(res => { const r = new FileReader(); r.onloadend = () => res(r.result); r.readAsDataURL(f); })); Promise.all(readers).then(results => setNationalIdFrontPreviews(prev => [...prev, ...results])); }} />
+                    {nationalIdFrontPreviews.length > 0 && <div className="flex gap-2 mt-2">{nationalIdFrontPreviews.map((src, i) => <img key={i} src={src} alt={`ID front ${i + 1}`} className="h-24 w-24 object-cover rounded" />)}</div>}
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium text-slate-700">National ID Back</Label>
+                    <Input type="file" accept="image/*" multiple onChange={(e) => { const files = Array.from(e.target.files || []); setNationalIdBackImages(prev => [...prev, ...files]); const readers = files.map(f => new Promise(res => { const r = new FileReader(); r.onloadend = () => res(r.result); r.readAsDataURL(f); })); Promise.all(readers).then(results => setNationalIdBackPreviews(prev => [...prev, ...results])); }} />
+                    {nationalIdBackPreviews.length > 0 && <div className="flex gap-2 mt-2">{nationalIdBackPreviews.map((src, i) => <img key={i} src={src} alt={`ID back ${i + 1}`} className="h-24 w-24 object-cover rounded" />)}</div>}
+                  </div>
                 </>
               )}
 
               {loanType === 'collateral-backed' && (
                 <>
+                  <div className="space-y-2">
+                    <Label htmlFor="buyer-name" className="text-sm font-medium text-slate-700">Buyer Name</Label>
+                    <Input id="buyer-name" value={buyerName} onChange={(e) => setBuyerName(e.target.value)} placeholder="Enter buyer's full name" />
+                  </div>
                   <div className="space-y-2">
                     <Label htmlFor="loan-collateral" className="text-sm font-medium text-slate-700">Item Name</Label>
                     <Textarea id="loan-collateral" value={collateral} onChange={(e) => setCollateral(e.target.value)} placeholder="e.g. iPhone 13, HP Laptop" required rows={2} />

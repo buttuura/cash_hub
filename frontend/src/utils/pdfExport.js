@@ -246,6 +246,29 @@ if (collateralImageData) {
         console.warn('Failed to add collateral image to PDF', imgErr);
       }
   }
+
+  if (isGuaranteed) {
+    const frontImages = options.nationalIdFrontImages || loanData?.nationalIdFrontImages || [];
+    const backImages = options.nationalIdBackImages || loanData?.nationalIdBackImages || [];
+    const allIdImages = [...frontImages, ...backImages];
+    for (let i = 0; i < allIdImages.length; i++) {
+      const label = i < frontImages.length ? `National ID Front ${i + 1}` : `National ID Back ${i - frontImages.length + 1}`;
+      const imgData = await getImageDataUrl(allIdImages[i]);
+      if (!imgData) continue;
+      const imageSize = await getImageSize(imgData, pageWidth);
+      doc.setFontSize(10);
+      doc.setFont(undefined, 'bold');
+      doc.text(label, 14, y);
+      y += 5;
+      try {
+        doc.addImage(imgData, getImageFormat(imgData), 14, y, imageSize.width, imageSize.height);
+        y += imageSize.height + 4;
+      } catch (imgErr) {
+        console.warn('Failed to add national ID image to PDF', imgErr);
+      }
+    }
+  }
+
   // 6. SIGNATURES
   y += 4;
   doc.setFontSize(10);

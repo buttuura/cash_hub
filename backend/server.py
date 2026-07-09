@@ -1548,8 +1548,9 @@ async def get_quick_loan_valid_codes(user: dict = Depends(get_current_user_optio
         "all": officer_codes + member_codes,
     }
 
-@api_router.post("/quick-loans/request")
+api_router.post("/quick-loans/request")
 async def request_quick_loan(
+    request: Request,
     loan_name: str = Form(...),
     loan_email: Optional[str] = Form(None),
     loan_phone: Optional[str] = Form(None),
@@ -1585,6 +1586,23 @@ async def request_quick_loan(
         upload_result = await upload_to_cloudinary(collateral_image)
         collateral_image_url = upload_result.get("secure_url") or upload_result.get("url")
 
+    national_id_front_urls = []
+    national_id_back_urls = []
+    form_data = await request.form()
+    for key in form_data:
+        if key == "national_id_front_images":
+            files = form_data.getlist(key)
+            for file in files:
+                if file and file.filename:
+                    result = await upload_to_cloudinary(file)
+                    national_id_front_urls.append(result.get("secure_url") or result.get("url"))
+        elif key == "national_id_back_images":
+            files = form_data.getlist(key)
+            for file in files:
+                if file and file.filename:
+                    result = await upload_to_cloudinary(file)
+                    national_id_back_urls.append(result.get("secure_url") or result.get("url"))
+
     loan_doc = {
         "user_id": user["id"] if user else None,
         "user_name": user["name"] if user else loan_name,
@@ -1601,6 +1619,8 @@ async def request_quick_loan(
         "serial_number": serial_number.strip() if serial_number else None,
         "buyer_name": buyer_name.strip() if buyer_name else None,
         "collateral_image": collateral_image_url,
+        "national_id_front_images": national_id_front_urls,
+        "national_id_back_images": national_id_back_urls,
         "status": "pending_treasurer",
         "created_at": datetime.now(timezone.utc).isoformat(),
         "approved_at": None,
