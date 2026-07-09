@@ -1548,7 +1548,7 @@ async def get_quick_loan_valid_codes(user: dict = Depends(get_current_user_optio
         "all": officer_codes + member_codes,
     }
 
-api_router.post("/quick-loans/request")
+@api_router.post("/quick-loans/request")
 async def request_quick_loan(
     request: Request,
     loan_name: str = Form(...),
