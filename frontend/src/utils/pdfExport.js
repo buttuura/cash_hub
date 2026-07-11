@@ -104,34 +104,19 @@ const getImageDataUrl = async (imageSource) => {
   return null;
 };
 
-const loadImageElement = (imageDataUrl) =>
-  new Promise((resolve, reject) => {
-    const image = new Image();
-    image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error('Failed to load image'));
-    image.src = imageDataUrl;
-  });
+// Standard ID-1 card dimensions (mm) used for every uploaded image in the
+// quick loan form so all photos are normalised to a uniform ID size on the PDF.
+const STANDARD_ID_WIDTH = 85.6;
+const STANDARD_ID_HEIGHT = 54;
 
+// Returns a fixed, standard ID-card sized box for every uploaded image so that
+// all images in the quick loan agreement PDF share the same dimensions.
+// eslint-disable-next-line no-unused-vars
 const getImageSize = async (imageDataUrl, pageWidth) => {
-  const maxImgWidth = pageWidth - 28;
-  const maxImgHeight = 80;
-
-  try {
-    const image = await loadImageElement(imageDataUrl);
-    const naturalWidth = image.naturalWidth || 320;
-    const naturalHeight = image.naturalHeight || 240;
-    const ratio = Math.min(maxImgWidth / naturalWidth, maxImgHeight / naturalHeight, 1);
-    return {
-      width: naturalWidth * ratio,
-      height: naturalHeight * ratio,
-    };
-  } catch (error) {
-    console.warn('Failed to measure collateral image for PDF', error);
-    return {
-      width: Math.min(maxImgWidth, 160),
-      height: 120,
-    };
-  }
+  return {
+    width: STANDARD_ID_WIDTH,
+    height: STANDARD_ID_HEIGHT,
+  };
 };
 
 export const exportLoanAgreementPDF = async (loanData, officer, options = { download: true }) => {
@@ -239,9 +224,14 @@ y += 8;
  }
 
 if (collateralImageData) {
-      
+
       const imageSize = await getImageSize(collateralImageData, pageWidth);
-      
+      const pageHeight = doc.internal.pageSize.height;
+      if (y + imageSize.height + 10 > pageHeight) {
+        doc.addPage();
+        y = 20;
+      }
+
       doc.setFontSize(10);
       doc.setFont(undefined, 'bold');
       doc.text('Item Photo:', 14, y);
@@ -264,6 +254,11 @@ if (collateralImageData) {
       const imgData = await getImageDataUrl(allIdImages[i]);
       if (!imgData) continue;
       const imageSize = await getImageSize(imgData, pageWidth);
+      const pageHeight = doc.internal.pageSize.height;
+      if (y + imageSize.height + 10 > pageHeight) {
+        doc.addPage();
+        y = 20;
+      }
       doc.setFontSize(10);
       doc.setFont(undefined, 'bold');
       doc.text(label, 14, y);

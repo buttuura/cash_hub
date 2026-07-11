@@ -144,6 +144,43 @@ export const AuthProvider = ({ children }) => {
     await checkAuth();
   };
 
+  const forgotPassword = async (phone) => {
+    setError(null);
+    try {
+      if (!API_URL) {
+        const missingUrlError = 'Backend URL is not configured. Add REACT_APP_BACKEND_URL=http://localhost:8000 to frontend/.env.local and restart the app.';
+        setError(missingUrlError);
+        throw new Error(missingUrlError);
+      }
+      await axios.post(`${API_URL}/api/auth/forgot-password`, { phone });
+    } catch (err) {
+      const errorMsg = getBackendErrorMessage(err, 'Failed to send recovery code');
+      setError(errorMsg);
+      throw new Error(errorMsg);
+    }
+  };
+
+  const resetPassword = async (phone, tempPassword, newPassword) => {
+    setError(null);
+    try {
+      if (!API_URL) {
+        const missingUrlError = 'Backend URL is not configured. Add REACT_APP_BACKEND_URL=http://localhost:8000 to frontend/.env.local and restart the app.';
+        setError(missingUrlError);
+        throw new Error(missingUrlError);
+      }
+      const response = await axios.post(`${API_URL}/api/auth/reset-password`, {
+        phone,
+        temp_password: tempPassword,
+        new_password: newPassword,
+      });
+      return response.data;
+    } catch (err) {
+      const errorMsg = getBackendErrorMessage(err, 'Failed to reset password');
+      setError(errorMsg);
+      throw new Error(errorMsg);
+    }
+  };
+
   const value = {
     user,
     loading,
@@ -153,6 +190,8 @@ export const AuthProvider = ({ children }) => {
     register,
     logout,
     refreshUser,
+    forgotPassword,
+    resetPassword,
     getAuthHeaders,
     isAuthenticated: !!user,
     isAdmin: user?.role === 'admin' || user?.role === 'super_admin' || user?.role === 'treasurer',

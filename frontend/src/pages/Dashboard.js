@@ -100,8 +100,12 @@ const Dashboard = () => {
   const [rules, setRules] = useState(null);
   const [financials, setFinancials] = useState(null);
   const [deposits, setDeposits] = useState([]);
+  const [depositMonthFilter, setDepositMonthFilter] = useState('all');
   const [loans, setLoans] = useState([]);
+  const [loanMonthFilter, setLoanMonthFilter] = useState('all');
   const [withdrawals, setWithdrawals] = useState([]);
+  const [withdrawalMonthFilter, setWithdrawalMonthFilter] = useState('all');
+  const [pettyCashMonthFilter, setPettyCashMonthFilter] = useState('all');
   const [quickLoans, setQuickLoans] = useState([]);
   const [members, setMembers] = useState([]);
   const [dataLoading, setDataLoading] = useState(false);
@@ -1327,7 +1331,7 @@ const Dashboard = () => {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {deposits.slice(0, 5).map((d) => {
+                  {deposits.filter(d => depositMonthFilter === 'all' || d.month === depositMonthFilter).slice(0, 5).map((d) => {
                     const canDelete = d.user_id === user?.id || isTreasurer;
                     return (
                     <div key={d.id} className="flex items-center justify-between py-3 border-b border-[#E8EBE8] last:border-0">
@@ -1375,7 +1379,20 @@ const Dashboard = () => {
         {activeTab === 'deposits' && (
           <div className="space-y-6 animate-fade-in" data-testid="deposits-tab">
             <div className="flex items-center justify-between flex-wrap gap-2">
-              <h2 className="text-2xl font-bold font-['Manrope'] text-[#1E231F]">Deposits</h2>
+              <div className="flex items-center gap-3">
+                <h2 className="text-2xl font-bold font-['Manrope'] text-[#1E231F]">Deposits</h2>
+                <Select value={depositMonthFilter} onValueChange={setDepositMonthFilter}>
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="All months" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All months</SelectItem>
+                    {[...new Set(deposits.map(d => d.month).filter(Boolean))].sort().reverse().map(m => (
+                      <SelectItem key={m} value={m}>{m}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="flex items-center gap-2">
                 {deposits.length > 0 && (
                   <Button
@@ -1494,6 +1511,7 @@ const Dashboard = () => {
                     <thead>
                       <tr className="border-b border-[#E8EBE8] bg-[#FAFAF8]">
                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Date</th>
+                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Member</th>
                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Type</th>
                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Amount</th>
                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Late Fee</th>
@@ -1502,12 +1520,15 @@ const Dashboard = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {deposits.map((d) => {
+                      {deposits.filter(d => depositMonthFilter === 'all' || d.month === depositMonthFilter).map((d) => {
                         const canDelete = d.user_id === user?.id || isTreasurer;
                         return (
                         <tr key={d.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5] transition-colors">
                           <td className="py-4 px-6 text-[#1E231F]">
                             {new Date(d.created_at).toLocaleDateString()}
+                          </td>
+                          <td className="py-4 px-6 text-[#1E231F]">
+                            {d.user_name || '-'}
                           </td>
                           <td className="py-4 px-6 text-[#1E231F]">
                             {d.deposit_type === 'development_fee' ? 'Development' : d.deposit_type === 'loan_payment' ? 'Loan Payment' : 'Savings'}
@@ -2575,10 +2596,23 @@ const Dashboard = () => {
             {activeFinancialTab === 'deposits' && (
             <Card className="bg-white border border-[#E8EBE8] shadow-sm">
               <CardHeader>
-                <CardTitle className="font-['Manrope'] text-[#1E231F] flex items-center gap-2">
-                  <ArrowUpRight className="w-5 h-5 text-[#347242]" />
-                  Deposits
-                </CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="font-['Manrope'] text-[#1E231F] flex items-center gap-2">
+                    <ArrowUpRight className="w-5 h-5 text-[#347242]" />
+                    Deposits
+                  </CardTitle>
+                  <Select value={depositMonthFilter} onValueChange={setDepositMonthFilter}>
+                    <SelectTrigger className="w-[180px]">
+                      <SelectValue placeholder="All months" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All months</SelectItem>
+                      {[...new Set(deposits.map(d => d.month).filter(Boolean))].sort().reverse().map(m => (
+                        <SelectItem key={m} value={m}>{m}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </CardHeader>
               <CardContent className="p-0">
                 <div className="overflow-x-auto">
@@ -2586,6 +2620,7 @@ const Dashboard = () => {
                     <thead>
                       <tr className="border-b border-[#E8EBE8] bg-[#FAFAF8]">
                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Date</th>
+                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Member</th>
                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Type</th>
                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Amount</th>
                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Late Fee</th>
@@ -2594,12 +2629,15 @@ const Dashboard = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {deposits.slice(0, 20).map((d) => {
+                      {deposits.filter(d => depositMonthFilter === 'all' || d.month === depositMonthFilter).map((d) => {
                         const canDelete = d.user_id === user?.id || isTreasurer;
                         return (
                           <tr key={d.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5] transition-colors">
                             <td className="py-4 px-6 text-[#1E231F]">
                               {new Date(d.created_at).toLocaleDateString()}
+                            </td>
+                            <td className="py-4 px-6 text-[#1E231F]">
+                              {d.user_name || '-'}
                             </td>
                             <td className="py-4 px-6 text-[#1E231F]">
                               {d.deposit_type === 'development_fee' ? 'Development' : d.deposit_type === 'loan_payment' ? 'Loan Payment' : 'Savings'}
@@ -2692,10 +2730,23 @@ const Dashboard = () => {
 
             <Card className="bg-white border border-[#E8EBE8] shadow-sm">
               <CardHeader>
-                <CardTitle className="font-['Manrope'] text-[#1E231F] flex items-center gap-2">
-                  <CreditCard className="w-5 h-5 text-[#D48C70]" />
-                  Loans
-                </CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="font-['Manrope'] text-[#1E231F] flex items-center gap-2">
+                    <CreditCard className="w-5 h-5 text-[#D48C70]" />
+                    Loans
+                  </CardTitle>
+                  <Select value={loanMonthFilter} onValueChange={setLoanMonthFilter}>
+                    <SelectTrigger className="w-[180px]">
+                      <SelectValue placeholder="All months" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All months</SelectItem>
+                      {[...new Set(loans.map(l => l.created_at ? new Date(l.created_at).toISOString().slice(0, 7) : '').filter(Boolean))].sort().reverse().map(m => (
+                        <SelectItem key={m} value={m}>{m}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </CardHeader>
               <CardContent className="p-0">
                 <div className="overflow-x-auto">
@@ -2712,7 +2763,7 @@ const Dashboard = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {loans.slice(0, 20).map((l) => {
+                      {loans.filter(l => loanMonthFilter === 'all' || (l.created_at ? new Date(l.created_at).toISOString().slice(0, 7) === loanMonthFilter : false)).slice(0, 20).map((l) => {
                         const canDelete = l.user_id === user?.id || isTreasurer;
                         return (
                           <tr key={l.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5] transition-colors">
@@ -2766,10 +2817,23 @@ const Dashboard = () => {
             {activeFinancialTab === 'withdrawals' && (
             <Card className="bg-white border border-[#E8EBE8] shadow-sm">
               <CardHeader>
-                <CardTitle className="font-['Manrope'] text-[#1E231F] flex items-center gap-2">
-                  <ArrowDownRight className="w-5 h-5 text-[#D05A49]" />
-                  Withdrawals
-                </CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="font-['Manrope'] text-[#1E231F] flex items-center gap-2">
+                    <ArrowDownRight className="w-5 h-5 text-[#D05A49]" />
+                    Withdrawals
+                  </CardTitle>
+                  <Select value={withdrawalMonthFilter} onValueChange={setWithdrawalMonthFilter}>
+                    <SelectTrigger className="w-[180px]">
+                      <SelectValue placeholder="All months" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All months</SelectItem>
+                      {[...new Set(withdrawals.map(w => w.created_at ? new Date(w.created_at).toISOString().slice(0, 7) : '').filter(Boolean))].sort().reverse().map(m => (
+                        <SelectItem key={m} value={m}>{m}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </CardHeader>
               <CardContent className="p-0">
                 <div className="overflow-x-auto">
@@ -2785,7 +2849,7 @@ const Dashboard = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {withdrawals.slice(0, 20).map((w) => {
+                      {withdrawals.filter(w => withdrawalMonthFilter === 'all' || (w.created_at ? new Date(w.created_at).toISOString().slice(0, 7) === withdrawalMonthFilter : false)).slice(0, 20).map((w) => {
                         const canDelete = w.user_id === user?.id || isTreasurer;
                         return (
                           <tr key={w.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5] transition-colors">
@@ -2830,10 +2894,23 @@ const Dashboard = () => {
             {activeFinancialTab === 'petty-cash' && (
             <Card className="bg-white border border-[#E8EBE8] shadow-sm">
               <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <CardTitle className="font-['Manrope'] text-[#1E231F] flex items-center gap-2">
-                  <Receipt className="w-5 h-5 text-[#D48C70]" />
-                  Petty Cash Expenses
-                </CardTitle>
+                <div className="flex items-center gap-3">
+                  <CardTitle className="font-['Manrope'] text-[#1E231F] flex items-center gap-2">
+                    <Receipt className="w-5 h-5 text-[#D48C70]" />
+                    Petty Cash Expenses
+                  </CardTitle>
+                  <Select value={pettyCashMonthFilter} onValueChange={setPettyCashMonthFilter}>
+                    <SelectTrigger className="w-[180px]">
+                      <SelectValue placeholder="All months" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All months</SelectItem>
+                      {[...new Set((financials?.petty_cash_items || []).map(pc => pc.created_at ? new Date(pc.created_at).toISOString().slice(0, 7) : '').filter(Boolean))].sort().reverse().map(m => (
+                        <SelectItem key={m} value={m}>{m}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
                 {isAdmin && (
                   <Dialog open={pettyCashDialogOpen} onOpenChange={setPettyCashDialogOpen}>
                     <DialogTrigger asChild>
@@ -2909,7 +2986,7 @@ const Dashboard = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {(financials?.petty_cash_items || []).map((pc) => (
+                      {(financials?.petty_cash_items || []).filter(pc => pettyCashMonthFilter === 'all' || (pc.created_at ? new Date(pc.created_at).toISOString().slice(0, 7) === pettyCashMonthFilter : false)).map((pc) => (
                         <tr key={pc.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5] transition-colors">
                           <td className="py-4 px-6 text-[#1E231F]">
                             {new Date(pc.created_at).toLocaleDateString()}
@@ -3143,7 +3220,7 @@ const Dashboard = () => {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  {deposits.filter(d => d.status === 'pending').map((d) => (
+                  {deposits.filter(d => d.status === 'pending' && (depositMonthFilter === 'all' || d.month === depositMonthFilter)).map((d) => (
                     <div key={d.id} className="p-3 bg-[#FAFAF8] rounded-xl">
                       <div className="flex items-center justify-between mb-2">
                         <span className="font-medium text-[#1E231F]">{d.user_name}</span>
@@ -3172,7 +3249,7 @@ const Dashboard = () => {
                       </div>
                     </div>
                   ))}
-                  {deposits.filter(d => d.status === 'pending').length === 0 && (
+                  {deposits.filter(d => d.status === 'pending' && (depositMonthFilter === 'all' || d.month === depositMonthFilter)).length === 0 && (
                     <p className="text-center text-[#5C665D] py-4 text-sm">No pending deposits</p>
                   )}
                 </CardContent>

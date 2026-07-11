@@ -5,7 +5,7 @@ ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi import FastAPI, APIRouter, HTTPException, Request, Depends, Form, File, UploadFile, Body, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, APIRouter, HTTPException, Request, Depends, Form, File, UploadFile, Body, WebSocket, WebSocketDisconnect, Query
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -14,6 +14,12 @@ import os
 import re
 import logging
 import shutil
+import secrets
+import string
+from urllib.parse import quote
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 import bcrypt
 import jwt
 from uuid import uuid4
@@ -189,6 +195,14 @@ class GroupBalanceUpdate(BaseModel):
 
 class LeavingRequest(BaseModel):
     reason: Optional[str] = None
+
+class ForgotPasswordRequest(BaseModel):
+    phone: str
+
+class ResetPasswordRequest(BaseModel):
+    phone: str
+    temp_password: str
+    new_password: str
 
 class ProductCreate(BaseModel):
     title: str
@@ -443,14 +457,19 @@ def calculate_months_elapsed(start_date: datetime, end_date: Optional[datetime] 
     return max(0, months)
 
 
-def calculate_loan_interest(loan_amount: float, months_elapsed: int) -> float:
-    """Calculate fixed loan interest based on duration with tiered monthly rates."""
-    if months_elapsed <= 0:
+def calculate_loan_interest(loan_amount: float, total_months_elapsed: int, months_to_accrue: int) -> float:
+    """Calculate loan interest for a specific accrual period with tiered monthly rates."""
+    if months_to_accrue <= 0 or total_months_elapsed < 0:
         return 0.0
 
-    normal_months = min(months_elapsed, LOAN_NORMAL_PERIOD_MONTHS)
-    extended_months = max(0, months_elapsed - LOAN_NORMAL_PERIOD_MONTHS)
-    return loan_amount * (normal_months * LOAN_INTEREST_NORMAL + extended_months * LOAN_INTEREST_EXTENDED)
+    total_interest = 0.0
+    for i in range(months_to_accrue):
+        month_number = total_months_elapsed + i + 1
+        if month_number <= LOAN_NORMAL_PERIOD_MONTHS:
+            total_interest += loan_amount * LOAN_INTEREST_NORMAL
+        else:
+            total_interest += loan_amount * LOAN_INTEREST_EXTENDED
+    return total_interest
 
 
 def get_loan_last_interest_date(loan: dict) -> datetime:
@@ -488,8 +507,9 @@ async def accrue_loan_interest_on_db(loan: dict) -> dict:
     if months_to_accrue <= 0:
         return loan
 
+    total_months_elapsed = calculate_months_elapsed(approved_date)
     current_balance = get_loan_outstanding_balance(loan)
-    interest = calculate_loan_interest(current_balance, months_to_accrue)
+    interest = calculate_loan_interest(current_balance, total_months_elapsed, months_to_accrue)
     new_balance = current_balance + interest
 
     update_fields = {
@@ -741,6 +761,114 @@ async def get_me(user: dict = Depends(get_current_user)):
 @api_router.post("/auth/logout")
 async def logout():
     return {"message": "Logged out successfully"}
+
+def generate_temp_password(length: int = 6) -> str:
+    return ''.join(secrets.choice(string.digits) for _ in range(length))
+
+def phone_to_whatsapp(phone: str) -> str:
+    digits = re.sub(r"\D", "", phone or "")
+    if digits.startswith("0"):
+        digits = "256" + digits[1:]
+    elif not digits.startswith("256"):
+        digits = "256" + digits
+    return digits
+
+async def send_whatsapp_message(phone: str, message: str) -> bool:
+    try:
+        wa_number = phone_to_whatsapp(phone)
+        wa_url = f"https://wa.me/{wa_number}?text={quote(message)}"
+        import webbrowser
+        webbrowser.open(wa_url)
+        logger.info(f"WhatsApp link opened for {wa_number}: {wa_url}")
+        return True
+    except Exception as e:
+        logger.warning(f"WhatsApp send failed: {e}")
+        return False
+
+async def send_email_otp(email: str, temp_password: str) -> bool:
+    try:
+        smtp_host = os.environ.get("SMTP_HOST")
+        smtp_port = int(os.environ.get("SMTP_PORT", "587"))
+        smtp_user = os.environ.get("SMTP_USER")
+        smtp_pass = os.environ.get("SMTP_PASS")
+        if not smtp_user or not smtp_pass:
+            return False
+        msg = MIMEMultipart()
+        msg["From"] = smtp_user
+        msg["To"] = email
+        msg["Subject"] = "Password Recovery - Class One Savings"
+        body = f"Your temporary password is: {temp_password}\n\nThis password expires in 3 minutes. Use it to reset your account password."
+        msg.attach(MIMEText(body, "plain"))
+        with smtplib.SMTP(smtp_host, smtp_port) as server:
+            server.starttls()
+            server.login(smtp_user, smtp_pass)
+            server.sendmail(smtp_user, email, msg.as_string())
+        return True
+    except Exception as e:
+        logger.warning(f"Email send failed: {e}")
+        return False
+
+@api_router.post("/auth/forgot-password")
+async def forgot_password(request: ForgotPasswordRequest):
+    phone = request.phone.strip()
+    if not phone:
+        raise HTTPException(status_code=400, detail="Phone number is required")
+    normalized_phone = normalize_phone(phone)
+    if not normalized_phone:
+        raise HTTPException(status_code=400, detail="Invalid phone number format")
+    user = await db.users.find_one({"normalized_phone": normalized_phone})
+    if not user:
+        raise HTTPException(status_code=404, detail="No account found with this phone number")
+    temp_password = generate_temp_password()
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=3)
+    await db.password_resets.update_one(
+        {"phone": normalized_phone},
+        {"$set": {
+            "temp_password": hash_password(temp_password),
+            "expires_at": expires_at.isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "used": False
+        }},
+        upsert=True
+    )
+    wa_number = phone_to_whatsapp(user.get("phone", phone))
+    message = f"Your Class One Savings temporary password is: {temp_password}\n\nThis password expires in 3 minutes. Use it to reset your account password."
+    wa_url = f"https://wa.me/{wa_number}?text={quote(message)}"
+    return {
+        "message": "If an account exists with this phone number, a temporary password has been sent.",
+        "temp_password": temp_password,
+        "whatsapp_url": wa_url,
+        "expires_in_minutes": 3
+    }
+
+@api_router.post("/auth/reset-password")
+async def reset_password(request: ResetPasswordRequest):
+    phone = request.phone.strip()
+    normalized_phone = normalize_phone(phone)
+    if not normalized_phone:
+        raise HTTPException(status_code=400, detail="Invalid phone number format")
+    reset_record = await db.password_resets.find_one({"phone": normalized_phone, "used": False})
+    if not reset_record:
+        raise HTTPException(status_code=400, detail="No active password reset found. Please request a new one.")
+    expires_at = datetime.fromisoformat(reset_record["expires_at"].replace('Z', '+00:00'))
+    if datetime.now(timezone.utc) > expires_at:
+        await db.password_resets.delete_one({"_id": reset_record["_id"]})
+        raise HTTPException(status_code=400, detail="Temporary password has expired. Please request a new one.")
+    if not verify_password(request.temp_password, reset_record["temp_password"]):
+        raise HTTPException(status_code=400, detail="Invalid temporary password")
+    user = await db.users.find_one({"normalized_phone": normalized_phone})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    new_password_hash = hash_password(request.new_password)
+    await db.users.update_one(
+        {"_id": user["_id"]},
+        {"$set": {"password_hash": new_password_hash}}
+    )
+    await db.password_resets.update_one(
+        {"_id": reset_record["_id"]},
+        {"$set": {"used": True, "used_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    return {"message": "Password reset successfully"}
 
 # ==================== MEMBER ENDPOINTS ====================
 
@@ -1274,11 +1402,14 @@ async def request_deposit(deposit: DepositRequest, user: dict = Depends(get_curr
     return deposit_doc
 
 @api_router.get("/deposits")
-async def get_deposits(user: dict = Depends(get_current_user)):
-    if user.get("role") in ["admin", "super_admin", "treasurer"]:
-        deposits = await db.deposits.find({}).to_list(1000)
-    else:
-        deposits = await db.deposits.find({"user_id": user["id"]}).to_list(1000)
+async def get_deposits(user: dict = Depends(get_current_user), month: Optional[str] = Query(None)):
+    query = {}
+    if user.get("role") not in ["admin", "super_admin", "treasurer"]:
+        query["user_id"] = user["id"]
+    if month:
+        query["month"] = month
+    
+    deposits = await db.deposits.find(query).to_list(1000)
     
     result = []
     for d in deposits:
@@ -2312,12 +2443,18 @@ async def get_financial_stats(user: dict = Depends(get_current_user)):
     """Get detailed financial breakdown"""
     
     # Total savings
-    pipeline = [{"$group": {"_id": None, "total": {"$sum": "$total_savings"}}}]
+    pipeline = [
+        {"$match": {"role": {"$nin": ["super_admin", "treasurer"]}}},
+        {"$group": {"_id": None, "total": {"$sum": "$total_savings"}}}
+    ]
     result = await db.users.aggregate(pipeline).to_list(1)
     total_savings = result[0]["total"] if result else 0
     
     # Total development fund
-    pipeline = [{"$group": {"_id": None, "total": {"$sum": "$development_fund"}}}]
+    pipeline = [
+        {"$match": {"role": {"$nin": ["super_admin", "treasurer"]}}},
+        {"$group": {"_id": None, "total": {"$sum": "$development_fund"}}}
+    ]
     result = await db.users.aggregate(pipeline).to_list(1)
     total_development = result[0]["total"] if result else 0
     
@@ -2542,6 +2679,7 @@ async def startup_event():
         await db.loans.create_index("guarantor_id")
         await db.withdrawals.create_index("user_id")
         await db.leaving_requests.create_index("user_id")
+        await db.password_resets.create_index("expires_at", expireAfterSeconds=0)
         
         # Migration: Add max_guarantees field to existing users
         await db.users.update_many(
