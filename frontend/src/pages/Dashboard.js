@@ -107,6 +107,7 @@ const Dashboard = () => {
   const [withdrawalMonthFilter, setWithdrawalMonthFilter] = useState('all');
   const [pettyCashMonthFilter, setPettyCashMonthFilter] = useState('all');
   const [quickLoans, setQuickLoans] = useState([]);
+  const [userQuickLoans, setUserQuickLoans] = useState([]);
   const [members, setMembers] = useState([]);
   const [dataLoading, setDataLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
@@ -183,6 +184,14 @@ const Dashboard = () => {
         }
       } else {
         setQuickLoans([]);
+      }
+
+      try {
+        const userQuickLoansRes = await axios.get(`${API_URL}/api/quick-loans/my`, { headers });
+        setUserQuickLoans(Array.isArray(userQuickLoansRes.data) ? userQuickLoansRes.data : []);
+      } catch (userQuickErr) {
+        console.warn('Failed to load user quick loans:', userQuickErr);
+        setUserQuickLoans([]);
       }
       fetchData._cache = { ts: now };
     } catch (err) {
@@ -636,6 +645,23 @@ const Dashboard = () => {
     }
   };
 
+  const handleRepayQuickLoan = async (loanId, currentOutstanding) => {
+    const amount = prompt(`Enter repayment amount (Outstanding: ${formatCurrency(currentOutstanding)}):`);
+    if (!amount || isNaN(parseFloat(amount))) return;
+    try {
+      await axios.post(
+        `${API_URL}/api/quick-loans/${loanId}/repay`,
+        { amount: parseFloat(amount) },
+        { headers: getAuthHeaders() }
+      );
+      toast.success('Payment recorded');
+      fetchData();
+      refreshUser();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Failed to record payment');
+    }
+  };
+
   const handleSetRole = async (userId, newRole) => {
     try {
       await axios.post(
@@ -725,7 +751,12 @@ const Dashboard = () => {
     const labels = { deposits: 'deposit', loans: 'loan', withdrawals: 'withdrawal', 'petty-cash': 'petty cash entry' };
     if (!window.confirm(`Delete this ${labels[kind]}? This cannot be undone.`)) return;
     try {
-      await axios.delete(`${API_URL}/api/${kind}/${id}`, { headers: getAuthHeaders() });
+      if (kind === 'loans' && String(id).startsWith('quick_')) {
+        const quickId = String(id).replace(/^quick_/, '');
+        await axios.delete(`${API_URL}/api/quick-loans/${quickId}`, { headers: getAuthHeaders() });
+      } else {
+        await axios.delete(`${API_URL}/api/${kind}/${id}`, { headers: getAuthHeaders() });
+      }
       toast.success(`${labels[kind].charAt(0).toUpperCase() + labels[kind].slice(1)} deleted`);
       fetchData();
     } catch (err) {
@@ -807,6 +838,10 @@ const Dashboard = () => {
 // Loans where current user is the selected guarantor and awaiting their approval
   const pendingGuarantorLoans = loans.filter(l => 
     l.guarantor_id === user?.id && l.status === 'pending_guarantor'
+  );
+
+  const myQuickLoans = (isAdmin || isTreasurer ? quickLoans : userQuickLoans).filter(q => 
+    !q.repaid && (q.status === 'approved' || q.status === 'pending_treasurer')
   );
 
   return (
@@ -2411,6 +2446,12 @@ const Dashboard = () => {
                   Loans
                 </button>
                 <button 
+                  onClick={() => setActiveFinancialTab('quick_loan')}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition ${activeFinancialTab === 'quick_loan' ? 'bg-white text-[#1E231F] shadow-sm' : 'text-[#5C665D] hover:text-[#1E231F]'}`}
+                >
+                  Quick Loan
+                </button>
+                <button 
                   onClick={() => setActiveFinancialTab('withdrawals')}
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition ${activeFinancialTab === 'withdrawals' ? 'bg-white text-[#1E231F] shadow-sm' : 'text-[#5C665D] hover:text-[#1E231F]'}`}
                 >
@@ -2765,10 +2806,12 @@ const Dashboard = () => {
                     <tbody>
                       {loans.filter(l => loanMonthFilter === 'all' || (l.created_at ? new Date(l.created_at).toISOString().slice(0, 7) === loanMonthFilter : false)).slice(0, 20).map((l) => {
                         const canDelete = l.user_id === user?.id || isTreasurer;
+                        const outstanding = l.outstanding_balance ?? l.total_due ?? l.initial_total_due ?? l.amount * 1.03;
                         return (
                           <tr key={l.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5] transition-colors">
                             <td className="py-4 px-6 text-[#1E231F]">
                               {new Date(l.created_at).toLocaleDateString()}
+                              {l.is_quick_loan && <span className="ml-2 text-xs bg-[#D48C70]/20 text-[#D48C70] px-2 py-0.5 rounded-full">Quick</span>}
                             </td>
                             <td className="py-4 px-6 font-semibold text-[#D48C70] font-numbers">
                               {formatCurrency(l.amount)}
@@ -2776,14 +2819,14 @@ const Dashboard = () => {
                             <td className="py-4 px-6 text-[#1E231F]">
                               <div className="flex items-center gap-1">
                                 <UserCheck className="w-4 h-4 text-[#5C665D]" />
-                                {l.guarantor_name}
+                                {l.guarantor_name || '-'}
                               </div>
                             </td>
                             <td className="py-4 px-6 text-[#5C665D] font-numbers">
                               {l.current_interest ? formatCurrency(l.current_interest) : '-'}
                             </td>
                             <td className="py-4 px-6 font-semibold text-[#1E231F] font-numbers">
-                              {formatCurrency(l.total_due || l.outstanding_balance || l.initial_total_due || l.amount * 1.03)}
+                              {formatCurrency(outstanding)}
                             </td>
                             <td className="py-4 px-6">{getStatusBadge(l.status)}</td>
                             <td className="py-4 px-6">
@@ -2791,7 +2834,7 @@ const Dashboard = () => {
                                 <button
                                   type="button"
                                   onClick={() => handleDeleteRecord('loans', l.id)}
-                                  title="Delete loan"
+                                  title="Delete"
                                   className="p-1.5 rounded-full text-[#D05A49] hover:bg-[#D05A49]/10 transition-colors"
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
@@ -2811,6 +2854,61 @@ const Dashboard = () => {
                 </div>
               </CardContent>
             </Card>
+            </div>
+            )}
+            
+            {activeFinancialTab === 'quick_loan' && (
+            <div className="space-y-6">
+              {myQuickLoans.length === 0 ? (
+                <Card className="bg-white border border-[#E8EBE8] shadow-sm">
+                  <CardContent className="p-8 text-center">
+                    <CreditCard className="w-12 h-12 text-[#5C665D] mx-auto mb-3" />
+                    <p className="text-[#5C665D]">No quick loans associated with your code</p>
+                  </CardContent>
+                </Card>
+              ) : (
+                myQuickLoans.map((l) => {
+                  const outstanding = l.outstanding_balance ?? l.total_due ?? l.amount;
+                  return (
+                    <Card key={l.id} className="bg-[#D48C70]/10 border border-[#D48C70]/30">
+                      <CardHeader>
+                        <CardTitle className="text-[#1E231F] flex items-center gap-2 text-lg">
+                          <CreditCard className="w-5 h-5 text-[#D48C70]" />
+                          {l.loan_name || 'Quick Loan'}
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        <div className="bg-white p-4 rounded-xl border border-[#E8EBE8]">
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                              <p className="font-semibold text-[#1E231F]">{l.loan_name}</p>
+                              <p className="text-sm text-[#5C665D]">
+                                Amount: <span className="font-bold text-[#D48C70]">{formatCurrency(l.amount)}</span>
+                                {' • '}
+                                Interest: <span className="font-bold">{formatCurrency(l.current_interest || 0)}</span>
+                                {' • '}
+                                Outstanding: <span className="font-bold">{formatCurrency(outstanding)}</span>
+                              </p>
+                              <p className="text-xs text-[#5C665D]">
+                                Status: {l.status === 'approved' ? 'Approved' : l.status === 'pending_treasurer' ? 'Pending Treasurer' : l.status}
+                              </p>
+                            </div>
+                            {l.status === 'approved' && !l.repaid && (
+                              <Button
+                                size="sm"
+                                onClick={() => handleRepayQuickLoan(l.id, outstanding)}
+                                className="bg-[#347242] hover:bg-[#2C5530] rounded-full"
+                              >
+                                Repay
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })
+              )}
             </div>
             )}
 

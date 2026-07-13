@@ -177,10 +177,9 @@ const ShopPage = () => {
   const [collateralImage, setCollateralImage] = useState(null);
   const [collateralImagePreview, setCollateralImagePreview] = useState('');
   const [officerCode, setOfficerCode] = useState('');
-  const [nationalIdFrontImages, setNationalIdFrontImages] = useState([]);
-  const [nationalIdBackImages, setNationalIdBackImages] = useState([]);
-  const [nationalIdFrontPreviews, setNationalIdFrontPreviews] = useState([]);
-  const [nationalIdBackPreviews, setNationalIdBackPreviews] = useState([]);
+  const [nationalIdImages, setNationalIdImages] = useState([]);
+  const [nationalIdPreviews, setNationalIdPreviews] = useState([]);
+  const [repaymentPeriod, setRepaymentPeriod] = useState('2_weeks');
   const [validOfficerCodes, setValidOfficerCodes] = useState([]);
   const [loanRequestSubmitted, setLoanRequestSubmitted] = useState(false);
   useEffect(() => {
@@ -352,8 +351,7 @@ const ShopPage = () => {
     await exportLoanAgreementPDF(loanRequestData, officer, {
       download: true,
       collateralImage: collateralImagePreview,
-      nationalIdFrontImages: nationalIdFrontPreviews,
-      nationalIdBackImages: nationalIdBackPreviews,
+      nationalIdImages: nationalIdPreviews,
     });
   };
 
@@ -371,10 +369,9 @@ const ShopPage = () => {
     setCollateralImage(null);
     setCollateralImagePreview('');
     setOfficerCode('');
-    setNationalIdFrontImages([]);
-    setNationalIdBackImages([]);
-    setNationalIdFrontPreviews([]);
-    setNationalIdBackPreviews([]);
+    setNationalIdImages([]);
+    setNationalIdPreviews([]);
+    setRepaymentPeriod('2_weeks');
   };
 
   const handlePurchaseRequest = async (e) => {
@@ -704,14 +701,14 @@ if (error.response) {
     formData.append('officer_name', officer?.name || '');
     formData.append('serial_number', serialNumber || '');
     formData.append('buyer_name', buyerName.trim() || '');
+    formData.append('repayment_period', repaymentPeriod);
     
     // Only send file for collateral-backed
     if (!loanIsGuaranteed && collateralImage) {
       formData.append('collateral_image', collateralImage);
     }
     if (loanIsGuaranteed) {
-      nationalIdFrontImages.forEach(img => formData.append('national_id_front_images', img));
-      nationalIdBackImages.forEach(img => formData.append('national_id_back_images', img));
+      nationalIdImages.forEach(img => formData.append('national_id_images', img));
     }
 
     const headers = isAuthenticated 
@@ -1301,6 +1298,8 @@ const handleOpenPurchase = (product) => {
                   <p><span className="font-semibold">Email:</span> {loanRequestData?.loanEmail || loanRequestData?.loan_email}</p>
                   <p><span className="font-semibold">Phone:</span> {loanRequestData?.loanPhone || loanRequestData?.loan_phone || 'Not provided'}</p>
                   <p><span className="font-semibold">Amount:</span> UGX {Number(loanRequestData?.loanAmount || loanRequestData?.amount || 0).toLocaleString()}</p>
+                  <p><span className="font-semibold">Interest:</span> UGX {Math.round((loanRequestData?.interest_amount || (Number(loanRequestData?.loanAmount || loanRequestData?.amount || 0) * (loanRequestData?.repayment_period === '1_month' ? 0.2 : 0.1)))).toLocaleString()}</p>
+                  <p><span className="font-semibold">Total Repayment:</span> UGX {Math.round((loanRequestData?.total_due || (Number(loanRequestData?.loanAmount || loanRequestData?.amount || 0) * 1.1))).toLocaleString()}</p>
                 </div>
               </div>
             </div>
@@ -1342,45 +1341,67 @@ const handleOpenPurchase = (product) => {
                 <Input id="loan-email" type="email" value={loanEmail} onChange={(e) => setLoanEmail(e.target.value)} placeholder="you@example.com" required />
               </div>
               
-              <div className="space-y-2">
-                <Label htmlFor="loan-phone" className="text-sm font-medium text-slate-700">Phone number</Label>
-                <Input id="loan-phone" value={loanPhone} onChange={(e) => setLoanPhone(e.target.value)} placeholder="07XXXXXXXX" required />
-              </div>
+               <div className="space-y-2">
+                 <Label htmlFor="loan-phone" className="text-sm font-medium text-slate-700">Phone number</Label>
+                 <Input id="loan-phone" value={loanPhone} onChange={(e) => setLoanPhone(e.target.value)} placeholder="07XXXXXXXX" required />
+               </div>
               
-              <div className="space-y-2">
-                <Label htmlFor="loan-phone" className="text-sm font-medium text-slate-700">Phone number</Label>
-                <Input id="loan-phone" value={loanPhone} onChange={(e) => setLoanPhone(e.target.value)} placeholder="07XXXXXXXX" required />
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="loan-amount" className="text-sm font-medium text-slate-700">
-                  {loanType === 'guaranteed' ? 'Loan amount (UGX)' : 'Selling Price (UGX)'}
-                </Label>
-                <Input id="loan-amount" type="number" value={loanAmount} onChange={(e) => setLoanAmount(e.target.value)} placeholder="e.g. 100000" required />
-              </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-slate-700">Repayment Period</Label>
+                  <div className="flex items-center gap-4 mt-2">
+                    <label className="inline-flex items-center">
+                      <input 
+                        type="radio" 
+                        name="repayment-period" 
+                        checked={repaymentPeriod === '2_weeks'} 
+                        onChange={() => setRepaymentPeriod('2_weeks')} 
+                        className="mr-2"
+                      />
+                      <span className="ml-2">2 weeks</span>
+                    </label>
+                    <label className="inline-flex items-center">
+                      <input 
+                        type="radio" 
+                        name="repayment-period" 
+                        checked={repaymentPeriod === '1_month'} 
+                        onChange={() => setRepaymentPeriod('1_month')} 
+                        className="mr-2"
+                      />
+                      <span className="ml-2">1 month</span>
+                    </label>
+                  </div>
+                </div>
 
-              {loanType === 'guaranteed' && (
-                <>
-                  <div className="space-y-2">
-                    <Label htmlFor="loan-purpose" className="text-sm font-medium text-slate-700">Loan purpose</Label>
-                    <Textarea id="loan-purpose" value={loanPurpose} onChange={(e) => setLoanPurpose(e.target.value)} placeholder="Tell us why you need this loan" required />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="officer-code" className="text-sm font-medium text-slate-700">Officer Code</Label>
-                    <Input id="officer-code" value={officerCode} onChange={(e) => setOfficerCode(e.target.value)} placeholder="Enter officer code" required />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-sm font-medium text-slate-700">National ID Front</Label>
-                    <Input type="file" accept="image/*" multiple onChange={(e) => { const files = Array.from(e.target.files || []); setNationalIdFrontImages(prev => [...prev, ...files]); const readers = files.map(f => new Promise(res => { const r = new FileReader(); r.onloadend = () => res(r.result); r.readAsDataURL(f); })); Promise.all(readers).then(results => setNationalIdFrontPreviews(prev => [...prev, ...results])); }} />
-                    {nationalIdFrontPreviews.length > 0 && <div className="flex gap-2 mt-2">{nationalIdFrontPreviews.map((src, i) => <img key={i} src={src} alt={`ID front ${i + 1}`} className="h-24 w-24 object-cover rounded" />)}</div>}
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-sm font-medium text-slate-700">National ID Back</Label>
-                    <Input type="file" accept="image/*" multiple onChange={(e) => { const files = Array.from(e.target.files || []); setNationalIdBackImages(prev => [...prev, ...files]); const readers = files.map(f => new Promise(res => { const r = new FileReader(); r.onloadend = () => res(r.result); r.readAsDataURL(f); })); Promise.all(readers).then(results => setNationalIdBackPreviews(prev => [...prev, ...results])); }} />
-                    {nationalIdBackPreviews.length > 0 && <div className="flex gap-2 mt-2">{nationalIdBackPreviews.map((src, i) => <img key={i} src={src} alt={`ID back ${i + 1}`} className="h-24 w-24 object-cover rounded" />)}</div>}
-                  </div>
-                </>
-              )}
+                <div className="space-y-2">
+                  <Label htmlFor="loan-amount" className="text-sm font-medium text-slate-700">
+                    {loanType === 'guaranteed' ? 'Loan amount (UGX)' : 'Selling Price (UGX)'}
+                  </Label>
+                  <Input id="loan-amount" type="number" value={loanAmount} onChange={(e) => setLoanAmount(e.target.value)} placeholder="e.g. 100000" required />
+                  {loanAmount && Number(loanAmount) > 0 && loanType === 'guaranteed' && (
+                    <div className="bg-[#F5F7F5] rounded-lg p-3 text-xs text-[#5C665D] space-y-1">
+                      <div className="flex justify-between"><span>Amount:</span><span className="font-numbers font-semibold">UGX {Number(loanAmount).toLocaleString()}</span></div>
+                      <div className="flex justify-between"><span>Interest:</span><span className="font-numbers font-semibold">UGX {Math.round(Number(loanAmount) * (repaymentPeriod === '1_month' ? 0.2 : 0.1)).toLocaleString()}</span></div>
+                      <div className="flex justify-between border-t border-[#E8EBE8] pt-1 mt-1"><span>Total Repayment:</span><span className="font-numbers font-bold text-[#172B12]">UGX {Math.round(Number(loanAmount) * (1 + (repaymentPeriod === '1_month' ? 0.2 : 0.1))).toLocaleString()}</span></div>
+                    </div>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-slate-700">National ID</Label>
+                  <Input type="file" accept="image/*" multiple onChange={(e) => { const files = Array.from(e.target.files || []); setNationalIdImages(prev => [...prev, ...files]); const readers = files.map(f => new Promise(res => { const r = new FileReader(); r.onloadend = () => res(r.result); r.readAsDataURL(f); })); Promise.all(readers).then(results => setNationalIdPreviews(prev => [...prev, ...results])); }} />
+                  {nationalIdPreviews.length > 0 && <div className="flex gap-2 mt-2">{nationalIdPreviews.map((src, i) => <img key={i} src={src} alt={`National ID ${i + 1}`} className="h-24 w-24 object-cover rounded" />)}</div>}
+                </div>
+                {loanType === 'guaranteed' && (
+                  <>
+                    <div className="space-y-2">
+                      <Label htmlFor="loan-purpose" className="text-sm font-medium text-slate-700">Loan purpose</Label>
+                      <Textarea id="loan-purpose" value={loanPurpose} onChange={(e) => setLoanPurpose(e.target.value)} placeholder="Tell us why you need this loan" required />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="officer-code" className="text-sm font-medium text-slate-700">Officer Code</Label>
+                      <Input id="officer-code" value={officerCode} onChange={(e) => setOfficerCode(e.target.value)} placeholder="Enter officer code" required />
+                    </div>
+                  </>
+                )}
 
               {loanType === 'collateral-backed' && (
                 <>

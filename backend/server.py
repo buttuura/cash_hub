@@ -68,6 +68,7 @@ MAX_LOAN_AMOUNT = 600000  # UGX
 LOAN_INTEREST_NORMAL = 0.03  # 3% per month (within 4 months)
 LOAN_INTEREST_EXTENDED = 0.05  # 5% per month (beyond 4 months)
 LOAN_NORMAL_PERIOD_MONTHS = 4
+QUICK_LOAN_INTEREST = 0.10  # 10% flat for quick loans
 MAX_GUARANTEES_PER_MEMBER = 2
 COMMITTEE_APPRECIATION = 2000  # UGX per member
 YEAR_END_DATE = "2026-12-20"
@@ -1654,6 +1655,73 @@ async def request_loan(loan: LoanRequest, user: dict = Depends(get_current_user)
     return loan_doc
 
 
+async def accrue_quick_loan_interest(quick_loan):
+    if quick_loan.get("status") != "approved" or quick_loan.get("repaid"):
+        return quick_loan
+
+    approved_at = quick_loan.get("approved_at")
+    if not approved_at:
+        return quick_loan
+
+    period = quick_loan.get("interest_period", "2_weeks")
+    amount = quick_loan.get("amount", 0)
+    interest_rate = quick_loan.get("interest_rate", 0.1)
+
+    try:
+        approved_date = datetime.fromisoformat(approved_at.replace('Z', '+00:00'))
+    except ValueError:
+        return quick_loan
+
+    last_accrual_at = quick_loan.get("last_interest_accrual_at")
+    if last_accrual_at:
+        try:
+            last_accrual_date = datetime.fromisoformat(last_accrual_at.replace('Z', '+00:00'))
+        except ValueError:
+            last_accrual_date = approved_date
+    else:
+        last_accrual_date = approved_date
+
+    now = datetime.now(timezone.utc)
+    if now <= last_accrual_date:
+        return quick_loan
+
+    elapsed_days = (now - last_accrual_date).days
+
+    if period == "2_weeks":
+        period_days = 14
+    else:
+        period_days = 30
+
+    periods_elapsed = max(0, elapsed_days // period_days)
+    if periods_elapsed <= 0:
+        return quick_loan
+
+    current_interest = quick_loan.get("current_interest", quick_loan.get("interest_amount", 0))
+    additional_interest = round(amount * interest_rate * periods_elapsed, 2)
+    total_interest = round(current_interest + additional_interest, 2)
+    total_due = round(amount + total_interest, 2)
+    outstanding_balance = max(0, total_due - quick_loan.get("amount_repaid", 0))
+
+    update_fields = {
+        "current_interest": total_interest,
+        "total_due": total_due,
+        "outstanding_balance": outstanding_balance,
+        "last_interest_accrual_at": now.isoformat(),
+    }
+
+    if outstanding_balance <= 0 and not quick_loan.get("repaid"):
+        update_fields["repaid"] = True
+        update_fields["repaid_at"] = now.isoformat()
+        update_fields["status"] = "repaid"
+
+    quick_loan.update(update_fields)
+
+    loan_id = quick_loan.get("_id")
+    if loan_id:
+        await db.quick_loans.update_one({"_id": loan_id}, {"$set": update_fields})
+
+    return quick_loan
+
 @api_router.get("/quick-loans/valid-codes")
 async def get_quick_loan_valid_codes(user: dict = Depends(get_current_user_optional)):
     member_cursor = db.users.find({"member_code": {"$exists": True, "$ne": None}}, {"member_code": 1, "name": 1})
@@ -1695,6 +1763,7 @@ async def request_quick_loan(
     collateral_image: Optional[UploadFile] = File(None),
     user: Optional[dict] = Depends(get_current_user_optional),
     buyer_name: Optional[str] = Form(None),
+    repayment_period: Optional[str] = Form(None),
 ):
     if amount <= 0:
         raise HTTPException(status_code=400, detail="Quick loan amount must be positive")
@@ -1717,22 +1786,15 @@ async def request_quick_loan(
         upload_result = await upload_to_cloudinary(collateral_image)
         collateral_image_url = upload_result.get("secure_url") or upload_result.get("url")
 
-    national_id_front_urls = []
-    national_id_back_urls = []
+    national_id_images = []
     form_data = await request.form()
     for key in form_data:
-        if key == "national_id_front_images":
+        if key == "national_id_images":
             files = form_data.getlist(key)
             for file in files:
                 if file and file.filename:
                     result = await upload_to_cloudinary(file)
-                    national_id_front_urls.append(result.get("secure_url") or result.get("url"))
-        elif key == "national_id_back_images":
-            files = form_data.getlist(key)
-            for file in files:
-                if file and file.filename:
-                    result = await upload_to_cloudinary(file)
-                    national_id_back_urls.append(result.get("secure_url") or result.get("url"))
+                    national_id_images.append(result.get("secure_url") or result.get("url"))
 
     loan_doc = {
         "user_id": user["id"] if user else None,
@@ -1750,8 +1812,11 @@ async def request_quick_loan(
         "serial_number": serial_number.strip() if serial_number else None,
         "buyer_name": buyer_name.strip() if buyer_name else None,
         "collateral_image": collateral_image_url,
-        "national_id_front_images": national_id_front_urls,
-        "national_id_back_images": national_id_back_urls,
+        "national_id_images": national_id_images,
+        "interest_rate": 0.2 if repayment_period == "1_month" else 0.1,
+        "interest_period": repayment_period or "2_weeks",
+        "interest_amount": round(amount * (0.2 if repayment_period == "1_month" else 0.1), 2),
+        "total_due": round(amount * (1 + (0.2 if repayment_period == "1_month" else 0.1)), 2),
         "status": "pending_treasurer",
         "created_at": datetime.now(timezone.utc).isoformat(),
         "approved_at": None,
@@ -1770,6 +1835,29 @@ async def get_quick_loans(user: dict = Depends(require_treasurer)):
     result = []
     for q in quick_loans:
         q["id"] = str(q["_id"])
+        await accrue_quick_loan_interest(q)
+        q.pop("_id", None)
+        result.append(q)
+    return result
+
+@api_router.get("/quick-loans/my")
+async def get_my_quick_loans(user: dict = Depends(get_current_user)):
+    member_code = user.get("member_code")
+    user_id = user.get("id")
+    user_name = user.get("name")
+    query = {
+        "$or": [
+            {"officer_code": member_code},
+            {"user_id": user_id},
+        ]
+    }
+    if user_name:
+        query["$or"].append({"officer_name": user_name})
+    quick_loans = await db.quick_loans.find(query).to_list(1000)
+    result = []
+    for q in quick_loans:
+        q["id"] = str(q["_id"])
+        await accrue_quick_loan_interest(q)
         q.pop("_id", None)
         result.append(q)
     return result
@@ -1811,6 +1899,47 @@ async def delete_quick_loan(loan_id: str, user: dict = Depends(require_treasurer
         raise HTTPException(status_code=404, detail="Quick loan request not found")
 
     return {"message": "Quick loan request deleted"}
+
+@api_router.post("/quick-loans/{loan_id}/repay")
+async def repay_quick_loan(loan_id: str, amount: float = Body(..., embed=True), user: dict = Depends(get_current_user)):
+    try:
+        loid = ObjectId(loan_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid loan id")
+
+    quick_loan = await db.quick_loans.find_one({"_id": loid})
+    if not quick_loan:
+        fallback = await db.quick_loans.find_one({"id": loan_id})
+        if not fallback:
+            raise HTTPException(status_code=404, detail="Quick loan not found")
+        quick_loan = fallback
+
+    if quick_loan.get("status") != "approved":
+        raise HTTPException(status_code=400, detail="Quick loan is not approved")
+
+    if quick_loan.get("repaid"):
+        raise HTTPException(status_code=400, detail="Quick loan already repaid")
+
+    quick_loan = await accrue_quick_loan_interest(quick_loan)
+    outstanding = quick_loan.get("outstanding_balance", quick_loan.get("total_due", quick_loan.get("amount", 0)))
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="Payment amount must be positive")
+
+    payment_to_apply = min(amount, outstanding)
+    new_balance = max(0, outstanding - payment_to_apply)
+
+    update_data = {
+        "$set": {
+            "outstanding_balance": new_balance,
+            "repaid": new_balance <= 0,
+            "repaid_at": datetime.now(timezone.utc).isoformat() if new_balance <= 0 else None,
+            "status": "repaid" if new_balance <= 0 else "approved",
+        },
+        "$inc": {"amount_repaid": payment_to_apply}
+    }
+
+    await db.quick_loans.update_one({"_id": loid}, update_data)
+    return {"message": "Payment recorded", "outstanding_balance": new_balance, "repaid": new_balance <= 0}
 
 @api_router.post("/loans/guarantor-approve")
 async def guarantor_approve_loan(approval: GuarantorApproval, user: dict = Depends(get_current_user)):
@@ -1893,6 +2022,23 @@ async def get_loans(user: dict = Depends(get_current_user)):
                 logger.error("Failed to process loan %s during list retrieval: %s", loan_item.get("id"), e)
         
         result.append(loan_item)
+
+    if user.get("role") in ["admin", "super_admin", "treasurer"]:
+        quick_loans = await db.quick_loans.find({"status": {"$in": ["approved", "pending_treasurer"]}}).to_list(1000)
+        for ql in quick_loans:
+            ql["id"] = f"quick_{str(ql['_id'])}"
+            await accrue_quick_loan_interest(ql)
+            ql.pop("_id", None)
+            ql["is_quick_loan"] = True
+            ql["guarantor_name"] = ql.get("officer_name") or ql.get("officer_code") or "N/A"
+            if not ql.get("months_elapsed") and ql.get("approved_at"):
+                try:
+                    parsed_date = datetime.fromisoformat(ql["approved_at"].replace('Z', '+00:00'))
+                    ql["months_elapsed"] = calculate_months_elapsed(parsed_date)
+                except ValueError:
+                    pass
+            result.append(ql)
+
     return result
 
 @api_router.post("/loans/approve")

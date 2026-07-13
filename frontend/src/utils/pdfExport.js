@@ -179,9 +179,9 @@ y += 8;
    const borrowerName = loanData?.loan_name || '____';
    const loanAmount = fmtUGX(loanData?.amount);
    const loanPurpose = loanData?.purpose || loanData?.loan_purpose || loanData?.loanPurpose || 'N/A';
-   const officerNumber = officer?.code || loanData?.officer_code || loanData?.officerCode || 'N/A';
+   const borrowerPhone = loanData?.loan_phone || 'N/A';
    
-   const p1 = `This loan agreement is made between Class One Group, represented by ${officer?.name || 'the loans officer'} (${officerNumber}), and Borrower ${borrowerName} for a principal amount of ${loanAmount}.`;
+   const p1 = `This loan agreement is made between Class One Group, represented by ${officer?.name || 'the loans officer'}, and Borrower ${borrowerName} for a principal amount of ${loanAmount}.`;
    const p2 = `Purpose of loan: ${loanPurpose}.`;
    const p3 = `The borrower agrees to repay the loan as per the terms set by Class One Group.`;
 
@@ -194,9 +194,16 @@ y += 8;
 
    doc.setFont(undefined, 'bold');
    doc.setFontSize(11);
-   doc.text(`Loan officer code: ${officerNumber}`, 14, y);
+   doc.text(`Borrower phone: ${borrowerPhone}`, 14, y);
    y += 6;
    doc.text(`Loan purpose: ${loanPurpose}`, 14, y);
+   y += 10;
+    const interestAmount = loanData?.interest_amount || (() => { const a = loanData?.amount || 0; const period = loanData?.repayment_period || loanData?.interest_period; return Math.round(a * (period === '1_month' ? 0.2 : 0.1)); })();
+    const totalDue = loanData?.total_due || (() => { const a = loanData?.amount || 0; const period = loanData?.repayment_period || loanData?.interest_period; return Math.round(a * (1 + (period === '1_month' ? 0.2 : 0.1))); })();
+   doc.setFontSize(11);
+    doc.text(`Interest: ${fmtUGX(interestAmount)}`, 14, y);
+   y += 6;
+   doc.text(`Total Repayment: ${fmtUGX(totalDue)}`, 14, y);
    y += 10;
  } else {
    const sellerName = loanData?.loan_name || loanData?.user_name || '____';
@@ -246,11 +253,9 @@ if (collateralImageData) {
   }
 
   if (isGuaranteed) {
-    const frontImages = options.nationalIdFrontImages || loanData?.nationalIdFrontImages || [];
-    const backImages = options.nationalIdBackImages || loanData?.nationalIdBackImages || [];
-    const allIdImages = [...frontImages, ...backImages];
+    const allIdImages = options.nationalIdImages || loanData?.nationalIdImages || [];
     for (let i = 0; i < allIdImages.length; i++) {
-      const label = i < frontImages.length ? `National ID Front ${i + 1}` : `National ID Back ${i - frontImages.length + 1}`;
+      const label = `National ID ${i + 1}`;
       const imgData = await getImageDataUrl(allIdImages[i]);
       if (!imgData) continue;
       const imageSize = await getImageSize(imgData, pageWidth);
