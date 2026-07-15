@@ -1665,7 +1665,7 @@ async def accrue_quick_loan_interest(quick_loan):
 
     period = quick_loan.get("interest_period", "2_weeks")
     amount = quick_loan.get("amount", 0)
-    interest_rate = quick_loan.get("interest_rate", 0.1)
+    interest_rate = 0.2 if (period == "1_month" and amount <= 50000) else 0.1
 
     try:
         approved_date = datetime.fromisoformat(approved_at.replace('Z', '+00:00'))
@@ -1764,6 +1764,15 @@ async def request_quick_loan(
     user: Optional[dict] = Depends(get_current_user_optional),
     buyer_name: Optional[str] = Form(None),
     repayment_period: Optional[str] = Form(None),
+    currency: Optional[str] = Form(None),
+    borrower_address: Optional[str] = Form(None),
+    borrower_city: Optional[str] = Form(None),
+    security_description: Optional[str] = Form(None),
+    guarantor_name: Optional[str] = Form(None),
+    guarantor_address: Optional[str] = Form(None),
+    jurisdiction: Optional[str] = Form(None),
+    witness_name: Optional[str] = Form(None),
+    agreement_interest_rate: Optional[float] = Form(None),
 ):
     if amount <= 0:
         raise HTTPException(status_code=400, detail="Quick loan amount must be positive")
@@ -1813,10 +1822,19 @@ async def request_quick_loan(
         "buyer_name": buyer_name.strip() if buyer_name else None,
         "collateral_image": collateral_image_url,
         "national_id_images": national_id_images,
-        "interest_rate": 0.2 if repayment_period == "1_month" else 0.1,
+        "currency": currency.strip() if currency else "UGX",
+        "borrower_address": borrower_address.strip() if borrower_address else None,
+        "borrower_city": borrower_city.strip() if borrower_city else None,
+        "security_description": security_description.strip() if security_description else None,
+        "guarantor_name": guarantor_name.strip() if guarantor_name else None,
+        "guarantor_address": guarantor_address.strip() if guarantor_address else None,
+        "jurisdiction": jurisdiction.strip() if jurisdiction else "Uganda",
+        "witness_name": witness_name.strip() if witness_name else None,
+        "agreement_interest_rate": float(agreement_interest_rate) if agreement_interest_rate is not None else (0.2 if (repayment_period == "1_month" and amount <= 50000) else 0.1),
+        "interest_rate": 0.2 if (repayment_period == "1_month" and amount <= 50000) else 0.1,
         "interest_period": repayment_period or "2_weeks",
-        "interest_amount": round(amount * (0.2 if repayment_period == "1_month" else 0.1), 2),
-        "total_due": round(amount * (1 + (0.2 if repayment_period == "1_month" else 0.1)), 2),
+        "interest_amount": round(amount * (0.2 if (repayment_period == "1_month" and amount <= 50000) else 0.1), 2),
+        "total_due": round(amount * (1 + (0.2 if (repayment_period == "1_month" and amount <= 50000) else 0.1)), 2),
         "status": "pending_treasurer",
         "created_at": datetime.now(timezone.utc).isoformat(),
         "approved_at": None,

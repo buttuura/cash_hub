@@ -167,6 +167,14 @@ const ShopPage = () => {
   const [loanName, setLoanName] = useState('');
   const [loanEmail, setLoanEmail] = useState('');
   const [loanPhone, setLoanPhone] = useState('');
+  const [loanAddress, setLoanAddress] = useState('');
+  const [loanCity, setLoanCity] = useState('');
+  const [loanCurrency, setLoanCurrency] = useState('UGX');
+  const [loanSecurity, setLoanSecurity] = useState('');
+  const [loanGuarantorName, setLoanGuarantorName] = useState('');
+  const [loanGuarantorAddress, setLoanGuarantorAddress] = useState('');
+  const [loanJurisdiction, setLoanJurisdiction] = useState('Uganda');
+  const [loanWitnessName, setLoanWitnessName] = useState('');
   const [loanAmount, setLoanAmount] = useState('');
   const [loanPurpose, setLoanPurpose] = useState('');
   const [collateral, setCollateral] = useState('');
@@ -352,6 +360,14 @@ const ShopPage = () => {
       download: true,
       collateralImage: collateralImagePreview,
       nationalIdImages: nationalIdPreviews,
+      borrowerAddress: loanAddress,
+      borrowerCity: loanCity,
+      currency: loanCurrency,
+      security: loanSecurity,
+      guarantorName: loanGuarantorName,
+      guarantorAddress: loanGuarantorAddress,
+      jurisdiction: loanJurisdiction,
+      witnessName: loanWitnessName,
     });
   };
 
@@ -361,6 +377,14 @@ const ShopPage = () => {
     setLoanName('');
     setLoanEmail('');
     setLoanPhone('');
+    setLoanAddress('');
+    setLoanCity('');
+    setLoanCurrency('UGX');
+    setLoanSecurity('');
+    setLoanGuarantorName('');
+    setLoanGuarantorAddress('');
+    setLoanJurisdiction('Uganda');
+    setLoanWitnessName('');
     setLoanAmount('');
     setLoanPurpose('');
     setCollateral('');
@@ -683,6 +707,21 @@ if (error.response) {
     return;
   }
 
+  if (loanIsGuaranteed) {
+    if (!loanAddress.trim() || !loanCity.trim()) {
+      toast.error('Please enter the borrower address and city');
+      return;
+    }
+    if (!loanSecurity.trim()) {
+      toast.error('Please describe the pledged security / property');
+      return;
+    }
+    if (!loanGuarantorName.trim()) {
+      toast.error('Please enter a guarantor name');
+      return;
+    }
+  }
+
   if (!loanIsGuaranteed && !collateral.trim()) {
     toast.error('Please provide collateral details for collateral-backed loan');
     return;
@@ -702,6 +741,15 @@ if (error.response) {
     formData.append('serial_number', serialNumber || '');
     formData.append('buyer_name', buyerName.trim() || '');
     formData.append('repayment_period', repaymentPeriod);
+    formData.append('currency', loanCurrency || 'UGX');
+    formData.append('borrower_address', loanAddress.trim());
+    formData.append('borrower_city', loanCity.trim());
+    formData.append('security_description', loanSecurity.trim());
+    formData.append('guarantor_name', loanGuarantorName.trim());
+    formData.append('guarantor_address', loanGuarantorAddress.trim());
+    formData.append('jurisdiction', loanJurisdiction.trim());
+    formData.append('witness_name', loanWitnessName.trim());
+    formData.append('agreement_interest_rate', String(Number(loanAmount) > 50000 ? 10 : (repaymentPeriod === '1_month' ? 20 : 10)));
     
     // Only send file for collateral-backed
     if (!loanIsGuaranteed && collateralImage) {
@@ -1297,9 +1345,18 @@ const handleOpenPurchase = (product) => {
                   <p><span className="font-semibold">Name:</span> {loanRequestData?.loanName || loanRequestData?.loan_name}</p>
                   <p><span className="font-semibold">Email:</span> {loanRequestData?.loanEmail || loanRequestData?.loan_email}</p>
                   <p><span className="font-semibold">Phone:</span> {loanRequestData?.loanPhone || loanRequestData?.loan_phone || 'Not provided'}</p>
-                  <p><span className="font-semibold">Amount:</span> UGX {Number(loanRequestData?.loanAmount || loanRequestData?.amount || 0).toLocaleString()}</p>
-                  <p><span className="font-semibold">Interest:</span> UGX {Math.round((loanRequestData?.interest_amount || (Number(loanRequestData?.loanAmount || loanRequestData?.amount || 0) * (loanRequestData?.repayment_period === '1_month' ? 0.2 : 0.1)))).toLocaleString()}</p>
-                  <p><span className="font-semibold">Total Repayment:</span> UGX {Math.round((loanRequestData?.total_due || (Number(loanRequestData?.loanAmount || loanRequestData?.amount || 0) * 1.1))).toLocaleString()}</p>
+                  {loanIsGuaranteed && (loanRequestData?.borrower_address || loanRequestData?.borrower_city) && (
+                    <p><span className="font-semibold">Address:</span> {[loanRequestData?.borrower_address, loanRequestData?.borrower_city].filter(Boolean).join(', ')}</p>
+                  )}
+                  {loanIsGuaranteed && loanRequestData?.security_description && (
+                    <p><span className="font-semibold">Security:</span> {loanRequestData.security_description}</p>
+                  )}
+                  {loanIsGuaranteed && loanRequestData?.guarantor_name && (
+                    <p><span className="font-semibold">Guarantor:</span> {loanRequestData.guarantor_name}</p>
+                  )}
+                  <p><span className="font-semibold">Amount:</span> {(loanRequestData?.currency || 'UGX')} {Number(loanRequestData?.loanAmount || loanRequestData?.amount || 0).toLocaleString()}</p>
+                  <p><span className="font-semibold">Interest:</span> {(loanRequestData?.currency || 'UGX')} {Math.round((loanRequestData?.interest_amount || (Number(loanRequestData?.loanAmount || loanRequestData?.amount || 0) * (Number(loanRequestData?.loanAmount || loanRequestData?.amount || 0) > 50000 ? 0.1 : (loanRequestData?.repayment_period === '1_month' ? 0.2 : 0.1))))).toLocaleString()}</p>
+                  <p><span className="font-semibold">Total Repayment:</span> {(loanRequestData?.currency || 'UGX')} {Math.round((loanRequestData?.total_due || (Number(loanRequestData?.loanAmount || loanRequestData?.amount || 0) * (Number(loanRequestData?.loanAmount || loanRequestData?.amount || 0) > 50000 ? 1.1 : (loanRequestData?.repayment_period === '1_month' ? 1.2 : 1.1))))).toLocaleString()}</p>
                 </div>
               </div>
             </div>
@@ -1374,27 +1431,69 @@ const handleOpenPurchase = (product) => {
 
                 <div className="space-y-2">
                   <Label htmlFor="loan-amount" className="text-sm font-medium text-slate-700">
-                    {loanType === 'guaranteed' ? 'Loan amount (UGX)' : 'Selling Price (UGX)'}
+                    {loanType === 'guaranteed' ? 'Loan amount' : 'Selling Price'}
                   </Label>
-                  <Input id="loan-amount" type="number" value={loanAmount} onChange={(e) => setLoanAmount(e.target.value)} placeholder="e.g. 100000" required />
+                  <div className="flex gap-2">
+                    <Input id="loan-amount" type="number" value={loanAmount} onChange={(e) => setLoanAmount(e.target.value)} placeholder="e.g. 100000" required className="flex-1" />
+                    <select
+                      id="loan-currency"
+                      value={loanCurrency}
+                      onChange={(e) => setLoanCurrency(e.target.value)}
+                      className="w-28 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-[#2B6F38] focus:ring-2 focus:ring-[#2B6F38]/20"
+                    >
+                      <option value="UGX">UGX</option>
+                      <option value="USD">USD</option>
+                      <option value="EUR">EUR</option>
+                      <option value="KES">KES</option>
+                      <option value="TZS">TZS</option>
+                    </select>
+                  </div>
                   {loanAmount && Number(loanAmount) > 0 && loanType === 'guaranteed' && (
                     <div className="bg-[#F5F7F5] rounded-lg p-3 text-xs text-[#5C665D] space-y-1">
-                      <div className="flex justify-between"><span>Amount:</span><span className="font-numbers font-semibold">UGX {Number(loanAmount).toLocaleString()}</span></div>
-                      <div className="flex justify-between"><span>Interest:</span><span className="font-numbers font-semibold">UGX {Math.round(Number(loanAmount) * (repaymentPeriod === '1_month' ? 0.2 : 0.1)).toLocaleString()}</span></div>
-                      <div className="flex justify-between border-t border-[#E8EBE8] pt-1 mt-1"><span>Total Repayment:</span><span className="font-numbers font-bold text-[#172B12]">UGX {Math.round(Number(loanAmount) * (1 + (repaymentPeriod === '1_month' ? 0.2 : 0.1))).toLocaleString()}</span></div>
+                      <div className="flex justify-between"><span>Amount:</span><span className="font-numbers font-semibold">{loanCurrency} {Number(loanAmount).toLocaleString()}</span></div>
+                      <div className="flex justify-between"><span>Interest ({Number(loanAmount) > 50000 ? '10%' : (repaymentPeriod === '1_month' ? '20%' : '10%')}):</span><span className="font-numbers font-semibold">{loanCurrency} {Math.round(Number(loanAmount) * (Number(loanAmount) > 50000 ? 0.1 : (repaymentPeriod === '1_month' ? 0.2 : 0.1))).toLocaleString()}</span></div>
+                      <div className="flex justify-between border-t border-[#E8EBE8] pt-1 mt-1"><span>Total Repayment:</span><span className="font-numbers font-bold text-[#172B12]">{loanCurrency} {Math.round(Number(loanAmount) * (1 + (Number(loanAmount) > 50000 ? 0.1 : (repaymentPeriod === '1_month' ? 0.2 : 0.1)))).toLocaleString()}</span></div>
                     </div>
                   )}
                 </div>
                 <div className="space-y-2">
-                  <Label className="text-sm font-medium text-slate-700">National ID</Label>
+                  <Label className="text-sm font-medium text-slate-700">Security / Pledged Property image</Label>
                   <Input type="file" accept="image/*" multiple onChange={(e) => { const files = Array.from(e.target.files || []); setNationalIdImages(prev => [...prev, ...files]); const readers = files.map(f => new Promise(res => { const r = new FileReader(); r.onloadend = () => res(r.result); r.readAsDataURL(f); })); Promise.all(readers).then(results => setNationalIdPreviews(prev => [...prev, ...results])); }} />
-                  {nationalIdPreviews.length > 0 && <div className="flex gap-2 mt-2">{nationalIdPreviews.map((src, i) => <img key={i} src={src} alt={`National ID ${i + 1}`} className="h-24 w-24 object-cover rounded" />)}</div>}
+                  {nationalIdPreviews.length > 0 && <div className="flex gap-2 mt-2">{nationalIdPreviews.map((src, i) => <img key={i} src={src} alt={`Security / Pledged Property Image ${i + 1}`} className="h-24 w-24 object-cover rounded" />)}</div>}
                 </div>
                 {loanType === 'guaranteed' && (
                   <>
                     <div className="space-y-2">
+                      <Label htmlFor="loan-address" className="text-sm font-medium text-slate-700">Borrower Address</Label>
+                      <Input id="loan-address" value={loanAddress} onChange={(e) => setLoanAddress(e.target.value)} placeholder="Street address" required />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="loan-city" className="text-sm font-medium text-slate-700">City, State, Zip Code</Label>
+                      <Input id="loan-city" value={loanCity} onChange={(e) => setLoanCity(e.target.value)} placeholder="e.g. Kampala, Uganda" required />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="loan-security" className="text-sm font-medium text-slate-700">Security / Pledged Property</Label>
+                      <Textarea id="loan-security" value={loanSecurity} onChange={(e) => setLoanSecurity(e.target.value)} placeholder="e.g. House Sofas - brand, model, condition" required rows={2} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="guarantor-name" className="text-sm font-medium text-slate-700">Guarantor Name</Label>
+                      <Input id="guarantor-name" value={loanGuarantorName} onChange={(e) => setLoanGuarantorName(e.target.value)} placeholder="Full name of guarantor" required />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="guarantor-address" className="text-sm font-medium text-slate-700">Guarantor Address</Label>
+                      <Input id="guarantor-address" value={loanGuarantorAddress} onChange={(e) => setLoanGuarantorAddress(e.target.value)} placeholder="Guarantor street address" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="loan-jurisdiction" className="text-sm font-medium text-slate-700">Governing Law / Jurisdiction</Label>
+                      <Input id="loan-jurisdiction" value={loanJurisdiction} onChange={(e) => setLoanJurisdiction(e.target.value)} placeholder="e.g. Uganda" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="loan-witness" className="text-sm font-medium text-slate-700">Witness Name (optional)</Label>
+                      <Input id="loan-witness" value={loanWitnessName} onChange={(e) => setLoanWitnessName(e.target.value)} placeholder="Full name of witness" />
+                    </div>
+                    <div className="space-y-2">
                       <Label htmlFor="loan-purpose" className="text-sm font-medium text-slate-700">Loan purpose</Label>
-                      <Textarea id="loan-purpose" value={loanPurpose} onChange={(e) => setLoanPurpose(e.target.value)} placeholder="Tell us why you need this loan" required />
+                      <Textarea id="loan-purpose" value={loanPurpose} onChange={(e) => setLoanPurpose(e.target.value)} placeholder="Tell us why you need this loan" required rows={2} />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="officer-code" className="text-sm font-medium text-slate-700">Officer Code</Label>
