@@ -74,7 +74,12 @@ COMMITTEE_APPRECIATION = 2000  # UGX per member
 YEAR_END_DATE = "2026-12-20"
 
 # Loan Officers list (populated from DB or static config; empty by default)
-OFFICERS: list[dict] = []
+OFFICERS: list[dict] = [
+    {"name": "Ahimbisibwe Alexandar", "code": "AA001", "signature": "/signatures/ahimbisibwe.png"},
+    {"name": "Nuabiine Nicholous", "code": "NN002", "signature": "/signatures/nuabiine.png"},
+    {"name": "Owayesu Ronald", "code": "OR003", "signature": "/signatures/owayesu.png"},
+    {"name": "Buttuura Isaiah", "code": "BI004", "signature": "/signatures/buttuura.png"},
+]
 
 # Create the main app
 app = FastAPI(title="Class One Savings API")

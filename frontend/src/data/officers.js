@@ -1,5 +1,6 @@
 export const OFFICERS = [
-  { name: "John Doe", code: "JD001", signature: "/signatures/john.png" },
-  { name: "Jane Smith", code: "JS002", signature: "/signatures/jane.png" },
-  { name: "Mike Johnson", code: "MJ003", signature: "/signatures/mike.png" },
+  { name: "Ahimbisibwe Alexandar", code: "AA001", signature: "/signatures/ahimbisibwe.png" },
+  { name: "Nuabiine Nicholous", code: "NN002", signature: "/signatures/nuabiine.png" },
+  { name: "Owayesu Ronald", code: "OR003", signature: "/signatures/owayesu.png" },
+  { name: "Buttuura Isaiah", code: "BI004", signature: "/signatures/buttuura.png" },
 ];
