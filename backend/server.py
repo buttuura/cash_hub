@@ -62,7 +62,7 @@ else:
 
 # Group Rules Constants
 MONTHLY_SAVINGS = 52000  # UGX
-DEVELOPMENT_FEE = 3000  # UGX per month
+DEVELOPMENT_FEE = 3000  # UGX per slot per month
 LATE_FEE_PER_POSITION = 3000  # UGX
 MAX_LOAN_AMOUNT = 600000  # UGX
 LOAN_INTEREST_NORMAL = 0.03  # 3% per month (within 4 months)
@@ -149,11 +149,18 @@ class DepositRequest(BaseModel):
     deposit_type: str = "savings"  # savings, development_fee
     description: Optional[str] = None
     target_user_id: Optional[str] = None
+    deduct_late_fee: bool = False
 
 class LoanRequest(BaseModel):
     amount: float
     guarantor_id: str
     reason: Optional[str] = None
+
+class AdminLoanCreate(BaseModel):
+    member_id: str
+    amount: float
+    reason: Optional[str] = None
+    guarantor_id: Optional[str] = None
 
 class GuarantorApproval(BaseModel):
     loan_id: str
@@ -193,6 +200,7 @@ class MaxGuaranteesUpdate(BaseModel):
 class TransactionApproval(BaseModel):
     transaction_id: str
     approved: bool
+    deduct_late_fee: Optional[bool] = None
     notes: Optional[str] = None
 
 class GroupBalanceUpdate(BaseModel):
@@ -234,6 +242,9 @@ class OrderCreate(BaseModel):
 class OrderStatusUpdate(BaseModel):
     status: str
     notes: Optional[str] = None
+
+class BatchOrderDelete(BaseModel):
+    order_ids: List[str]
 
 # ==================== PASSWORD HASHING ====================
 
@@ -463,6 +474,37 @@ def calculate_months_elapsed(start_date: datetime, end_date: Optional[datetime] 
     return max(0, months)
 
 
+def count_interest_periods(start_date: datetime, end_date: Optional[datetime] = None) -> int:
+    end_date = end_date or datetime.now(timezone.utc)
+    if end_date < start_date:
+        return 0
+
+    current = start_date.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    periods = 0
+    while current < end_date:
+        next_month = current.month + 1
+        next_year = current.year + (next_month - 1) // 12
+        next_month = ((next_month - 1) % 12) + 1
+        current = current.replace(year=next_year, month=next_month, day=1)
+        if current <= end_date:
+            periods += 1
+    return periods
+
+
+def get_loan_months_elapsed(loan: dict) -> int:
+    approved_at = loan.get("approved_at") or loan.get("created_at")
+    if not approved_at:
+        return 0
+
+    try:
+        approved_date = datetime.fromisoformat(approved_at.replace('Z', '+00:00'))
+        today = datetime.now(timezone.utc)
+        return count_interest_periods(approved_date, today)
+    except ValueError:
+        logger.warning("Loan has invalid approved_at date: %s", approved_at)
+        return 0
+
+
 def calculate_loan_interest(loan_amount: float, total_months_elapsed: int, months_to_accrue: int) -> float:
     """Calculate loan interest for a specific accrual period with tiered monthly rates."""
     if months_to_accrue <= 0 or total_months_elapsed < 0:
@@ -489,7 +531,27 @@ def get_loan_last_interest_date(loan: dict) -> datetime:
 
 
 def get_loan_outstanding_balance(loan: dict) -> float:
-    return loan.get("outstanding_balance", max(0, loan.get("amount", 0) - loan.get("amount_repaid", 0)))
+    stored_balance = loan.get("outstanding_balance")
+    if stored_balance is None or float(stored_balance) <= 0:
+        for candidate_key in ["total_due", "initial_total_due", "amount"]:
+            candidate = loan.get(candidate_key)
+            if candidate is None:
+                continue
+            candidate_value = float(candidate)
+            if candidate_value > 0:
+                stored_balance = candidate_value
+                break
+        if stored_balance is None or float(stored_balance) <= 0:
+            stored_balance = max(0, loan.get("amount", 0) - loan.get("amount_repaid", 0))
+    else:
+        stored_balance = float(stored_balance)
+
+    if stored_balance is not None and float(stored_balance) > 0 and loan.get("outstanding_balance") is None:
+        repaid = float(loan.get("amount_repaid", 0) or 0)
+        if repaid > 0:
+            stored_balance = max(0, float(stored_balance) - repaid)
+
+    return float(stored_balance or 0)
 
 
 async def accrue_loan_interest_on_db(loan: dict) -> dict:
@@ -509,11 +571,11 @@ async def accrue_loan_interest_on_db(loan: dict) -> dict:
         return loan
 
     last_accrual_date = get_loan_last_interest_date(loan)
-    months_to_accrue = calculate_months_elapsed(last_accrual_date)
+    months_to_accrue = count_interest_periods(last_accrual_date)
     if months_to_accrue <= 0:
         return loan
 
-    total_months_elapsed = calculate_months_elapsed(approved_date)
+    total_months_elapsed = count_interest_periods(approved_date)
     current_balance = get_loan_outstanding_balance(loan)
     interest = calculate_loan_interest(current_balance, total_months_elapsed, months_to_accrue)
     new_balance = current_balance + interest
@@ -1130,6 +1192,28 @@ async def permanent_delete_order(order_id: str, user: dict = Depends(require_tre
 
     return {"message": "Order permanently deleted", "id": order_id}
 
+@api_router.post("/orders/batch-permanent")
+async def batch_permanent_delete_orders(data: BatchOrderDelete, user: dict = Depends(require_treasurer)):
+    deleted_ids = []
+    errors = []
+    for order_id in data.order_ids:
+        try:
+            oid = ObjectId(order_id)
+        except Exception:
+            errors.append({"id": order_id, "error": "Invalid order id"})
+            continue
+        result = await db.orders.delete_one({"_id": oid})
+        if result.deleted_count == 0:
+            fallback = await db.orders.find_one({"id": order_id})
+            if fallback:
+                await db.orders.delete_one({"_id": fallback["_id"]})
+                deleted_ids.append(order_id)
+            else:
+                errors.append({"id": order_id, "error": "Order not found"})
+        else:
+            deleted_ids.append(order_id)
+    return {"deleted": deleted_ids, "errors": errors}
+
 @api_router.post("/uploads")
 async def upload_media(
     file: UploadFile = File(...),
@@ -1227,6 +1311,83 @@ async def delete_product(product_id: str, user: dict = Depends(get_current_user)
         raise HTTPException(status_code=404, detail="Product not found")
 
     return {"message": "Product deleted", "id": product_id}
+
+@api_router.post("/products/batch-delete")
+async def batch_delete_products(data: BatchOrderDelete, user: dict = Depends(require_treasurer)):
+    deleted_ids = []
+    errors = []
+    for product_id in data.order_ids:
+        try:
+            oid = ObjectId(product_id)
+        except Exception:
+            errors.append({"id": product_id, "error": "Invalid product id"})
+            continue
+        product = await db.products.find_one({"_id": oid})
+        if not product:
+            errors.append({"id": product_id, "error": "Product not found"})
+            continue
+        result = await db.products.delete_one({"_id": oid})
+        if result.deleted_count > 0:
+            deleted_ids.append(product_id)
+        else:
+            errors.append({"id": product_id, "error": "Delete failed"})
+    return {"deleted": deleted_ids, "errors": errors}
+
+@api_router.post("/deposits/batch-delete")
+async def batch_delete_deposits(data: BatchOrderDelete, user: dict = Depends(require_treasurer)):
+    deleted_ids = []
+    errors = []
+    for deposit_id in data.order_ids:
+        try:
+            oid = ObjectId(deposit_id)
+        except Exception:
+            errors.append({"id": deposit_id, "error": "Invalid deposit id"})
+            continue
+        deposit = await db.deposits.find_one({"_id": oid})
+        if not deposit:
+            errors.append({"id": deposit_id, "error": "Deposit not found"})
+            continue
+        # If approved, reverse balance changes
+        if deposit.get("status") == "approved":
+            if deposit.get("deposit_type") == "development_fee":
+                await db.users.update_one(
+                    {"_id": ObjectId(deposit["user_id"])},
+                    {"$inc": {"development_fund": -deposit["amount"]}}
+                )
+            elif deposit.get("deposit_type") in ["loan_payment", "interest_payment"]:
+                pass  # Loan payments and interest are not reversible
+            else:  # savings
+                # Reverse only what was actually applied at approval time
+                if deposit.get("late_fee_applied", False):
+                    late_fee_amount = deposit.get("late_fee", 0)
+                    await db.users.update_one(
+                        {"_id": ObjectId(deposit["user_id"])},
+                        {"$inc": {
+                            "total_savings": -(deposit["amount"] - late_fee_amount),
+                            "total_late_fees": -late_fee_amount
+                        }}
+                    )
+                else:
+                    await db.users.update_one(
+                        {"_id": ObjectId(deposit["user_id"])},
+                        {"$inc": {"total_savings": -deposit["amount"]}}
+                    )
+        result = await db.deposits.delete_one({"_id": oid})
+        if result.deleted_count > 0:
+            deleted_ids.append(deposit_id)
+        else:
+            errors.append({"id": deposit_id, "error": "Delete failed"})
+    return {"deleted": deleted_ids, "errors": errors}
+
+@api_router.delete("/sellers")
+async def delete_all_sellers(user: dict = Depends(require_treasurer)):
+    result = await db.users.delete_many({"membership_type": "seller"})
+    return {"message": f"Deleted {result.deleted_count} seller(s)", "deleted_count": result.deleted_count}
+
+@api_router.delete("/products")
+async def delete_all_products(user: dict = Depends(require_treasurer)):
+    result = await db.products.delete_many({})
+    return {"message": f"Deleted {result.deleted_count} product(s)", "deleted_count": result.deleted_count}
 
 @api_router.patch("/products/{product_id}")
 async def update_product(product_id: str, payload: dict = Body(...), user: dict = Depends(get_current_user)):
@@ -1335,13 +1496,24 @@ async def update_group_balance(data: GroupBalanceUpdate, user: dict = Depends(re
 
 # ==================== DEPOSIT ENDPOINTS ====================
 
+async def get_monthly_development_fee_applied(user_id: str, month: str) -> float:
+    deposits = await db.deposits.find({
+        "user_id": user_id,
+        "month": month,
+        "status": "approved",
+        "development_fee_amount": {"$gt": 0}
+    }).to_list(1000)
+    return sum(float(d.get("development_fee_amount", 0) or 0) for d in deposits)
+
+
 @api_router.post("/deposits/request")
 async def request_deposit(deposit: DepositRequest, user: dict = Depends(get_current_user)):
     if deposit.amount <= 0:
         raise HTTPException(status_code=400, detail="Amount must be positive")
 
-    allowed_deposit_types = ["savings", "development_fee", "loan_payment", "interest_payment"]
-    if deposit.deposit_type not in allowed_deposit_types:
+    deposit_type = "savings" if deposit.deposit_type == "development_fee" else deposit.deposit_type
+    allowed_deposit_types = ["savings", "loan_payment", "interest_payment"]
+    if deposit_type not in allowed_deposit_types:
         raise HTTPException(status_code=400, detail="Invalid deposit type")
 
     target_user = user
@@ -1362,7 +1534,7 @@ async def request_deposit(deposit: DepositRequest, user: dict = Depends(get_curr
     late_fee = 0
     num_slots = target_user.get("max_guarantees", MAX_GUARANTEES_PER_MEMBER)
     
-    if deposit.deposit_type == "savings":
+    if deposit_type == "savings":
         # Non-premium members may save any amount with a minimum of 500 UGX.
         if target_user.get("membership_type") != "premium":
             minimum_required = 500
@@ -1375,7 +1547,12 @@ async def request_deposit(deposit: DepositRequest, user: dict = Depends(get_curr
         # Get member's slots (max_guarantees) for late fee calculation
         if day_of_month > 10:
             late_fee = calculate_late_fee(day_of_month, num_slots)
-    elif deposit.deposit_type == "development_fee":
+            if deposit.deduct_late_fee and deposit.amount < late_fee:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Amount must be at least UGX {late_fee:,} to cover the late fee when deducting it from this deposit"
+                )
+    elif deposit_type == "development_fee":
         if deposit.amount < DEVELOPMENT_FEE:
             raise HTTPException(status_code=400, detail=f"Development fee is UGX {DEVELOPMENT_FEE:,}")
     else:
@@ -1387,8 +1564,9 @@ async def request_deposit(deposit: DepositRequest, user: dict = Depends(get_curr
         "user_name": target_user["name"],
         "user_email": target_user.get("email"),
         "amount": deposit.amount,
-        "deposit_type": deposit.deposit_type,
+        "deposit_type": deposit_type,
         "late_fee": late_fee,
+        "deduct_late_fee": bool(deposit.deduct_late_fee),
         "description": deposit.description,
         "status": "pending",
         "month": today.strftime("%Y-%m"),
@@ -1400,10 +1578,6 @@ async def request_deposit(deposit: DepositRequest, user: dict = Depends(get_curr
     result = await db.deposits.insert_one(deposit_doc)
     deposit_doc["id"] = str(result.inserted_id)
     deposit_doc.pop("_id", None)
-    
-    # Check if auto-loan should be created for this member (after 20th without deposit)
-    if day_of_month > 20:
-        await check_and_create_auto_loan(target_user["id"])
     
     return deposit_doc
 
@@ -1435,17 +1609,28 @@ async def approve_deposit(approval: TransactionApproval, user: dict = Depends(re
     
     new_status = "approved" if approval.approved else "rejected"
     
+    deduct_late_fee = approval.deduct_late_fee
+    if deduct_late_fee is None:
+        deduct_late_fee = deposit.get("deduct_late_fee", False)
+
+    update_fields = {
+        "status": new_status,
+        "approved_at": datetime.now(timezone.utc).isoformat(),
+        "approved_by": user["id"],
+        "notes": approval.notes
+    }
+    if approval.approved and deposit.get("deposit_type") == "savings":
+        update_fields["deduct_late_fee"] = deduct_late_fee
+        if deduct_late_fee:
+            update_fields["late_fee_applied"] = True
+
     await db.deposits.update_one(
         {"_id": ObjectId(approval.transaction_id)},
-        {"$set": {
-            "status": new_status,
-            "approved_at": datetime.now(timezone.utc).isoformat(),
-            "approved_by": user["id"],
-            "notes": approval.notes
-        }}
+        {"$set": update_fields}
     )
     
     if approval.approved:
+
         if deposit.get("deposit_type") == "development_fee":
             await db.users.update_one(
                 {"_id": ObjectId(deposit["user_id"])},
@@ -1511,12 +1696,34 @@ async def approve_deposit(approval: TransactionApproval, user: dict = Depends(re
                     {"$inc": {"total_savings": remaining_payment}}
                 )
         else:  # savings
+            deduct_late_fee = deduct_late_fee and deposit.get("late_fee", 0) > 0
+            late_fee_amount = min(deposit.get("late_fee", 0), deposit["amount"]) if deduct_late_fee else 0
+            remaining_after_late_fee = max(0, deposit["amount"] - late_fee_amount)
+
+            member = await db.users.find_one({"_id": ObjectId(deposit["user_id"])})
+            num_slots = member.get("max_guarantees", MAX_GUARANTEES_PER_MEMBER) if member else MAX_GUARANTEES_PER_MEMBER
+            monthly_development_fee_cap = DEVELOPMENT_FEE * num_slots
+            monthly_development_fee_applied = await get_monthly_development_fee_applied(deposit["user_id"], deposit.get("month"))
+            remaining_development_fee_cap = max(0, monthly_development_fee_cap - monthly_development_fee_applied)
+            development_fee_amount = min(remaining_development_fee_cap, remaining_after_late_fee)
+            savings_amount = max(0, remaining_after_late_fee - development_fee_amount)
+
+            balance_updates = {"total_savings": savings_amount}
+            if late_fee_amount > 0:
+                balance_updates["total_late_fees"] = late_fee_amount
+            if development_fee_amount > 0:
+                balance_updates["development_fund"] = development_fee_amount
+
             await db.users.update_one(
                 {"_id": ObjectId(deposit["user_id"])},
-                {"$inc": {
-                    "total_savings": deposit["amount"],
-                    "total_late_fees": deposit.get("late_fee", 0)
-                }}
+                {"$inc": balance_updates}
+            )
+
+            update_fields["development_fee_amount"] = development_fee_amount
+            update_fields["development_fee_applied"] = development_fee_amount > 0
+            await db.deposits.update_one(
+                {"_id": ObjectId(approval.transaction_id)},
+                {"$set": update_fields}
             )
         
         # Update user to premium if savings >= 52000
@@ -1553,12 +1760,19 @@ async def delete_deposit(deposit_id: str, user: dict = Depends(get_current_user)
                 {"$inc": {"development_fund": -deposit["amount"]}}
             )
         else:
+            late_fee_amount = deposit.get("late_fee", 0) if deposit.get("late_fee_applied", False) else 0
+            development_fee_amount = deposit.get("development_fee_amount", 0) or 0
+            savings_amount = max(0, deposit["amount"] - late_fee_amount - development_fee_amount)
+
+            balance_updates = {"total_savings": -savings_amount}
+            if late_fee_amount > 0:
+                balance_updates["total_late_fees"] = -late_fee_amount
+            if development_fee_amount > 0:
+                balance_updates["development_fund"] = -development_fee_amount
+
             await db.users.update_one(
                 {"_id": ObjectId(deposit["user_id"])},
-                {"$inc": {
-                    "total_savings": -deposit["amount"],
-                    "total_late_fees": -deposit.get("late_fee", 0)
-                }}
+                {"$inc": balance_updates}
             )
     
     await db.deposits.delete_one({"_id": ObjectId(deposit_id)})
@@ -1656,7 +1870,96 @@ async def request_loan(loan: LoanRequest, user: dict = Depends(get_current_user)
     result = await db.loans.insert_one(loan_doc)
     loan_doc["id"] = str(result.inserted_id)
     loan_doc.pop("_id", None)
-    
+
+    return loan_doc
+
+
+@api_router.post("/loans/admin/create")
+async def admin_create_loan(data: AdminLoanCreate, user: dict = Depends(require_admin)):
+    if data.amount <= 0:
+        raise HTTPException(status_code=400, detail="Amount must be positive")
+
+    if data.amount > MAX_LOAN_AMOUNT:
+        raise HTTPException(status_code=400, detail=f"Maximum loan is UGX {MAX_LOAN_AMOUNT:,}")
+
+    if not is_valid_object_id(data.member_id):
+        raise HTTPException(status_code=400, detail="Invalid member id")
+
+    member = await db.users.find_one({"_id": ObjectId(data.member_id)})
+    if not member:
+        raise HTTPException(status_code=404, detail="Member not found")
+
+    existing_loan = await db.loans.find_one({
+        "user_id": data.member_id,
+        "status": {"$in": ["pending_guarantor", "pending_admin", "approved"]},
+        "repaid": False
+    })
+    if existing_loan:
+        raise HTTPException(status_code=400, detail="Member already has an active or pending loan")
+
+    guarantor = None
+    if data.guarantor_id:
+        if not is_valid_object_id(data.guarantor_id):
+            raise HTTPException(status_code=400, detail="Invalid guarantor id")
+        if data.guarantor_id == data.member_id:
+            raise HTTPException(status_code=400, detail="Member cannot be their own guarantor")
+
+        guarantor = await db.users.find_one({"_id": ObjectId(data.guarantor_id)})
+        if not guarantor:
+            raise HTTPException(status_code=404, detail="Guarantor not found")
+
+        guarantee_count = await get_member_guarantee_count(data.guarantor_id)
+        max_guarantees = guarantor.get("max_guarantees", MAX_GUARANTEES_PER_MEMBER)
+        if guarantee_count >= max_guarantees:
+            raise HTTPException(status_code=400, detail=f"This member already guarantees {max_guarantees} loans")
+
+        if ((guarantor.get("membership_type", "") or "").lower() != "premium"):
+            guarantor_savings = guarantor.get("total_savings", 0)
+            if guarantor_savings * 2 < data.amount:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Guarantor must have savings equal to at least 50% of the loan amount"
+                )
+
+    interest_amount = data.amount * LOAN_INTEREST_NORMAL
+    total_due = data.amount + interest_amount
+    now_iso = datetime.now(timezone.utc).isoformat()
+    due_date = (datetime.now(timezone.utc) + timedelta(days=120)).isoformat()
+
+    loan_doc = {
+        "user_id": data.member_id,
+        "user_name": member["name"],
+        "user_email": member.get("email"),
+        "amount": data.amount,
+        "outstanding_balance": total_due,
+        "interest_rate": LOAN_INTEREST_NORMAL,
+        "initial_interest": interest_amount,
+        "initial_total_due": total_due,
+        "guarantor_id": data.guarantor_id,
+        "guarantor_name": guarantor["name"] if guarantor else None,
+        "reason": data.reason,
+        "status": "approved",
+        "guarantor_approved": bool(guarantor),
+        "guarantor_approved_at": now_iso if guarantor else None,
+        "repaid": False,
+        "amount_repaid": 0,
+        "created_at": now_iso,
+        "approved_at": now_iso,
+        "last_interest_accrual_at": now_iso,
+        "due_date": due_date,
+        "approved_by": user["id"],
+    }
+
+    result = await db.loans.insert_one(loan_doc)
+
+    if guarantor:
+        await db.users.update_one(
+            {"_id": ObjectId(data.guarantor_id)},
+            {"$inc": {"guarantees_given": 1}}
+        )
+
+    loan_doc["id"] = str(result.inserted_id)
+    loan_doc.pop("_id", None)
     return loan_doc
 
 
@@ -1923,6 +2226,114 @@ async def delete_quick_loan(loan_id: str, user: dict = Depends(require_treasurer
 
     return {"message": "Quick loan request deleted"}
 
+@api_router.post("/quick-loans/batch-delete")
+async def batch_delete_quick_loans(data: BatchOrderDelete, user: dict = Depends(require_treasurer)):
+    deleted_ids = []
+    errors = []
+    for loan_id in data.order_ids:
+        try:
+            loid = ObjectId(loan_id)
+        except Exception:
+            errors.append({"id": loan_id, "error": "Invalid loan id"})
+            continue
+        result = await db.quick_loans.delete_one({"_id": loid})
+        if result.deleted_count > 0:
+            deleted_ids.append(loan_id)
+        else:
+            fallback = await db.quick_loans.find_one({"id": loan_id})
+            if fallback:
+                await db.quick_loans.delete_one({"_id": fallback["_id"]})
+                deleted_ids.append(loan_id)
+            else:
+                errors.append({"id": loan_id, "error": "Quick loan not found"})
+    return {"deleted": deleted_ids, "errors": errors}
+
+@api_router.post("/loans/batch-delete")
+async def batch_delete_loans(data: BatchOrderDelete, user: dict = Depends(require_treasurer)):
+    deleted_ids = []
+    errors = []
+    for loan_id in data.order_ids:
+        try:
+            oid = ObjectId(loan_id)
+        except Exception:
+            errors.append({"id": loan_id, "error": "Invalid loan id"})
+            continue
+        loan = await db.loans.find_one({"_id": oid})
+        if not loan:
+            fallback = await db.loans.find_one({"id": loan_id})
+            if fallback:
+                oid = fallback["_id"]
+                loan = fallback
+            else:
+                errors.append({"id": loan_id, "error": "Loan not found"})
+                continue
+        # If approved and guarantor counter was incremented, decrement back
+        if loan.get("status") == "approved" and not loan.get("repaid") and loan.get("guarantor_id"):
+            await db.users.update_one(
+                {"_id": ObjectId(loan["guarantor_id"])},
+                {"$inc": {"guarantees_given": -1}}
+            )
+        result = await db.loans.delete_one({"_id": oid})
+        if result.deleted_count > 0:
+            deleted_ids.append(loan_id)
+        else:
+            errors.append({"id": loan_id, "error": "Delete failed"})
+    return {"deleted": deleted_ids, "errors": errors}
+
+@api_router.post("/withdrawals/batch-delete")
+async def batch_delete_withdrawals(data: BatchOrderDelete, user: dict = Depends(require_treasurer)):
+    deleted_ids = []
+    errors = []
+    for withdrawal_id in data.order_ids:
+        try:
+            oid = ObjectId(withdrawal_id)
+        except Exception:
+            errors.append({"id": withdrawal_id, "error": "Invalid withdrawal id"})
+            continue
+        withdrawal = await db.withdrawals.find_one({"_id": oid})
+        if not withdrawal:
+            errors.append({"id": withdrawal_id, "error": "Withdrawal not found"})
+            continue
+        # If approved, reverse balance changes
+        if withdrawal.get("status") == "approved":
+            if withdrawal.get("withdrawal_type") != "leaving_group":
+                await db.users.update_one(
+                    {"_id": ObjectId(withdrawal["user_id"])},
+                    {"$inc": {"total_savings": withdrawal["amount"]}}
+                )
+        result = await db.withdrawals.delete_one({"_id": oid})
+        if result.deleted_count > 0:
+            deleted_ids.append(withdrawal_id)
+        else:
+            errors.append({"id": withdrawal_id, "error": "Delete failed"})
+    return {"deleted": deleted_ids, "errors": errors}
+
+@api_router.post("/petty-cash/batch-delete")
+async def batch_delete_petty_cash(data: BatchOrderDelete, user: dict = Depends(require_treasurer)):
+    deleted_ids = []
+    errors = []
+    for entry_id in data.order_ids:
+        try:
+            oid = ObjectId(entry_id)
+        except Exception:
+            errors.append({"id": entry_id, "error": "Invalid petty cash id"})
+            continue
+        entry = await db.petty_cash.find_one({"_id": oid})
+        if not entry:
+            errors.append({"id": entry_id, "error": "Petty cash entry not found"})
+            continue
+        # Reverse the balance change
+        await db.users.update_one(
+            {"_id": ObjectId(entry["user_id"])},
+            {"$inc": {"total_savings": entry.get("amount", 0)}}
+        )
+        result = await db.petty_cash.delete_one({"_id": oid})
+        if result.deleted_count > 0:
+            deleted_ids.append(entry_id)
+        else:
+            errors.append({"id": entry_id, "error": "Delete failed"})
+    return {"deleted": deleted_ids, "errors": errors}
+
 @api_router.post("/quick-loans/{loan_id}/repay")
 async def repay_quick_loan(loan_id: str, amount: float = Body(..., embed=True), user: dict = Depends(get_current_user)):
     try:
@@ -2032,15 +2443,7 @@ async def get_loans(user: dict = Depends(get_current_user)):
             try:
                 loan_item = await accrue_loan_interest_on_db(loan_item)
                 loan_item["total_due"] = get_loan_outstanding_balance(loan_item)
-                approved_date = loan_item.get("approved_at")
-                if approved_date:
-                    try:
-                        parsed_date = datetime.fromisoformat(approved_date.replace('Z', '+00:00'))
-                        loan_item["months_elapsed"] = calculate_months_elapsed(parsed_date)
-                    except ValueError:
-                        logger.warning("Loan has invalid approved_at date: %s", approved_date)
-                else:
-                    logger.warning("Loan missing approved_at while approved: %s", loan_item.get("id"))
+                loan_item["months_elapsed"] = get_loan_months_elapsed(loan_item)
             except Exception as e:
                 logger.error("Failed to process loan %s during list retrieval: %s", loan_item.get("id"), e)
         
@@ -2420,8 +2823,9 @@ async def calculate_total_interest_earned() -> float:
 
 async def calculate_total_late_fees() -> float:
     """Calculate total late fees collected"""
+    # Only count late fees that were actually applied (deducted) on approved deposits
     pipeline = [
-        {"$match": {"status": "approved", "late_fee": {"$gt": 0}}},
+        {"$match": {"status": "approved", "late_fee": {"$gt": 0}, "late_fee_applied": True}},
         {"$group": {"_id": None, "total": {"$sum": "$late_fee"}}}
     ]
     result = await db.deposits.aggregate(pipeline).to_list(1)

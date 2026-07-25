@@ -110,7 +110,7 @@ const RegisterPage = () => {
                 alt="Class One Logo"
                 className="w-16 h-16 rounded-full object-cover"
               />
-              <span className="text-xl font-bold font-['Manrope'] text-[#1E231F]">Class One Savings</span>
+              <span className="sr-only">Class One Savings</span>
             </div>
             <CardTitle className="text-2xl font-bold font-['Manrope'] text-[#1E231F]">
               Create an account

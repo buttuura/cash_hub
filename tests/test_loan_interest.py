@@ -60,6 +60,28 @@ class TestCalculateLoanInterest:
         assert interest == 0.0
 
 
+def test_get_loan_outstanding_balance_falls_back_when_stored_balance_is_zero(server_module):
+    loan = {
+        "amount": 100000,
+        "amount_repaid": 0,
+        "outstanding_balance": 0,
+        "repaid": False,
+    }
+
+    assert server_module.get_loan_outstanding_balance(loan) == 100000.0
+
+
+def test_get_loan_outstanding_balance_keeps_existing_balance_when_repayments_exist(server_module):
+    loan = {
+        "amount": 100000,
+        "amount_repaid": 30000,
+        "outstanding_balance": 70000,
+        "repaid": False,
+    }
+
+    assert server_module.get_loan_outstanding_balance(loan) == 70000.0
+
+
 class TestForgotPassword:
     @pytest.fixture
     def mock_db(self):

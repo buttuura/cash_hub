@@ -17,6 +17,7 @@ import {
   DialogTrigger,
 } from '../components/ui/dialog';
 import { Badge } from '../components/ui/badge';
+import { Checkbox } from '../components/ui/checkbox';
 import {
   Wallet,
   TrendingUp,
@@ -61,6 +62,7 @@ import {
 } from '../utils/pdfExport';
 import { FileDown } from 'lucide-react';
 import { resolveImageUrl } from '../lib/utils';
+import { getLoanDisplayBalance } from '../utils/loanDisplay';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
 const WS_URL = API_URL.replace(/^http/, 'ws');
@@ -101,6 +103,10 @@ const Dashboard = () => {
   const [financials, setFinancials] = useState(null);
   const [deposits, setDeposits] = useState([]);
   const [depositMonthFilter, setDepositMonthFilter] = useState('all');
+  const [selectedFinancialDeposits, setSelectedFinancialDeposits] = useState(new Set());
+  const [selectedFinancialLoans, setSelectedFinancialLoans] = useState(new Set());
+  const [selectedFinancialWithdrawals, setSelectedFinancialWithdrawals] = useState(new Set());
+  const [selectedFinancialPettyCash, setSelectedFinancialPettyCash] = useState(new Set());
   const [loans, setLoans] = useState([]);
   const [loanMonthFilter, setLoanMonthFilter] = useState('all');
   const [withdrawals, setWithdrawals] = useState([]);
@@ -111,6 +117,7 @@ const Dashboard = () => {
   const [members, setMembers] = useState([]);
   const [dataLoading, setDataLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
+  const [activeAdminPage, setActiveAdminPage] = useState('admin-panel');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [copiedMemberCode, setCopiedMemberCode] = useState(false);
   const [activeFinancialTab, setActiveFinancialTab] = useState('overview');
@@ -120,9 +127,14 @@ const Dashboard = () => {
   const [depositType, setDepositType] = useState('savings');
   const [depositTargetUserId, setDepositTargetUserId] = useState(null);
   const [depositDescription, setDepositDescription] = useState('');
+  const [depositDeductLateFee, setDepositDeductLateFee] = useState(false);
   const [loanAmount, setLoanAmount] = useState('');
   const [loanGuarantor, setLoanGuarantor] = useState('');
   const [loanReason, setLoanReason] = useState('');
+  const [adminLoanDialogOpenMemberId, setAdminLoanDialogOpenMemberId] = useState(null);
+  const [adminLoanAmount, setAdminLoanAmount] = useState('');
+  const [adminLoanGuarantor, setAdminLoanGuarantor] = useState('no_guarantor');
+  const [adminLoanReason, setAdminLoanReason] = useState('');
   const [repayLoanId, setRepayLoanId] = useState('');
   const [loanRepaymentAmount, setLoanRepaymentAmount] = useState('');
   const [newGroupBalance, setNewGroupBalance] = useState('');
@@ -144,6 +156,7 @@ const Dashboard = () => {
   // Dialog states
   const [depositDialogOpen, setDepositDialogOpen] = useState(false);
   const [loanDialogOpen, setLoanDialogOpen] = useState(false);
+  const [adminLoanDialogOpen, setAdminLoanDialogOpen] = useState(false);
   const [withdrawalDialogOpen, setWithdrawalDialogOpen] = useState(false);
   const [balanceDialogOpen, setBalanceDialogOpen] = useState(false);
   const [pettyCashDialogOpen, setPettyCashDialogOpen] = useState(false);
@@ -431,7 +444,7 @@ const Dashboard = () => {
     )
     .reduce((total, loan) => {
       const total_repaid = (loan.amount_repaid || 0) + (loan.interest_repaid || 0);
-      const outstanding = Math.max(0, (loan.total_due || loan.outstanding_balance || 0) - total_repaid);
+      const outstanding = Math.max(0, getLoanDisplayBalance(loan) - total_repaid);
       return total + outstanding;
     }, 0);
 
@@ -450,6 +463,7 @@ const Dashboard = () => {
         amount: parseFloat(depositAmount),
         deposit_type: depositType,
         description: depositDescription,
+        deduct_late_fee: depositDeductLateFee,
       };
       if (depositTargetUserId) {
         payload.target_user_id = depositTargetUserId;
@@ -463,7 +477,8 @@ const Dashboard = () => {
 
       setDepositDialogOpen(false);
       setDepositTargetUserId(null);
-      setDepositAmount(depositType === 'savings' ? String(savingsMinAmount) : depositType === 'development_fee' ? '3000' : '0');
+      setDepositDeductLateFee(false);
+      setDepositAmount(depositType === 'savings' ? String(savingsMinAmount) : '0');
       setDepositDescription('');
       setRepayLoanId('');
       setLoanRepaymentAmount('');
@@ -474,13 +489,24 @@ const Dashboard = () => {
   };
 
   const handleOpenDepositForMember = (memberId) => {
+    setActiveTab('members');
     const member = members.find((m) => m.id === memberId);
     const minAmount = member?.membership_type === 'premium' ? 52000 * (member?.max_guarantees ?? 1) : 500;
     setDepositTargetUserId(memberId);
     setDepositType('savings');
     setDepositAmount(String(minAmount));
     setDepositDescription('');
+    setDepositDeductLateFee(false);
     setDepositDialogOpen(true);
+  };
+
+  const handleOpenAdminLoanForMember = (memberId) => {
+    setActiveTab('members');
+    setAdminLoanDialogOpenMemberId(memberId);
+    setAdminLoanAmount('');
+    setAdminLoanGuarantor('no_guarantor');
+    setAdminLoanReason('');
+    setAdminLoanDialogOpen(true);
   };
 
   const handleLoan = async (e) => {
@@ -520,6 +546,47 @@ const Dashboard = () => {
       fetchData();
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Failed to submit loan request');
+    }
+  };
+
+  const handleAdminCreateLoan = async (e) => {
+    e.preventDefault();
+    if (!adminLoanDialogOpenMemberId) {
+      toast.error('No member selected for this loan');
+      return;
+    }
+
+    const amountValue = parseFloat(adminLoanAmount) || 0;
+    if (amountValue <= 0) {
+      toast.error('Please enter a valid loan amount');
+      return;
+    }
+
+    try {
+      const payload = {
+        member_id: adminLoanDialogOpenMemberId,
+        amount: amountValue,
+        reason: adminLoanReason || undefined,
+      };
+      if (adminLoanGuarantor && adminLoanGuarantor !== 'no_guarantor') {
+        payload.guarantor_id = adminLoanGuarantor;
+      }
+
+      await axios.post(
+        `${API_URL}/api/loans/admin/create`,
+        payload,
+        { headers: getAuthHeaders() }
+      );
+
+      toast.success('Loan added to member account');
+      setAdminLoanDialogOpen(false);
+      setAdminLoanDialogOpenMemberId(null);
+      setAdminLoanAmount('');
+      setAdminLoanGuarantor('');
+      setAdminLoanReason('');
+      fetchData();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Failed to create loan');
     }
   };
 
@@ -615,11 +682,19 @@ const Dashboard = () => {
     }
   };
 
-  const handleApproveTransaction = async (type, id, approved) => {
+  const handleApproveTransaction = async (type, id, approved, deductLateFee = false) => {
     try {
+      const payload = {
+        transaction_id: id,
+        approved,
+      };
+      if (type === 'deposits') {
+        payload.deduct_late_fee = deductLateFee;
+      }
+
       await axios.post(
         `${API_URL}/api/${type}/approve`,
-        { transaction_id: id, approved },
+        payload,
         { headers: getAuthHeaders() }
       );
       toast.success(`${approved ? 'Approved' : 'Rejected'} successfully`);
@@ -697,8 +772,12 @@ const Dashboard = () => {
         { user_id: userId, max_guarantees: maxGuarantees },
         { headers: getAuthHeaders() }
       );
+      setMembers((prevMembers) =>
+        prevMembers.map((member) =>
+          member.id === userId ? { ...member, max_guarantees: maxGuarantees } : member
+        )
+      );
       toast.success(`Max guarantees updated to ${maxGuarantees}`);
-      fetchData();
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Failed to update max guarantees');
     }
@@ -764,6 +843,162 @@ const Dashboard = () => {
     }
   };
 
+  const handleToggleFinancialDeposit = (depositId) => {
+    setSelectedFinancialDeposits((prev) => {
+      const next = new Set(prev);
+      if (next.has(depositId)) {
+        next.delete(depositId);
+      } else {
+        next.add(depositId);
+      }
+      return next;
+    });
+  };
+
+  const handleSelectAllFinancialDeposits = (checked) => {
+    if (checked) {
+      setSelectedFinancialDeposits(new Set(deposits.map((d) => d.id)));
+    } else {
+      setSelectedFinancialDeposits(new Set());
+    }
+  };
+
+  const handleDeleteSelectedFinancialDeposits = async () => {
+    const ids = Array.from(selectedFinancialDeposits);
+    if (ids.length === 0) return;
+    if (!window.confirm(`Delete ${ids.length} selected deposit(s)? This action cannot be undone.`)) return;
+    try {
+      await axios.post(
+        `${API_URL}/api/deposits/batch-delete`,
+        { order_ids: ids },
+        { headers: getAuthHeaders() }
+      );
+      setSelectedFinancialDeposits(new Set());
+      fetchData();
+      toast.success(`${ids.length} deposit(s) deleted.`);
+    } catch (err) {
+      console.error('Failed to delete selected deposits:', err);
+      toast.error(err.response?.data?.detail || 'Failed to delete selected deposits');
+    }
+  };
+
+  const handleToggleFinancialLoan = (loanId) => {
+    setSelectedFinancialLoans((prev) => {
+      const next = new Set(prev);
+      if (next.has(loanId)) {
+        next.delete(loanId);
+      } else {
+        next.add(loanId);
+      }
+      return next;
+    });
+  };
+
+  const handleSelectAllFinancialLoans = (checked) => {
+    if (checked) {
+      setSelectedFinancialLoans(new Set(loans.map((l) => l.id)));
+    } else {
+      setSelectedFinancialLoans(new Set());
+    }
+  };
+
+  const handleDeleteSelectedFinancialLoans = async () => {
+    const ids = Array.from(selectedFinancialLoans);
+    if (ids.length === 0) return;
+    if (!window.confirm(`Delete ${ids.length} selected loan(s)? This action cannot be undone.`)) return;
+    try {
+      await axios.post(
+        `${API_URL}/api/loans/batch-delete`,
+        { order_ids: ids },
+        { headers: getAuthHeaders() }
+      );
+      setSelectedFinancialLoans(new Set());
+      fetchData();
+      toast.success(`${ids.length} loan(s) deleted.`);
+    } catch (err) {
+      console.error('Failed to delete selected loans:', err);
+      toast.error(err.response?.data?.detail || 'Failed to delete selected loans');
+    }
+  };
+
+  const handleToggleFinancialWithdrawal = (withdrawalId) => {
+    setSelectedFinancialWithdrawals((prev) => {
+      const next = new Set(prev);
+      if (next.has(withdrawalId)) {
+        next.delete(withdrawalId);
+      } else {
+        next.add(withdrawalId);
+      }
+      return next;
+    });
+  };
+
+  const handleSelectAllFinancialWithdrawals = (checked) => {
+    if (checked) {
+      setSelectedFinancialWithdrawals(new Set(withdrawals.map((w) => w.id)));
+    } else {
+      setSelectedFinancialWithdrawals(new Set());
+    }
+  };
+
+  const handleDeleteSelectedFinancialWithdrawals = async () => {
+    const ids = Array.from(selectedFinancialWithdrawals);
+    if (ids.length === 0) return;
+    if (!window.confirm(`Delete ${ids.length} selected withdrawal(s)? This action cannot be undone.`)) return;
+    try {
+      await axios.post(
+        `${API_URL}/api/withdrawals/batch-delete`,
+        { order_ids: ids },
+        { headers: getAuthHeaders() }
+      );
+      setSelectedFinancialWithdrawals(new Set());
+      fetchData();
+      toast.success(`${ids.length} withdrawal(s) deleted.`);
+    } catch (err) {
+      console.error('Failed to delete selected withdrawals:', err);
+      toast.error(err.response?.data?.detail || 'Failed to delete selected withdrawals');
+    }
+  };
+
+  const handleToggleFinancialPettyCash = (entryId) => {
+    setSelectedFinancialPettyCash((prev) => {
+      const next = new Set(prev);
+      if (next.has(entryId)) {
+        next.delete(entryId);
+      } else {
+        next.add(entryId);
+      }
+      return next;
+    });
+  };
+
+  const handleSelectAllFinancialPettyCash = (checked) => {
+    if (checked) {
+      setSelectedFinancialPettyCash(new Set((financials?.petty_cash_items || []).map((pc) => pc.id)));
+    } else {
+      setSelectedFinancialPettyCash(new Set());
+    }
+  };
+
+  const handleDeleteSelectedFinancialPettyCash = async () => {
+    const ids = Array.from(selectedFinancialPettyCash);
+    if (ids.length === 0) return;
+    if (!window.confirm(`Delete ${ids.length} selected petty cash entry(s)? This action cannot be undone.`)) return;
+    try {
+      await axios.post(
+        `${API_URL}/api/petty-cash/batch-delete`,
+        { order_ids: ids },
+        { headers: getAuthHeaders() }
+      );
+      setSelectedFinancialPettyCash(new Set());
+      fetchData();
+      toast.success(`${ids.length} petty cash entry(s) deleted.`);
+    } catch (err) {
+      console.error('Failed to delete selected petty cash entries:', err);
+      toast.error(err.response?.data?.detail || 'Failed to delete selected petty cash entries');
+    }
+  };
+
   const getStatusBadge = (status) => {
     const styles = {
       pending_guarantor: 'bg-[#E8B25C]/20 text-[#E8B25C] border-[#E8B25C]/30',
@@ -819,17 +1054,22 @@ const Dashboard = () => {
 
   const loanAmountValue = parseFloat(loanAmount) || 0;
 
+  const getRemainingGuaranteeSlots = (member) => {
+    const currentGuarantees = loans.filter(l => 
+      l.guarantor_id === member.id && 
+      ['pending_guarantor', 'pending_admin', 'approved'].includes(l.status) && 
+      !l.repaid
+    ).length;
+    const maxGuarantees = member.max_guarantees ?? 2;
+    return Math.max(0, maxGuarantees - currentGuarantees);
+  };
+
   // Get eligible guarantors: any member except self, with available guarantee slots.
   // Ordinary guarantors must have at least 50% of the requested loan amount in savings.
   const eligibleGuarantors = members.filter(m => {
     if (m.id === user?.id) return false;
-    const currentGuarantees = loans.filter(l => 
-      l.guarantor_id === m.id && 
-      ['pending_guarantor', 'pending_admin', 'approved'].includes(l.status) && 
-      !l.repaid
-    ).length;
-    const maxGuarantees = m.max_guarantees ?? 2;
-    if (currentGuarantees >= maxGuarantees) return false;
+    const remainingSlots = getRemainingGuaranteeSlots(m);
+    if (remainingSlots <= 0) return false;
     if (((m.membership_type || '').toLowerCase()) === 'premium') return true;
     if (loanAmountValue <= 0) return true;
     return (m.total_savings || 0) >= loanAmountValue / 2;
@@ -865,7 +1105,7 @@ const Dashboard = () => {
                 alt="Class One Logo"
                 className="w-12 h-12 rounded-full object-cover"
               />
-              <span className="text-xl font-bold font-['Manrope'] text-[#1E231F]">Class One Savings</span>
+              <span className="hidden md:inline-block text-xl font-bold font-['Manrope'] text-[#1E231F]">Class One Savings</span>
             </div>
 
             {/* Desktop Navigation */}
@@ -1142,7 +1382,7 @@ const Dashboard = () => {
                 <DialogContent className="sm:max-w-md">
                   <DialogHeader>
                     <DialogTitle className="font-['Manrope'] text-[#1E231F]">New Deposit</DialogTitle>
-                    <DialogDescription className="text-[#5C665D]">Submit a deposit request for approval</DialogDescription>
+                    <DialogDescription className="text-[#5C665D]">Submit a savings deposit request; development fees are applied automatically on approval</DialogDescription>
                   </DialogHeader>
                   <form onSubmit={handleDeposit} className="space-y-4 mt-4">
                     <div className="space-y-2">
@@ -1153,7 +1393,6 @@ const Dashboard = () => {
                          </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="savings">Savings</SelectItem>
-                            <SelectItem value="development_fee">Development Fee</SelectItem>
                             <SelectItem value="loan_payment">Pay Back Loan</SelectItem>
                           </SelectContent>
                        </Select>
@@ -1177,6 +1416,17 @@ const Dashboard = () => {
                         placeholder="Optional description..."
                       />
                      </div>
+                      {depositType === 'savings' && new Date().getDate() > 10 && (
+                        <div className="flex items-center gap-2">
+                          <Checkbox
+                            checked={depositDeductLateFee}
+                            onCheckedChange={setDepositDeductLateFee}
+                          />
+                          <span className="text-sm text-[#5C665D]">
+                            Deduct any applicable late fee from this savings deposit
+                          </span>
+                        </div>
+                      )}
                       {depositType === 'loan_payment' && (
                         <div className="space-y-3 p-3 bg-[#FAFAF8] rounded-lg border border-[#E8EBE8]">
                         <p className="text-xs text-[#5C665D]">Outstanding loan balance: {formatCurrency(userLoanBalance)}</p>
@@ -1261,11 +1511,14 @@ const Dashboard = () => {
                           <SelectValue placeholder="Select a guarantor" />
                         </SelectTrigger>
                         <SelectContent>
-                          {members.filter(m => m.id !== user?.id).map((m) => (
-                            <SelectItem key={m.id} value={m.id}>
-                              {m.name} ({m.membership_type})
-                            </SelectItem>
-                          ))}
+                          {eligibleGuarantors.map((m) => {
+                            const remainingSlots = getRemainingGuaranteeSlots(m);
+                            return (
+                              <SelectItem key={m.id} value={m.id}>
+                                {m.name} ({remainingSlots} slot{remainingSlots === 1 ? '' : 's'} left)
+                              </SelectItem>
+                            );
+                          })}
                         </SelectContent>
                       </Select>
                     </div>
@@ -1279,6 +1532,67 @@ const Dashboard = () => {
                     </div>
                     <Button type="submit" className="w-full bg-[#D48C70] hover:bg-[#BD7B60] rounded-full">
                       Submit Request
+                    </Button>
+                  </form>
+                </DialogContent>
+              </Dialog>
+
+              <Dialog open={adminLoanDialogOpen} onOpenChange={setAdminLoanDialogOpen}>
+                <DialogContent className="sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle className="font-['Manrope'] text-[#1E231F]">Add Loan to Member Account</DialogTitle>
+                    <DialogDescription className="text-[#5C665D]">
+                      Create an approved loan directly for a member account.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <form onSubmit={handleAdminCreateLoan} className="space-y-4 mt-4">
+                    <div className="space-y-2">
+                      <Label>Member</Label>
+                      <Input
+                        type="text"
+                        value={members.find((m) => m.id === adminLoanDialogOpenMemberId)?.name || ''}
+                        disabled
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Amount (UGX)</Label>
+                      <Input
+                        type="number"
+                        value={adminLoanAmount}
+                        onChange={(e) => setAdminLoanAmount(e.target.value)}
+                        placeholder="50000"
+                        required
+                        min="1"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Optional Guarantor</Label>
+                      <Select value={adminLoanGuarantor} onValueChange={setAdminLoanGuarantor}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="None" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="no_guarantor">No guarantor</SelectItem>
+                          {members
+                            .filter((m) => m.id !== adminLoanDialogOpenMemberId)
+                            .map((m) => (
+                              <SelectItem key={m.id} value={m.id}>
+                                {m.name} ({m.membership_type})
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Reason</Label>
+                      <Textarea
+                        value={adminLoanReason}
+                        onChange={(e) => setAdminLoanReason(e.target.value)}
+                        placeholder="Loan reason..."
+                      />
+                    </div>
+                    <Button type="submit" className="w-full bg-[#2C5530] hover:bg-[#214024] rounded-full">
+                      Add Loan
                     </Button>
                   </form>
                 </DialogContent>
@@ -1450,7 +1764,7 @@ const Dashboard = () => {
                    <DialogContent className="sm:max-w-md">
                     <DialogHeader>
                       <DialogTitle className="font-['Manrope'] text-[#1E231F]">New Deposit</DialogTitle>
-                      <DialogDescription className="text-[#5C665D]">Submit a deposit request for approval</DialogDescription>
+                      <DialogDescription className="text-[#5C665D]">Submit a savings deposit request; development fees are applied automatically on approval</DialogDescription>
                     </DialogHeader>
                     <form onSubmit={handleDeposit} className="space-y-4 mt-4">
                       <div className="space-y-2">
@@ -1461,7 +1775,6 @@ const Dashboard = () => {
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="savings">Savings</SelectItem>
-                            <SelectItem value="development_fee">Development Fee</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
@@ -1484,6 +1797,17 @@ const Dashboard = () => {
                           placeholder="Optional description..."
                         />
                         </div>
+                        {depositType === 'savings' && new Date().getDate() > 10 && (
+                          <div className="flex items-center gap-2">
+                            <Checkbox
+                              checked={depositDeductLateFee}
+                              onCheckedChange={setDepositDeductLateFee}
+                            />
+                            <span className="text-sm text-[#5C665D]">
+                              Deduct any applicable late fee from this savings deposit
+                            </span>
+                          </div>
+                        )}
                         {depositType === 'loan_payment' && (
                           <div className="space-y-3 p-3 bg-[#FAFAF8] rounded-lg border border-[#E8EBE8]">
                             <p className="text-xs text-[#5C665D]">Outstanding loan balance: {formatCurrency(userLoanBalance)}</p>
@@ -1498,7 +1822,7 @@ const Dashboard = () => {
                                     <SelectContent>
                                       {loans.filter(l => l.user_id === user?.id && l.status === 'approved' && !l.repaid).map((l) => {
                                         const total_repaid = (l.amount_repaid || 0) + (l.interest_repaid || 0);
-                                        const outstanding = Math.max(0, (l.total_due || l.outstanding_balance || 0) - total_repaid);
+                                        const outstanding = Math.max(0, getLoanDisplayBalance(l) - total_repaid);
                                         return (
                                           <SelectItem key={l.id} value={l.id}>
                                             {formatCurrency(l.amount)} - {l.guarantor_name} (Due: {formatCurrency(outstanding)})
@@ -1520,7 +1844,7 @@ const Dashboard = () => {
                                       const loan = loans.find(l => l.id === repayLoanId);
                                       if (!loan) return 0;
                                       const total_repaid = (loan.amount_repaid || 0) + (loan.interest_repaid || 0);
-                                      return Math.max(0, (loan.total_due || loan.outstanding_balance || 0) - total_repaid);
+                                      return Math.max(0, getLoanDisplayBalance(loan) - total_repaid);
                                     })() : 0}
                                   />
                                 </div>
@@ -1543,25 +1867,34 @@ const Dashboard = () => {
               <CardContent className="p-0">
                 <div className="overflow-x-auto">
                   <table className="w-full">
-                    <thead>
-                      <tr className="border-b border-[#E8EBE8] bg-[#FAFAF8]">
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Date</th>
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Member</th>
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Type</th>
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Amount</th>
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Late Fee</th>
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Status</th>
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {deposits.filter(d => depositMonthFilter === 'all' || d.month === depositMonthFilter).map((d) => {
-                        const canDelete = d.user_id === user?.id || isTreasurer;
-                        return (
-                        <tr key={d.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5] transition-colors">
-                          <td className="py-4 px-6 text-[#1E231F]">
-                            {new Date(d.created_at).toLocaleDateString()}
-                          </td>
+<thead>
+                       <tr className="border-b border-[#E8EBE8] bg-[#FAFAF8]">
+                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D] whitespace-nowrap w-10">
+                           <Checkbox
+                             checked={deposits.length > 0 && deposits.every((d) => selectedFinancialDeposits.has(d.id))}
+                             onCheckedChange={(checked) => handleSelectAllFinancialDeposits(checked)}
+                           />
+                         </th>
+                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Date</th>
+                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Member</th>
+                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Type</th>
+                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Amount</th>
+                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Late Fee</th>
+                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Status</th>
+                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Action</th>
+                       </tr>
+                     </thead>
+                     <tbody>
+                       {deposits.filter(d => depositMonthFilter === 'all' || d.month === depositMonthFilter).map((d) => {
+                         const canDelete = d.user_id === user?.id || isTreasurer;
+                         return (
+                           <tr key={d.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5] transition-colors">
+                             <td className="py-4 px-6 text-[#1E231F] whitespace-nowrap">
+                               <Checkbox
+                                 checked={selectedFinancialDeposits.has(d.id)}
+                                 onCheckedChange={(checked) => handleToggleFinancialDeposit(d.id)}
+                               />
+                             </td>
                           <td className="py-4 px-6 text-[#1E231F]">
                             {d.user_name || '-'}
                           </td>
@@ -1651,11 +1984,14 @@ const Dashboard = () => {
                             <SelectValue placeholder="Select a guarantor" />
                           </SelectTrigger>
                           <SelectContent>
-                            {members.filter(m => m.id !== user?.id).map((m) => (
-                              <SelectItem key={m.id} value={m.id}>
-                                {m.name} ({m.membership_type})
-                              </SelectItem>
-                            ))}
+                            {eligibleGuarantors.map((m) => {
+                              const remainingSlots = getRemainingGuaranteeSlots(m);
+                              return (
+                                <SelectItem key={m.id} value={m.id}>
+                                  {m.name} ({remainingSlots} slot{remainingSlots === 1 ? '' : 's'} left)
+                                </SelectItem>
+                              );
+                            })}
                           </SelectContent>
                         </Select>
                       </div>
@@ -1786,7 +2122,7 @@ const Dashboard = () => {
                         const showNotifyGuarantor = isMyLoan && l.status === 'pending_guarantor' && guarantor?.phone;
                         const waUrl = showNotifyGuarantor ? buildWhatsAppUrl(
                           guarantor.phone,
-                          `Hi ${l.guarantor_name}, I (${user?.name}) have requested a UGX ${Number(l.amount).toLocaleString()} loan on Class One Savings with you as my guarantor. Total due will be UGX ${Number(l.total_due || l.outstanding_balance || l.initial_total_due || l.amount * 1.03).toLocaleString()} (3% interest). Please log in at ${window.location.origin} to approve or reject. Thank you!`
+                          `Hi ${l.guarantor_name}, I (${user?.name}) have requested a UGX ${Number(l.amount).toLocaleString()} loan on Class One Savings with you as my guarantor. Total due will be UGX ${Number(getLoanDisplayBalance(l)).toLocaleString()} (3% interest). Please log in at ${window.location.origin} to approve or reject. Thank you!`
                         ) : null;
                         return (
                         <tr key={l.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5] transition-colors">
@@ -1809,7 +2145,7 @@ const Dashboard = () => {
                             )}
                           </td>
                           <td className="py-4 px-6 font-semibold text-[#1E231F] font-numbers">
-                            {formatCurrency(l.total_due || l.outstanding_balance || l.initial_total_due || l.amount * 1.03)}
+                            {formatCurrency(getLoanDisplayBalance(l))}
                           </td>
                           <td className="py-4 px-6">{getStatusBadge(l.status)}</td>
                           <td className="py-4 px-6">
@@ -2041,20 +2377,197 @@ const Dashboard = () => {
                         </p>
                       </div>
                     </div>
-                    {isTreasurer && m.id !== user?.id && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="mt-4 w-full"
-                        onClick={() => handleOpenDepositForMember(m.id)}
-                      >
-                        Deposit for Member
-                      </Button>
+                    {(isAdmin || isTreasurer) && m.id !== user?.id && (
+                      <div className="space-y-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="w-full"
+                          onClick={() => handleOpenDepositForMember(m.id)}
+                        >
+                          Deposit for Member
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="w-full"
+                          onClick={() => handleOpenAdminLoanForMember(m.id)}
+                        >
+                          Add Loan
+                        </Button>
+                      </div>
                     )}
                   </CardContent>
                 </Card>
               ))}
             </div>
+
+            <Dialog open={depositDialogOpen} onOpenChange={setDepositDialogOpen}>
+              <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                  <DialogTitle className="font-['Manrope'] text-[#1E231F]">New Deposit</DialogTitle>
+                  <DialogDescription className="text-[#5C665D]">Submit a savings deposit request; development fees are applied automatically on approval</DialogDescription>
+                </DialogHeader>
+                <form onSubmit={handleDeposit} className="space-y-4 mt-4">
+                  <div className="space-y-2">
+                    <Label>Deposit Type</Label>
+                     <Select value={depositType} onValueChange={setDepositType}>
+                       <SelectTrigger>
+                         <SelectValue />
+                       </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="savings">Savings</SelectItem>
+                          <SelectItem value="loan_payment">Pay Back Loan</SelectItem>
+                        </SelectContent>
+                     </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Amount (UGX)</Label>
+                    <Input
+                      type="number"
+                      value={depositAmount}
+                      onChange={(e) => setDepositAmount(e.target.value)}
+                      placeholder="500"
+                      required
+                      min="1"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Description</Label>
+                    <Textarea
+                      value={depositDescription}
+                      onChange={(e) => setDepositDescription(e.target.value)}
+                      placeholder="Optional description..."
+                    />
+                   </div>
+                    {depositType === 'savings' && new Date().getDate() > 10 && (
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          checked={depositDeductLateFee}
+                          onCheckedChange={setDepositDeductLateFee}
+                        />
+                        <span className="text-sm text-[#5C665D]">
+                          Deduct any applicable late fee from this savings deposit
+                        </span>
+                      </div>
+                    )}
+                    {depositType === 'loan_payment' && (
+                      <div className="space-y-3 p-3 bg-[#FAFAF8] rounded-lg border border-[#E8EBE8]">
+                        <p className="text-xs text-[#5C665D]">Outstanding loan balance: {formatCurrency(userLoanBalance)}</p>
+                        {loans.filter(l => l.user_id === user?.id && l.status === 'approved' && !l.repaid).length > 0 ? (
+                          <>
+                            <div className="space-y-2">
+                              <Label>Select Loan</Label>
+                              <Select value={repayLoanId} onValueChange={setRepayLoanId}>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select a loan" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {loans.filter(l => l.user_id === user?.id && l.status === 'approved' && !l.repaid).map((l) => {
+                                    const total_repaid = (l.amount_repaid || 0) + (l.interest_repaid || 0);
+                                    const outstanding = Math.max(0, (l.total_due || l.outstanding_balance || 0) - total_repaid);
+                                    return (
+                                      <SelectItem key={l.id} value={l.id}>
+                                        {formatCurrency(l.amount)} - {l.guarantor_name} (Due: {formatCurrency(outstanding)})
+                                      </SelectItem>
+                                    );
+                                  })}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Repayment Amount (UGX)</Label>
+                              <Input
+                                type="number"
+                                value={loanRepaymentAmount}
+                                onChange={(e) => setLoanRepaymentAmount(e.target.value)}
+                                placeholder="0"
+                                min="1"
+                                max={repayLoanId ? (() => {
+                                  const loan = loans.find(l => l.id === repayLoanId);
+                                  if (!loan) return 0;
+                                  const total_repaid = (loan.amount_repaid || 0) + (loan.interest_repaid || 0);
+                                  return Math.max(0, (loan.total_due || loan.outstanding_balance || 0) - total_repaid);
+                                })() : 0}
+                              />
+                            </div>
+                          </>
+                        ) : (
+                          <p className="text-xs text-[#5C665D]">You have no active loans to repay.</p>
+                        )}
+                      </div>
+                    )}
+                    <Button type="submit" className="w-full bg-[#2C5530] hover:bg-[#214024] rounded-full">
+                      Submit Request
+                    </Button>
+                </form>
+              </DialogContent>
+            </Dialog>
+
+            <Dialog open={adminLoanDialogOpen} onOpenChange={setAdminLoanDialogOpen}>
+              <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                  <DialogTitle className="font-['Manrope'] text-[#1E231F]">Add Loan to Member Account</DialogTitle>
+                  <DialogDescription className="text-[#5C665D]">
+                    Create an approved loan directly for a member account.
+                  </DialogDescription>
+                </DialogHeader>
+                <form onSubmit={handleAdminCreateLoan} className="space-y-4 mt-4">
+                  <div className="space-y-2">
+                    <Label>Member</Label>
+                    <Input
+                      type="text"
+                      value={members.find((m) => m.id === adminLoanDialogOpenMemberId)?.name || ''}
+                      disabled
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Amount (UGX)</Label>
+                    <Input
+                      type="number"
+                      value={adminLoanAmount}
+                      onChange={(e) => setAdminLoanAmount(e.target.value)}
+                      placeholder="50000"
+                      required
+                      min="1"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Optional Guarantor</Label>
+                    <Select value={adminLoanGuarantor} onValueChange={setAdminLoanGuarantor}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="None" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="no_guarantor">No guarantor</SelectItem>
+                        {members
+                          .filter((m) => m.id !== adminLoanDialogOpenMemberId)
+                          .filter((m) => getRemainingGuaranteeSlots(m) > 0)
+                          .map((m) => {
+                            const remainingSlots = getRemainingGuaranteeSlots(m);
+                            return (
+                              <SelectItem key={m.id} value={m.id}>
+                                {m.name} ({remainingSlots} slot{remainingSlots === 1 ? '' : 's'} left)
+                              </SelectItem>
+                            );
+                          })}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Reason</Label>
+                    <Textarea
+                      value={adminLoanReason}
+                      onChange={(e) => setAdminLoanReason(e.target.value)}
+                      placeholder="Loan reason..."
+                    />
+                  </div>
+                  <Button type="submit" className="w-full bg-[#2C5530] hover:bg-[#214024] rounded-full">
+                    Add Loan
+                  </Button>
+                </form>
+              </DialogContent>
+            </Dialog>
           </div>
         )}
 
@@ -2638,11 +3151,23 @@ const Dashboard = () => {
             <Card className="bg-white border border-[#E8EBE8] shadow-sm">
               <CardHeader>
                 <div className="flex items-center justify-between">
-                  <CardTitle className="font-['Manrope'] text-[#1E231F] flex items-center gap-2">
-                    <ArrowUpRight className="w-5 h-5 text-[#347242]" />
-                    Deposits
-                  </CardTitle>
-                  <Select value={depositMonthFilter} onValueChange={setDepositMonthFilter}>
+<CardTitle className="font-['Manrope'] text-[#1E231F] flex items-center gap-2">
+                     <ArrowUpRight className="w-5 h-5 text-[#347242]" />
+                     Deposits
+                   </CardTitle>
+                   <div className="flex items-center gap-2">
+                     {selectedFinancialDeposits.size > 0 && (
+                       <Button
+                         variant="outline"
+                         className="border-[#D05A49] text-[#D05A49] rounded-full text-xs"
+                         onClick={handleDeleteSelectedFinancialDeposits}
+                       >
+                         <Trash2 className="w-4 h-4 mr-1" />
+                         Delete Selected ({selectedFinancialDeposits.size})
+</Button>
+                      )}
+                   </div>
+                   <Select value={depositMonthFilter} onValueChange={setDepositMonthFilter}>
                     <SelectTrigger className="w-[180px]">
                       <SelectValue placeholder="All months" />
                     </SelectTrigger>
@@ -2659,59 +3184,71 @@ const Dashboard = () => {
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead>
-                      <tr className="border-b border-[#E8EBE8] bg-[#FAFAF8]">
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Date</th>
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Member</th>
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Type</th>
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Amount</th>
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Late Fee</th>
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Status</th>
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {deposits.filter(d => depositMonthFilter === 'all' || d.month === depositMonthFilter).map((d) => {
-                        const canDelete = d.user_id === user?.id || isTreasurer;
-                        return (
-                          <tr key={d.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5] transition-colors">
-                            <td className="py-4 px-6 text-[#1E231F]">
-                              {new Date(d.created_at).toLocaleDateString()}
-                            </td>
-                            <td className="py-4 px-6 text-[#1E231F]">
-                              {d.user_name || '-'}
-                            </td>
-                            <td className="py-4 px-6 text-[#1E231F]">
-                              {d.deposit_type === 'development_fee' ? 'Development' : d.deposit_type === 'loan_payment' ? 'Loan Payment' : 'Savings'}
-                            </td>
-                            <td className="py-4 px-6 font-semibold text-[#347242] font-numbers">
-                              {formatCurrency(d.amount)}
-                            </td>
-                            <td className="py-4 px-6 text-[#D05A49] font-numbers">
-                              {d.late_fee > 0 ? formatCurrency(d.late_fee) : '-'}
-                            </td>
-                            <td className="py-4 px-6">{getStatusBadge(d.status)}</td>
-                            <td className="py-4 px-6">
-                              {canDelete ? (
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteRecord('deposits', d.id)}
-                                  title="Delete deposit"
-                                  className="p-1.5 rounded-full text-[#D05A49] hover:bg-[#D05A49]/10 transition-colors"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              ) : (
-                                <span className="text-[#5C665D] text-xs">-</span>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                  {deposits.length === 0 && (
-                    <p className="text-center text-[#5C665D] py-8">No deposits yet</p>
-                  )}
+<tr className="border-b border-[#E8EBE8] bg-[#FAFAF8]">
+                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D] whitespace-nowrap w-10">
+                           <Checkbox
+                             checked={deposits.length > 0 && deposits.every((d) => selectedFinancialDeposits.has(d.id))}
+                             onCheckedChange={(checked) => handleSelectAllFinancialDeposits(checked)}
+                           />
+                         </th>
+                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Date</th>
+                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Member</th>
+                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Type</th>
+                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Amount</th>
+                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Late Fee</th>
+                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Status</th>
+                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Action</th>
+                       </tr>
+                     </thead>
+                     <tbody>
+                       {deposits.filter(d => depositMonthFilter === 'all' || d.month === depositMonthFilter).map((d) => {
+                         const canDelete = d.user_id === user?.id || isTreasurer;
+                         return (
+                           <tr key={d.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5] transition-colors">
+                             <td className="py-4 px-6 text-[#1E231F] whitespace-nowrap">
+                               <Checkbox
+                                 checked={selectedFinancialDeposits.has(d.id)}
+                                 onCheckedChange={(checked) => handleToggleFinancialDeposit(d.id)}
+                               />
+                             </td>
+                             <td className="py-4 px-6 text-[#1E231F]">
+                               {new Date(d.created_at).toLocaleDateString()}
+                             </td>
+                             <td className="py-4 px-6 text-[#1E231F]">
+                               {d.user_name || '-'}
+                             </td>
+                             <td className="py-4 px-6 text-[#1E231F]">
+                               {d.deposit_type === 'development_fee' ? 'Development' : d.deposit_type === 'loan_payment' ? 'Loan Payment' : 'Savings'}
+                             </td>
+                             <td className="py-4 px-6 font-semibold text-[#347242] font-numbers">
+                               {formatCurrency(d.amount)}
+                             </td>
+                             <td className="py-4 px-6 text-[#D05A49] font-numbers">
+                               {d.late_fee > 0 ? formatCurrency(d.late_fee) : '-'}
+                             </td>
+                             <td className="py-4 px-6">{getStatusBadge(d.status)}</td>
+                             <td className="py-4 px-6">
+                               {canDelete ? (
+                                 <button
+                                   type="button"
+                                   onClick={() => handleDeleteRecord('deposits', d.id)}
+                                   title="Delete deposit"
+                                   className="p-1.5 rounded-full text-[#D05A49] hover:bg-[#D05A49]/10 transition-colors"
+                                 >
+                                   <Trash2 className="w-3.5 h-3.5" />
+                                 </button>
+                               ) : (
+                                 <span className="text-[#5C665D] text-xs">-</span>
+                               )}
+                             </td>
+                           </tr>
+                         );
+                       })}
+                     </tbody>
+                   </table>
+                   {deposits.length === 0 && (
+                     <p className="text-center text-[#5C665D] py-8">No deposits yet</p>
+                   )}
                 </div>
               </CardContent>
             </Card>
@@ -2776,6 +3313,37 @@ const Dashboard = () => {
                     <CreditCard className="w-5 h-5 text-[#D48C70]" />
                     Loans
                   </CardTitle>
+                  <div className="flex items-center gap-2">
+                    {selectedFinancialLoans.size > 0 && (
+                      <Button
+                        variant="outline"
+                        className="border-[#D05A49] text-[#D05A49] rounded-full text-xs"
+                        onClick={handleDeleteSelectedFinancialLoans}
+                      >
+                        <Trash2 className="w-4 h-4 mr-1" />
+                        Delete Selected ({selectedFinancialLoans.size})
+                      </Button>
+                    )}
+                    {loans.length > 0 && (
+                      <Button
+                        variant="outline"
+                        className="border-[#D05A49] text-[#D05A49] rounded-full text-xs"
+                        onClick={() => {
+                          if (!window.confirm('Delete ALL loans? This action cannot be undone.')) return;
+                          axios.delete(`${API_URL}/api/loans`, { headers: getAuthHeaders() }).then(() => {
+                            setSelectedFinancialLoans(new Set());
+                            fetchData();
+                            toast.success('All loans deleted.');
+                          }).catch((err) => {
+                            toast.error(err.response?.data?.detail || 'Failed to delete all loans');
+                          });
+                        }}
+                      >
+                        <Trash2 className="w-4 h-4 mr-1" />
+                        Delete All Loans
+                      </Button>
+                    )}
+                  </div>
                   <Select value={loanMonthFilter} onValueChange={setLoanMonthFilter}>
                     <SelectTrigger className="w-[180px]">
                       <SelectValue placeholder="All months" />
@@ -2792,27 +3360,35 @@ const Dashboard = () => {
               <CardContent className="p-0">
                 <div className="overflow-x-auto">
                   <table className="w-full">
-                    <thead>
-                      <tr className="border-b border-[#E8EBE8] bg-[#FAFAF8]">
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Date</th>
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Amount</th>
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Guarantor</th>
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Interest</th>
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Total Due</th>
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Status</th>
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {loans.filter(l => loanMonthFilter === 'all' || (l.created_at ? new Date(l.created_at).toISOString().slice(0, 7) === loanMonthFilter : false)).slice(0, 20).map((l) => {
-                        const canDelete = l.user_id === user?.id || isTreasurer;
-                        const outstanding = l.outstanding_balance ?? l.total_due ?? l.initial_total_due ?? l.amount * 1.03;
-                        return (
-                          <tr key={l.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5] transition-colors">
-                            <td className="py-4 px-6 text-[#1E231F]">
-                              {new Date(l.created_at).toLocaleDateString()}
-                              {l.is_quick_loan && <span className="ml-2 text-xs bg-[#D48C70]/20 text-[#D48C70] px-2 py-0.5 rounded-full">Quick</span>}
-                            </td>
+<thead>
+                       <tr className="border-b border-[#E8EBE8] bg-[#FAFAF8]">
+                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D] whitespace-nowrap w-10">
+                           <Checkbox
+                             checked={loans.length > 0 && loans.every((l) => selectedFinancialLoans.has(l.id))}
+                             onCheckedChange={(checked) => handleSelectAllFinancialLoans(checked)}
+                           />
+                         </th>
+                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Date</th>
+                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Amount</th>
+                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Guarantor</th>
+                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Interest</th>
+                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Total Due</th>
+                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Status</th>
+                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Action</th>
+                       </tr>
+                     </thead>
+                     <tbody>
+                       {loans.filter(l => loanMonthFilter === 'all' || (l.created_at ? new Date(l.created_at).toISOString().slice(0, 7) === loanMonthFilter : false)).slice(0, 20).map((l) => {
+                         const canDelete = l.user_id === user?.id || isTreasurer;
+                         const outstanding = l.outstanding_balance ?? l.total_due ?? l.initial_total_due ?? l.amount * 1.03;
+                         return (
+                           <tr key={l.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5] transition-colors">
+                             <td className="py-4 px-6 text-[#1E231F] whitespace-nowrap">
+                               <Checkbox
+                                 checked={selectedFinancialLoans.has(l.id)}
+                                 onCheckedChange={(checked) => handleToggleFinancialLoan(l.id)}
+                               />
+                             </td>
                             <td className="py-4 px-6 font-semibold text-[#D48C70] font-numbers">
                               {formatCurrency(l.amount)}
                             </td>
@@ -2920,6 +3496,37 @@ const Dashboard = () => {
                     <ArrowDownRight className="w-5 h-5 text-[#D05A49]" />
                     Withdrawals
                   </CardTitle>
+                  <div className="flex items-center gap-2">
+                    {selectedFinancialWithdrawals.size > 0 && (
+                      <Button
+                        variant="outline"
+                        className="border-[#D05A49] text-[#D05A49] rounded-full text-xs"
+                        onClick={handleDeleteSelectedFinancialWithdrawals}
+                      >
+                        <Trash2 className="w-4 h-4 mr-1" />
+                        Delete Selected ({selectedFinancialWithdrawals.size})
+                      </Button>
+                    )}
+                    {withdrawals.length > 0 && (
+                      <Button
+                        variant="outline"
+                        className="border-[#D05A49] text-[#D05A49] rounded-full text-xs"
+                        onClick={() => {
+                          if (!window.confirm('Delete ALL withdrawals? This action cannot be undone.')) return;
+                          axios.delete(`${API_URL}/api/withdrawals`, { headers: getAuthHeaders() }).then(() => {
+                            setSelectedFinancialWithdrawals(new Set());
+                            fetchData();
+                            toast.success('All withdrawals deleted.');
+                          }).catch((err) => {
+                            toast.error(err.response?.data?.detail || 'Failed to delete all withdrawals');
+                          });
+                        }}
+                      >
+                        <Trash2 className="w-4 h-4 mr-1" />
+                        Delete All Withdrawals
+                      </Button>
+                    )}
+                  </div>
                   <Select value={withdrawalMonthFilter} onValueChange={setWithdrawalMonthFilter}>
                     <SelectTrigger className="w-[180px]">
                       <SelectValue placeholder="All months" />
@@ -2936,54 +3543,66 @@ const Dashboard = () => {
               <CardContent className="p-0">
                 <div className="overflow-x-auto">
                   <table className="w-full">
-                    <thead>
-                      <tr className="border-b border-[#E8EBE8] bg-[#FAFAF8]">
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Date</th>
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Amount</th>
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Type</th>
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Reason</th>
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Status</th>
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {withdrawals.filter(w => withdrawalMonthFilter === 'all' || (w.created_at ? new Date(w.created_at).toISOString().slice(0, 7) === withdrawalMonthFilter : false)).slice(0, 20).map((w) => {
-                        const canDelete = w.user_id === user?.id || isTreasurer;
-                        return (
-                          <tr key={w.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5] transition-colors">
-                            <td className="py-4 px-6 text-[#1E231F]">
-                              {new Date(w.created_at).toLocaleDateString()}
-                            </td>
-                            <td className="py-4 px-6 font-semibold text-[#D05A49] font-numbers">
-                              {formatCurrency(w.amount)}
-                            </td>
-                            <td className="py-4 px-6 text-[#1E231F]">
-                              {w.withdrawal_type === 'leaving_group' ? 'Leaving Group' : 'Regular'}
-                            </td>
-                            <td className="py-4 px-6 text-[#5C665D]">{w.reason || '-'}</td>
-                            <td className="py-4 px-6">{getStatusBadge(w.status)}</td>
-                            <td className="py-4 px-6">
-                              {canDelete ? (
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteRecord('withdrawals', w.id)}
-                                  title="Delete withdrawal"
-                                  className="p-1.5 rounded-full text-[#D05A49] hover:bg-[#D05A49]/10 transition-colors"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              ) : (
-                                <span className="text-[#5C665D] text-xs">-</span>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                  {withdrawals.length === 0 && (
-                    <p className="text-center text-[#5C665D] py-8">No withdrawals yet</p>
-                  )}
+<thead>
+                       <tr className="border-b border-[#E8EBE8] bg-[#FAFAF8]">
+                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D] whitespace-nowrap w-10">
+                           <Checkbox
+                             checked={withdrawals.length > 0 && withdrawals.every((w) => selectedFinancialWithdrawals.has(w.id))}
+                             onCheckedChange={(checked) => handleSelectAllFinancialWithdrawals(checked)}
+                           />
+                         </th>
+                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Date</th>
+                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Amount</th>
+                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Type</th>
+                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Reason</th>
+                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Status</th>
+                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Action</th>
+                       </tr>
+                     </thead>
+                     <tbody>
+                       {withdrawals.filter(w => withdrawalMonthFilter === 'all' || (w.created_at ? new Date(w.created_at).toISOString().slice(0, 7) === withdrawalMonthFilter : false)).slice(0, 20).map((w) => {
+                         const canDelete = w.user_id === user?.id || isTreasurer;
+                         return (
+                           <tr key={w.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5] transition-colors">
+                             <td className="py-4 px-6 text-[#1E231F] whitespace-nowrap">
+                               <Checkbox
+                                 checked={selectedFinancialWithdrawals.has(w.id)}
+                                 onCheckedChange={(checked) => handleToggleFinancialWithdrawal(w.id)}
+                               />
+                             </td>
+                             <td className="py-4 px-6 text-[#1E231F]">
+                               {new Date(w.created_at).toLocaleDateString()}
+                             </td>
+                             <td className="py-4 px-6 font-semibold text-[#D05A49] font-numbers">
+                               {formatCurrency(w.amount)}
+                             </td>
+                             <td className="py-4 px-6 text-[#1E231F]">
+                               {w.withdrawal_type === 'leaving_group' ? 'Leaving Group' : 'Regular'}
+                             </td>
+                             <td className="py-4 px-6 text-[#5C665D]">{w.reason || '-'}</td>
+                             <td className="py-4 px-6">{getStatusBadge(w.status)}</td>
+                             <td className="py-4 px-6">
+                               {canDelete ? (
+                                 <button
+                                   type="button"
+                                   onClick={() => handleDeleteRecord('withdrawals', w.id)}
+                                   title="Delete withdrawal"
+                                   className="p-1.5 rounded-full text-[#D05A49] hover:bg-[#D05A49]/10 transition-colors"
+                                 >
+                                   <Trash2 className="w-3.5 h-3.5" />
+                                 </button>
+                               ) : (
+                                 <span className="text-[#5C665D] text-xs">-</span>
+                               )}
+                             </td>
+                           </tr>
+                         );
+                       })}
+                     </tbody>
+                   </table>
+                   {withdrawals.length === 0 && (
+                     <p className="text-center text-[#5C665D] py-8">No withdrawals yet</p>
+                   )}
                 </div>
               </CardContent>
             </Card>
@@ -2992,12 +3611,43 @@ const Dashboard = () => {
             {activeFinancialTab === 'petty-cash' && (
             <Card className="bg-white border border-[#E8EBE8] shadow-sm">
               <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex items-center gap-3">
-                  <CardTitle className="font-['Manrope'] text-[#1E231F] flex items-center gap-2">
-                    <Receipt className="w-5 h-5 text-[#D48C70]" />
-                    Petty Cash Expenses
-                  </CardTitle>
-                  <Select value={pettyCashMonthFilter} onValueChange={setPettyCashMonthFilter}>
+<div className="flex items-center gap-3">
+                   <CardTitle className="font-['Manrope'] text-[#1E231F] flex items-center gap-2">
+                     <Receipt className="w-5 h-5 text-[#D48C70]" />
+                     Petty Cash Expenses
+                   </CardTitle>
+                   <div className="flex items-center gap-2">
+                     {selectedFinancialPettyCash.size > 0 && (
+                       <Button
+                         variant="outline"
+                         className="border-[#D05A49] text-[#D05A49] rounded-full text-xs"
+                         onClick={handleDeleteSelectedFinancialPettyCash}
+                       >
+                         <Trash2 className="w-4 h-4 mr-1" />
+                         Delete Selected ({selectedFinancialPettyCash.size})
+                       </Button>
+                     )}
+                     {(financials?.petty_cash_items || []).length > 0 && (
+                       <Button
+                         variant="outline"
+                         className="border-[#D05A49] text-[#D05A49] rounded-full text-xs"
+                         onClick={() => {
+                           if (!window.confirm('Delete ALL petty cash entries? This action cannot be undone.')) return;
+                           axios.delete(`${API_URL}/api/petty-cash`, { headers: getAuthHeaders() }).then(() => {
+                             setSelectedFinancialPettyCash(new Set());
+                             fetchData();
+                             toast.success('All petty cash entries deleted.');
+                           }).catch((err) => {
+                             toast.error(err.response?.data?.detail || 'Failed to delete all petty cash entries');
+                           });
+                         }}
+                       >
+                         <Trash2 className="w-4 h-4 mr-1" />
+                         Delete All Entries
+                       </Button>
+                     )}
+                   </div>
+                   <Select value={pettyCashMonthFilter} onValueChange={setPettyCashMonthFilter}>
                     <SelectTrigger className="w-[180px]">
                       <SelectValue placeholder="All months" />
                     </SelectTrigger>
@@ -3074,33 +3724,45 @@ const Dashboard = () => {
               <CardContent className="p-0">
                 <div className="overflow-x-auto">
                   <table className="w-full">
-                    <thead>
-                      <tr className="border-b border-[#E8EBE8] bg-[#FAFAF8]">
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Date</th>
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Amount</th>
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Category</th>
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Description</th>
-                        {isAdmin && <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Action</th>}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(financials?.petty_cash_items || []).filter(pc => pettyCashMonthFilter === 'all' || (pc.created_at ? new Date(pc.created_at).toISOString().slice(0, 7) === pettyCashMonthFilter : false)).map((pc) => (
-                        <tr key={pc.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5] transition-colors">
-                          <td className="py-4 px-6 text-[#1E231F]">
-                            {new Date(pc.created_at).toLocaleDateString()}
-                          </td>
-                          <td className="py-4 px-6 font-semibold text-[#D48C70] font-numbers">
-                            {formatCurrency(pc.amount)}
-                          </td>
-                          <td className="py-4 px-6 text-[#1E231F]">
-                            {pc.category ? pc.category.charAt(0).toUpperCase() + pc.category.slice(1) : '-'}
-                          </td>
-                          <td className="py-4 px-6 text-[#5C665D]">{pc.description || '-'}</td>
-                          {isAdmin && (
-                            <td className="py-4 px-6">
-                              <button
-                                onClick={() => handleDeleteRecord('petty-cash', pc.id)}
-                                data-testid={`delete-petty-cash-${pc.id}`}
+<thead>
+                       <tr className="border-b border-[#E8EBE8] bg-[#FAFAF8]">
+                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D] whitespace-nowrap w-10">
+                           <Checkbox
+                             checked={(financials?.petty_cash_items || []).length > 0 && (financials?.petty_cash_items || []).every((pc) => selectedFinancialPettyCash.has(pc.id))}
+                             onCheckedChange={(checked) => handleSelectAllFinancialPettyCash(checked)}
+                           />
+                         </th>
+                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Date</th>
+                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Amount</th>
+                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Category</th>
+                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Description</th>
+                         {isAdmin && <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Action</th>}
+                       </tr>
+                     </thead>
+                     <tbody>
+                       {(financials?.petty_cash_items || []).filter(pc => pettyCashMonthFilter === 'all' || (pc.created_at ? new Date(pc.created_at).toISOString().slice(0, 7) === pettyCashMonthFilter : false)).map((pc) => (
+                         <tr key={pc.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5] transition-colors">
+                           <td className="py-4 px-6 text-[#1E231F] whitespace-nowrap">
+                             <Checkbox
+                               checked={selectedFinancialPettyCash.has(pc.id)}
+                               onCheckedChange={(checked) => handleToggleFinancialPettyCash(pc.id)}
+                             />
+                           </td>
+                           <td className="py-4 px-6 text-[#1E231F]">
+                             {new Date(pc.created_at).toLocaleDateString()}
+                           </td>
+                           <td className="py-4 px-6 font-semibold text-[#D48C70] font-numbers">
+                             {formatCurrency(pc.amount)}
+                           </td>
+                           <td className="py-4 px-6 text-[#1E231F]">
+                             {pc.category ? pc.category.charAt(0).toUpperCase() + pc.category.slice(1) : '-'}
+                           </td>
+                           <td className="py-4 px-6 text-[#5C665D]">{pc.description || '-'}</td>
+                           {isAdmin && (
+                             <td className="py-4 px-6">
+                               <button
+                                 onClick={() => handleDeleteRecord('petty-cash', pc.id)}
+                                 data-testid={`delete-petty-cash-${pc.id}`}
                                 title="Delete petty cash entry"
                                 className="p-1.5 rounded-full text-[#D05A49] hover:bg-[#D05A49]/10 transition-colors"
                               >
@@ -3305,10 +3967,42 @@ const Dashboard = () => {
 {/* Admin Tab */}
         {activeTab === 'admin' && isAdmin && (
           <div className="space-y-8 animate-fade-in" data-testid="admin-tab">
+            <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-[#E8EBE8] bg-white p-2 shadow-sm">
+              <button
+                type="button"
+                onClick={() => setActiveAdminPage('admin-panel')}
+                className={`rounded-full px-4 py-2 text-sm font-medium transition-all ${activeAdminPage === 'admin-panel' ? 'bg-[#2C5530] text-white' : 'text-[#5C665D] hover:bg-[#ECF8E9] hover:text-[#2C5530]'}`}
+              >
+                Admin Panel
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveAdminPage('active-loans')}
+                className={`rounded-full px-4 py-2 text-sm font-medium transition-all ${activeAdminPage === 'active-loans' ? 'bg-[#2C5530] text-white' : 'text-[#5C665D] hover:bg-[#ECF8E9] hover:text-[#2C5530]'}`}
+              >
+                Active Loans (Record Payments)
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveAdminPage('member-management')}
+                className={`rounded-full px-4 py-2 text-sm font-medium transition-all ${activeAdminPage === 'member-management' ? 'bg-[#2C5530] text-white' : 'text-[#5C665D] hover:bg-[#ECF8E9] hover:text-[#2C5530]'}`}
+              >
+                Member Management (Treasurer)
+              </button>
+            </div>
+
             <h2 className="text-2xl font-bold font-['Manrope'] text-[#1E231F]">Admin Panel</h2>
             
             {/* Pending Approvals */}
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-6">
+            {activeAdminPage === 'admin-panel' && (
+            <div id="admin-panel" className="space-y-6 rounded-2xl border border-[#E8EBE8] bg-white p-6 shadow-sm">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-xl font-semibold text-[#1E231F]">Admin Panel</h3>
+                  <p className="text-sm text-[#5C665D]">Overview of pending approvals and treasury activity.</p>
+                </div>
+              </div>
+              <div className="flex flex-col gap-6">
               {/* Pending Deposits */}
               <Card className="bg-white border border-[#E8EBE8] shadow-sm">
                 <CardHeader className="pb-2">
@@ -3336,6 +4030,16 @@ const Dashboard = () => {
                         >
                           Approve
                         </Button>
+                        {d.deposit_type === 'savings' && d.late_fee > 0 && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleApproveTransaction('deposits', d.id, true, true)}
+                            className="flex-1 border-[#347242] text-[#347242] hover:bg-[#347242]/10 text-xs"
+                          >
+                            Approve & Deduct
+                          </Button>
+                        )}
                         <Button
                           size="sm"
                           variant="outline"
@@ -3533,9 +4237,16 @@ const Dashboard = () => {
                   )}
                 </CardContent>
               </Card>
+              </div>
             </div>
+            )}
 
-            {/* Active Loans */}
+            {activeAdminPage === 'active-loans' && (
+            <div id="active-loans" className="space-y-4 rounded-2xl border border-[#E8EBE8] bg-white p-6 shadow-sm">
+              <div>
+                <h3 className="text-xl font-semibold text-[#1E231F]">Active Loans</h3>
+                <p className="text-sm text-[#5C665D]">Record payments for approved loans.</p>
+              </div>
             <Card className="bg-white border border-[#E8EBE8] shadow-sm">
               <CardHeader>
                 <CardTitle className="font-['Manrope'] text-[#1E231F]">Active Loans (Record Payments)</CardTitle>
@@ -3547,12 +4258,12 @@ const Dashboard = () => {
                       <div>
                         <p className="font-medium text-[#1E231F]">{l.user_name}</p>
                         <p className="text-sm text-[#5C665D]">
-                          Guarantor: {l.guarantor_name} • {l.months_elapsed || 0} months
+                          Guarantor: {l.guarantor_name} • {l.months_elapsed ?? 0} months
                         </p>
                       </div>
                       <div className="text-right">
                         <p className="font-semibold text-[#D48C70] font-numbers">
-                          Due: {formatCurrency(l.total_due)}
+                          Due: {formatCurrency(getLoanDisplayBalance(l))}
                         </p>
                         <p className="text-xs text-[#5C665D]">Paid: {formatCurrency(l.amount_repaid || 0)}</p>
                         <Button
@@ -3571,9 +4282,16 @@ const Dashboard = () => {
                 </div>
               </CardContent>
             </Card>
+            </div>
+            )}
 
             {/* Member Management (Treasurer only) */}
-            {isTreasurer && (
+            {isTreasurer && activeAdminPage === 'member-management' && (
+              <div id="member-management" className="space-y-4 rounded-2xl border border-[#E8EBE8] bg-white p-6 shadow-sm">
+                <div>
+                  <h3 className="text-xl font-semibold text-[#1E231F]">Member Management</h3>
+                  <p className="text-sm text-[#5C665D]">Manage members and treasurer controls.</p>
+                </div>
               <Card className="bg-white border border-[#E8EBE8] shadow-sm">
                 <CardHeader>
                   <CardTitle className="font-['Manrope'] text-[#1E231F] flex items-center gap-2">
@@ -3680,6 +4398,7 @@ const Dashboard = () => {
                   </div>
                 </CardContent>
               </Card>
+              </div>
             )}
           </div>
         )}

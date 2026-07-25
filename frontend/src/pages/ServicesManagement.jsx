@@ -5,6 +5,7 @@ import axios from 'axios';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
+import { Checkbox } from '../components/ui/checkbox';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import {
@@ -60,6 +61,10 @@ const ServicesManagement = () => {
   const [allProducts, setAllProducts] = useState([]);
   const [showQuickLoanPurpose, setShowQuickLoanPurpose] = useState(false);
   const [showQuickLoanOfficer, setShowQuickLoanOfficer] = useState(true);
+  const [selectedOrders, setSelectedOrders] = useState(new Set());
+  const [selectedProducts, setSelectedProducts] = useState(new Set());
+  const [selectedQuickLoans, setSelectedQuickLoans] = useState(new Set());
+  const [selectedDeletedOrders, setSelectedDeletedOrders] = useState(new Set());
 
   const fetchOrders = useCallback(async () => {
     setDataLoading(true);
@@ -179,11 +184,38 @@ const ServicesManagement = () => {
     if (!window.confirm('Permanently delete this order? This action cannot be undone and will remove it from all records.')) return;
     try {
       await axios.delete(`${API_URL}/api/orders/${orderId}/permanent`, { headers: getAuthHeaders() });
+      setOrders((prev) => prev.filter((o) => o.id !== orderId));
       setDeletedOrders((prev) => prev.filter((o) => o.id !== orderId));
+      setSelectedOrders((prev) => {
+        const next = new Set(prev);
+        next.delete(orderId);
+        return next;
+      });
       toast.success('Order permanently deleted.');
     } catch (err) {
       console.error('Failed to permanently delete order:', err);
       toast.error(err.response?.data?.detail || 'Failed to permanently delete order');
+      fetchOrders();
+      fetchDeletedOrders();
+    }
+  };
+
+  const handlePermanentDeleteSelected = async () => {
+    const ids = Array.from(selectedOrders);
+    if (ids.length === 0) return;
+    if (!window.confirm(`Permanently delete ${ids.length} selected order(s)? This action cannot be undone.`)) return;
+    try {
+      await axios.post(`${API_URL}/api/orders/batch-permanent`,
+        { order_ids: ids },
+        { headers: getAuthHeaders() });
+      setOrders((prev) => prev.filter((o) => !selectedOrders.has(o.id)));
+      setDeletedOrders((prev) => prev.filter((o) => !selectedOrders.has(o.id)));
+      setSelectedOrders(new Set());
+      toast.success(`${ids.length} order(s) permanently deleted.`);
+    } catch (err) {
+      console.error('Failed to permanently delete selected orders:', err);
+      toast.error(err.response?.data?.detail || 'Failed to permanently delete selected orders');
+      fetchOrders();
       fetchDeletedOrders();
     }
   };
@@ -211,6 +243,148 @@ const ServicesManagement = () => {
     } catch (err) {
       console.error('Failed to delete product:', err);
       toast.error(err.response?.data?.detail || 'Failed to delete product');
+    }
+  };
+
+  const handleDeleteAllProducts = async () => {
+    if (!window.confirm('Delete ALL products? This action cannot be undone.')) return;
+    try {
+      await axios.delete(`${API_URL}/api/products`, { headers: getAuthHeaders() });
+      setAllProducts([]);
+      toast.success('All products deleted.');
+    } catch (err) {
+      console.error('Failed to delete all products:', err);
+      toast.error(err.response?.data?.detail || 'Failed to delete all products');
+    }
+  };
+
+  const handleDeleteAllSellers = async () => {
+    if (!window.confirm('Delete ALL sellers? This action cannot be undone and will remove all seller accounts.')) return;
+    try {
+      await axios.delete(`${API_URL}/api/sellers`, { headers: getAuthHeaders() });
+      setAllProducts([]);
+      setSelectedProducts(new Set());
+      toast.success('All sellers deleted.');
+    } catch (err) {
+      console.error('Failed to delete all sellers:', err);
+      toast.error(err.response?.data?.detail || 'Failed to delete all sellers');
+    }
+  };
+
+  const handleToggleProduct = (productId) => {
+    setSelectedProducts((prev) => {
+      const next = new Set(prev);
+      if (next.has(productId)) {
+        next.delete(productId);
+      } else {
+        next.add(productId);
+      }
+      return next;
+    });
+  };
+
+  const handleSelectAllProducts = (checked) => {
+    if (checked) {
+      setSelectedProducts(new Set(allProducts.map((p) => p.id)));
+    } else {
+      setSelectedProducts(new Set());
+    }
+  };
+
+  const handleDeleteSelectedProducts = async () => {
+    const ids = Array.from(selectedProducts);
+    if (ids.length === 0) return;
+    if (!window.confirm(`Delete ${ids.length} selected product(s)? This action cannot be undone.`)) return;
+    try {
+      await axios.post(
+        `${API_URL}/api/products/batch-delete`,
+        { order_ids: ids },
+        { headers: getAuthHeaders() }
+      );
+      setAllProducts((prev) => prev.filter((p) => !selectedProducts.has(p.id)));
+      setSelectedProducts(new Set());
+      toast.success(`${ids.length} product(s) deleted.`);
+    } catch (err) {
+      console.error('Failed to delete selected products:', err);
+      toast.error(err.response?.data?.detail || 'Failed to delete selected products');
+    }
+  };
+
+  const handleToggleQuickLoan = (loanId) => {
+    setSelectedQuickLoans((prev) => {
+      const next = new Set(prev);
+      if (next.has(loanId)) {
+        next.delete(loanId);
+      } else {
+        next.add(loanId);
+      }
+      return next;
+    });
+  };
+
+  const handleSelectAllQuickLoans = (checked) => {
+    if (checked) {
+      setSelectedQuickLoans(new Set(quickLoans.map((q) => q.id)));
+    } else {
+      setSelectedQuickLoans(new Set());
+    }
+  };
+
+  const handleDeleteSelectedQuickLoans = async () => {
+    const ids = Array.from(selectedQuickLoans);
+    if (ids.length === 0) return;
+    if (!window.confirm(`Delete ${ids.length} selected quick loan(s)? This action cannot be undone.`)) return;
+    try {
+      await axios.post(
+        `${API_URL}/api/quick-loans/batch-delete`,
+        { order_ids: ids },
+        { headers: getAuthHeaders() }
+      );
+      setQuickLoans((prev) => prev.filter((q) => !selectedQuickLoans.has(q.id)));
+      setSelectedQuickLoans(new Set());
+      toast.success(`${ids.length} quick loan(s) deleted.`);
+    } catch (err) {
+      console.error('Failed to delete selected quick loans:', err);
+      toast.error(err.response?.data?.detail || 'Failed to delete selected quick loans');
+    }
+  };
+
+  const handleToggleDeletedOrder = (orderId) => {
+    setSelectedDeletedOrders((prev) => {
+      const next = new Set(prev);
+      if (next.has(orderId)) {
+        next.delete(orderId);
+      } else {
+        next.add(orderId);
+      }
+      return next;
+    });
+  };
+
+  const handleSelectAllDeletedOrders = (checked) => {
+    if (checked) {
+      setSelectedDeletedOrders(new Set(deletedOrders.map((o) => o.id)));
+    } else {
+      setSelectedDeletedOrders(new Set());
+    }
+  };
+
+  const handleDeleteSelectedDeletedOrders = async () => {
+    const ids = Array.from(selectedDeletedOrders);
+    if (ids.length === 0) return;
+    if (!window.confirm(`Permanently delete ${ids.length} selected deleted order(s)? This action cannot be undone.`)) return;
+    try {
+      await axios.post(
+        `${API_URL}/api/orders/batch-permanent`,
+        { order_ids: ids },
+        { headers: getAuthHeaders() }
+      );
+      setDeletedOrders((prev) => prev.filter((o) => !selectedDeletedOrders.has(o.id)));
+      setSelectedDeletedOrders(new Set());
+      toast.success(`${ids.length} deleted order(s) permanently deleted.`);
+    } catch (err) {
+      console.error('Failed to permanently delete selected orders:', err);
+      toast.error(err.response?.data?.detail || 'Failed to permanently delete selected orders');
     }
   };
 
@@ -436,52 +610,92 @@ const ServicesManagement = () => {
         {/* Orders Tab */}
         {activeTab === 'orders' && (
           <div className="space-y-6 animate-fade-in">
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <div>
-                <h2 className="text-2xl font-bold font-['Manrope'] text-[#1E231F]">All Orders</h2>
-                <p className="text-sm text-[#5C665D]">Track buyers, sellers, and order statuses.</p>
-              </div>
-              {orders.length > 0 && (
-                <Button
-                  variant="outline"
-                  onClick={exportOrdersPDF}
-                  className="border-[#E8EBE8] rounded-full"
-                >
-                  <FileDown className="w-4 h-4 mr-2" />
-                  Export PDF
-                </Button>
-              )}
-            </div>
+<div className="flex items-center justify-between flex-wrap gap-2">
+               <div>
+                 <h2 className="text-2xl font-bold font-['Manrope'] text-[#1E231F]">All Orders</h2>
+                 <p className="text-sm text-[#5C665D]">Track buyers, sellers, and order statuses.</p>
+               </div>
+               <div className="flex items-center gap-2">
+                 {selectedOrders.size > 0 && (
+                   <Button
+                     variant="outline"
+                     className="border-[#D05A49] text-[#D05A49] rounded-full"
+                     onClick={handlePermanentDeleteSelected}
+                   >
+                     <Trash2 className="w-4 h-4 mr-2" />
+                     Delete Selected ({selectedOrders.size})
+                   </Button>
+                 )}
+                 {orders.length > 0 && (
+                   <Button
+                     variant="outline"
+                     onClick={exportOrdersPDF}
+                     className="border-[#E8EBE8] rounded-full"
+                   >
+                     <FileDown className="w-4 h-4 mr-2" />
+                     Export PDF
+                   </Button>
+                 )}
+               </div>
+             </div>
 
             <Card className="bg-white border border-[#E8EBE8] shadow-sm overflow-x-auto">
               <CardContent className="p-0">
                 <div className="w-full">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b border-[#E8EBE8] bg-[#FAFAF8]">
-                        <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Date</th>
-                        <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Seller</th>
-                        <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Customer</th>
-                        <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Products</th>
-                        <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Total</th>
-                        <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Status</th>
-                        <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Contact</th>
-                        <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {orders.map((order) => {
-                        const productSummary = order.products && Array.isArray(order.products)
-                          ? order.products.map((p) => `${p.title || 'Item'} x${p.quantity || 1}`).join(', ')
-                          : order.productTitle || '-';
-                        const waUrl = order.buyerPhone
-                          ? buildWhatsAppUrl(order.buyerPhone, `Hello ${order.buyerName}, your order is being reviewed.`)
-                          : null;
-                        return (
-                          <tr key={order.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5]">
-                            <td className="py-3 px-3 text-xs text-[#1E231F] whitespace-nowrap">
-                              {new Date(order.createdAt || order.created_at).toLocaleDateString()}
-                            </td>
+<table className="w-full">
+                     <thead>
+                       <tr className="border-b border-[#E8EBE8] bg-[#FAFAF8]">
+                         <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap w-10">
+                           <Checkbox
+                             checked={orders.length > 0 && orders.every((o) => selectedOrders.has(o.id))}
+                             onCheckedChange={(checked) => {
+                               if (checked) {
+                                 setSelectedOrders(new Set(orders.map((o) => o.id)));
+                               } else {
+                                 setSelectedOrders(new Set());
+                               }
+                             }}
+                           />
+                         </th>
+                         <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Date</th>
+                         <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Seller</th>
+                         <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Customer</th>
+                         <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Products</th>
+                         <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Total</th>
+                         <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Status</th>
+                         <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Contact</th>
+                         <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Actions</th>
+                       </tr>
+                     </thead>
+                     <tbody>
+                       {orders.map((order) => {
+                         const productSummary = order.products && Array.isArray(order.products)
+                           ? order.products.map((p) => `${p.title || 'Item'} x${p.quantity || 1}`).join(', ')
+                           : order.productTitle || '-';
+                         const waUrl = order.buyerPhone
+                           ? buildWhatsAppUrl(order.buyerPhone, `Hello ${order.buyerName}, your order is being reviewed.`)
+                           : null;
+                         return (
+                           <tr key={order.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5]">
+                             <td className="py-3 px-3 text-xs text-[#1E231F] whitespace-nowrap">
+                               <Checkbox
+                                 checked={selectedOrders.has(order.id)}
+                                 onCheckedChange={(checked) => {
+                                   setSelectedOrders((prev) => {
+                                     const next = new Set(prev);
+                                     if (checked) {
+                                       next.add(order.id);
+                                     } else {
+                                       next.delete(order.id);
+                                     }
+                                     return next;
+                                   });
+                                 }}
+                               />
+</td>
+                             <td className="py-3 px-3 text-xs text-[#1E231F] whitespace-nowrap">
+                               {new Date(order.createdAt || order.created_at).toLocaleDateString()}
+                             </td>
                             <td className="py-3 px-3 text-xs font-medium text-[#2C5530] whitespace-nowrap">{order.sellerName || '-'}</td>
                             <td className="py-3 px-3 text-xs text-[#1E231F] whitespace-nowrap">
                               {order.buyerName || '-'}{order.buyerPhone && <span className="text-[#5C665D]"> ({order.buyerPhone})</span>}
@@ -547,18 +761,30 @@ const ServicesManagement = () => {
                                 ) : (
                                   <span className="text-[10px] text-[#5C665D]">—</span>
                                 )}
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="border-[#2C5530] text-[#2C5530] rounded-full text-[10px] h-7 px-2"
-                                  onClick={() => handleDownloadOrderReceipt(order)}
-                                  title="Download receipt"
-                                >
-                                  <FileDown className="w-3.5 h-3.5 mr-1" />
-                                  Receipt
-                                </Button>
-                              </div>
-                            </td>
+<Button
+      size="sm"
+      variant="outline"
+      className="border-[#2C5530] text-[#2C5530] rounded-full text-[10px] h-7 px-2"
+      onClick={() => handleDownloadOrderReceipt(order)}
+      title="Download receipt"
+    >
+      <FileDown className="w-3.5 h-3.5 mr-1" />
+      Receipt
+    </Button>
+    {isTreasurer && (
+      <Button
+        size="sm"
+        variant="outline"
+        className="border-[#D05A49] text-[#D05A49] rounded-full text-[10px] h-7 px-2"
+        onClick={() => handlePermanentDeleteOrder(order.id)}
+        title="Permanently delete order"
+      >
+        <Trash2 className="w-3.5 h-3.5 mr-1" />
+        Delete
+      </Button>
+    )}
+  </div>
+</td>
                           </tr>
                         );
                       })}
@@ -576,101 +802,176 @@ const ServicesManagement = () => {
         {/* Sellers & Products Tab */}
         {activeTab === 'sellers' && (
           <div className="space-y-6 animate-fade-in">
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <div>
-                <h2 className="text-2xl font-bold font-['Manrope'] text-[#1E231F]">Sellers & Products</h2>
-                <p className="text-sm text-[#5C665D]">All products listed by sellers in the marketplace.</p>
-              </div>
-              {uniqueSellers.length > 0 && (
-                <Button
-                  variant="outline"
-                  onClick={() => exportSellerReceiptPDF(uniqueSellers)}
-                  className="border-[#2C5530] text-[#2C5530] rounded-full text-xs"
-                >
-                  <FileDown className="w-4 h-4 mr-1" />
-                  Download Seller Receipt
-                </Button>
-              )}
-            </div>
+<div className="flex items-center justify-between flex-wrap gap-2">
+                  <div>
+                    <h2 className="text-2xl font-bold font-['Manrope'] text-[#1E231F]">Sellers & Products</h2>
+                    <p className="text-sm text-[#5C665D]">All products listed by sellers in the marketplace.</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {selectedProducts.size > 0 && (
+                      <Button
+                        variant="outline"
+                        className="border-[#D05A49] text-[#D05A49] rounded-full"
+                        onClick={handleDeleteSelectedProducts}
+                      >
+                        <Trash2 className="w-4 h-4 mr-1" />
+                        Delete Selected ({selectedProducts.size})
+                      </Button>
+                    )}
+                    {uniqueSellers.length > 0 && (
+                      <Button
+                        variant="outline"
+                        className="border-[#D05A49] text-[#D05A49] rounded-full text-xs"
+                        onClick={handleDeleteAllSellers}
+                      >
+                        <Trash2 className="w-4 h-4 mr-1" />
+                        Delete All Sellers
+                      </Button>
+                    )}
+                    {uniqueSellers.length > 0 && (
+                      <Button
+                        variant="outline"
+                        onClick={() => exportSellerReceiptPDF(uniqueSellers)}
+                        className="border-[#2C5530] text-[#2C5530] rounded-full text-xs"
+                      >
+                        <FileDown className="w-4 h-4 mr-1" />
+                        Download Seller Receipt
+                      </Button>
+                    )}
+                  </div>
+                </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {allProducts.map((product) => (
-                <Card key={product.id} className={`bg-white border shadow-sm ${product.sold_out ? 'opacity-75 border-[#E8EBE8]' : 'border-[#E8EBE8]'}`}>
-                  {product.image_url && (
-                    <div className="overflow-hidden rounded-t-3xl relative">
-                      <img
-                        src={getImageUrl(product.image_url)}
-                        alt={product.title}
-                        className={`h-40 w-full object-cover ${product.sold_out ? 'opacity-60 grayscale' : ''}`}
-                      />
-                      {product.sold_out && (
-                        <span className="absolute top-3 left-3 inline-flex items-center rounded-full bg-[#D05A49] px-3 py-1 text-xs font-semibold text-white shadow">
-                          Sold Out
-                        </span>
-                      )}
-                    </div>
-                  )}
-                  <CardContent>
-                    <div className="flex items-center justify-between gap-3 mb-2">
-                      <CardTitle className="text-lg">{product.title}</CardTitle>
-                      <Badge variant="secondary">UGX {Number(product.price || 0).toLocaleString()}</Badge>
-                    </div>
-                    <p className="text-xs text-[#5C665D] mb-2">Seller: <span className="font-semibold text-[#2C5530]">{product.seller_name || 'Unknown'}</span></p>
-                    <p className="text-sm text-[#5C665D] mb-3">{product.description || 'No description'}</p>
-                    <p className="text-xs text-[#6B7C61] mb-3">Listed {new Date(product.created_at || product.createdAt).toLocaleDateString()}</p>
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className={product.sold_out
-                          ? 'border-[#2C5530] text-[#2C5530] text-xs'
-                          : 'border-[#C57A17] text-[#C57A17] text-xs'}
-                        onClick={() => handleToggleSoldOut(product)}
-                      >
-                        {product.sold_out ? 'Mark Available' : 'Mark Sold Out'}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="border-[#D05A49] text-[#D05A49] text-xs"
-                        onClick={() => handleDeleteProduct(product.id)}
-                      >
-                        Delete
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-              {allProducts.length === 0 && (
-                <Card className="col-span-full bg-white border border-[#E8EBE8] shadow-sm">
-                  <CardContent className="p-8 text-center text-[#5C665D]">
-                    No products found. Products will appear here once sellers list items.
-                  </CardContent>
-                </Card>
-              )}
-            </div>
+              <Card className="bg-white border border-[#E8EBE8] shadow-sm overflow-x-auto">
+                <CardContent className="p-0">
+                  <div className="w-full">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b border-[#E8EBE8] bg-[#FAFAF8]">
+                          <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap w-10">
+                            <Checkbox
+                              checked={allProducts.length > 0 && allProducts.every((p) => selectedProducts.has(p.id))}
+                              onCheckedChange={(checked) => handleSelectAllProducts(checked)}
+                            />
+                          </th>
+                          <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Product</th>
+                          <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Category</th>
+                          <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Price</th>
+                          <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Seller</th>
+                          <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Status</th>
+                          <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Listed</th>
+                          <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {allProducts.map((product) => (
+                          <tr key={product.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5]">
+                            <td className="py-3 px-3 text-xs text-[#1E231F] whitespace-nowrap">
+                              <Checkbox
+                                checked={selectedProducts.has(product.id)}
+                                onCheckedChange={(checked) => handleToggleProduct(product.id)}
+                              />
+                            </td>
+                            <td className="py-3 px-3 text-xs font-medium text-[#1E231F] whitespace-nowrap">
+                              <div className="flex items-center gap-2">
+                                {product.image_url && (
+                                  <img
+                                    src={getImageUrl(product.image_url)}
+                                    alt={product.title}
+                                    className="h-8 w-8 rounded object-cover"
+                                  />
+                                )}
+                                <span className="truncate max-w-[200px]">{product.title}</span>
+                              </div>
+                            </td>
+                            <td className="py-3 px-3 text-xs text-[#5C665D] whitespace-nowrap">
+                              <Badge variant="secondary" className="bg-[#E8F0E3] text-[#2C5530]">{product.category || '-'}</Badge>
+                            </td>
+                            <td className="py-3 px-3 text-xs font-semibold text-[#1E231F] font-numbers whitespace-nowrap">
+                              UGX {Number(product.price || 0).toLocaleString()}
+                            </td>
+                            <td className="py-3 px-3 text-xs font-medium text-[#2C5530] whitespace-nowrap">
+                              {product.seller_name || product.sellerName || 'Unknown'}
+                            </td>
+                            <td className="py-3 px-3 whitespace-nowrap">
+                              <Badge
+                                className={
+                                  product.sold_out
+                                    ? 'bg-[#D05A49]/20 text-[#D05A49] border-[#D05A49]/30'
+                                    : 'bg-[#347242]/20 text-[#347242] border-[#347242]/30'
+                                }
+                              >
+                                <span className="text-[10px]">{product.sold_out ? 'Sold Out' : 'Available'}</span>
+                              </Badge>
+                            </td>
+                            <td className="py-3 px-3 text-xs text-[#5C665D] whitespace-nowrap">
+                              {new Date(product.created_at || product.createdAt).toLocaleDateString()}
+                            </td>
+                            <td className="py-3 px-3">
+                              <div className="flex gap-1 flex-wrap">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className={product.sold_out
+                                    ? 'border-[#2C5530] text-[#2C5530] text-[10px] h-7 px-2'
+                                    : 'border-[#C57A17] text-[#C57A17] text-[10px] h-7 px-2'}
+                                  onClick={() => handleToggleSoldOut(product)}
+                                >
+                                  {product.sold_out ? 'Mark Available' : 'Mark Sold Out'}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="border-[#D05A49] text-[#D05A49] text-[10px] h-7 px-2"
+                                  onClick={() => handleDeleteProduct(product.id)}
+                                >
+                                  Delete
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {allProducts.length === 0 && (
+                      <p className="text-center text-[#5C665D] py-8">No products found. Products will appear here once sellers list items.</p>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
           </div>
         )}
 
         {/* Quick Loans Tab */}
         {activeTab === 'quick-loans' && (
           <div className="space-y-6 animate-fade-in">
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <h2 className="text-2xl font-bold font-['Manrope'] text-[#1E231F]">Quick Loans</h2>
-                <p className="text-sm text-[#5C665D]">All quick loan requests — review and approve or reject.</p>
-              </div>
-              {quickLoans.length > 0 && (
-                <Button
-                  variant="outline"
-                  onClick={exportQuickLoansPDF}
-                  className="border-[#E8EBE8] rounded-full whitespace-nowrap"
-                >
-                  <FileDown className="w-4 h-4 mr-2" />
-                  Export PDF
-                </Button>
-              )}
-            </div>
+<div className="flex items-center justify-between gap-2">
+                  <div>
+                    <h2 className="text-2xl font-bold font-['Manrope'] text-[#1E231F]">Quick Loans</h2>
+                    <p className="text-sm text-[#5C665D]">All quick loan requests — review and approve or reject.</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {selectedQuickLoans.size > 0 && (
+                      <Button
+                        variant="outline"
+                        className="border-[#D05A49] text-[#D05A49] rounded-full"
+                        onClick={handleDeleteSelectedQuickLoans}
+                      >
+                        <Trash2 className="w-4 h-4 mr-1" />
+                        Delete Selected ({selectedQuickLoans.size})
+                      </Button>
+                    )}
+                    {quickLoans.length > 0 && (
+                      <Button
+                        variant="outline"
+                        onClick={exportQuickLoansPDF}
+                        className="border-[#E8EBE8] rounded-full whitespace-nowrap"
+                      >
+                        <FileDown className="w-4 h-4 mr-2" />
+                        Export PDF
+                      </Button>
+                    )}
+                  </div>
+                </div>
 
             <Card className="bg-white border border-[#E8EBE8] shadow-sm overflow-x-auto">
               <CardContent className="p-0">
@@ -678,6 +979,12 @@ const ServicesManagement = () => {
                   <table className="w-full">
                     <thead>
                       <tr className="border-b border-[#E8EBE8] bg-[#FAFAF8]">
+                        <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap w-10">
+                          <Checkbox
+                            checked={quickLoans.length > 0 && quickLoans.every((q) => selectedQuickLoans.has(q.id))}
+                            onCheckedChange={(checked) => handleSelectAllQuickLoans(checked)}
+                          />
+                        </th>
                         <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Date</th>
                         <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Borrower</th>
                         <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Amount</th>
@@ -715,6 +1022,12 @@ const ServicesManagement = () => {
                     <tbody>
                       {quickLoans.map((q) => (
                         <tr key={q.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5]">
+                          <td className="py-3 px-3 text-xs text-[#1E231F] whitespace-nowrap">
+                            <Checkbox
+                              checked={selectedQuickLoans.has(q.id)}
+                              onCheckedChange={(checked) => handleToggleQuickLoan(q.id)}
+                            />
+                          </td>
                           <td className="py-3 px-3 text-xs text-[#1E231F] whitespace-nowrap">
                             {new Date(q.created_at).toLocaleDateString()}
                           </td>
@@ -808,51 +1121,75 @@ const ServicesManagement = () => {
         {/* Deleted Orders Tab */}
         {activeTab === 'deleted' && (
           <div className="space-y-6 animate-fade-in">
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <div>
-                <h2 className="text-2xl font-bold font-['Manrope'] text-[#1E231F]">Deleted Orders</h2>
-                <p className="text-sm text-[#5C665D]">Archived order records that were removed from the active list.</p>
-              </div>
-              {deletedOrders.length > 0 && (
-                <Button
-                  variant="outline"
-                  onClick={exportDeletedOrdersPDF}
-                  className="border-[#E8EBE8] rounded-full"
-                >
-                  <FileDown className="w-4 h-4 mr-2" />
-                  Export PDF
-                </Button>
-              )}
-            </div>
+<div className="flex items-center justify-between flex-wrap gap-2">
+                  <div>
+                    <h2 className="text-2xl font-bold font-['Manrope'] text-[#1E231F]">Deleted Orders</h2>
+                    <p className="text-sm text-[#5C665D]">Archived order records that were removed from the active list.</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {selectedDeletedOrders.size > 0 && (
+                      <Button
+                        variant="outline"
+                        className="border-[#D05A49] text-[#D05A49] rounded-full"
+                        onClick={handleDeleteSelectedDeletedOrders}
+                      >
+                        <Trash2 className="w-4 h-4 mr-1" />
+                        Delete Selected ({selectedDeletedOrders.size})
+                      </Button>
+                    )}
+                    {deletedOrders.length > 0 && (
+                      <Button
+                        variant="outline"
+                        onClick={exportDeletedOrdersPDF}
+                        className="border-[#E8EBE8] rounded-full"
+                      >
+                        <FileDown className="w-4 h-4 mr-2" />
+                        Export PDF
+                      </Button>
+                    )}
+                  </div>
+                </div>
 
             <Card className="bg-white border border-[#E8EBE8] shadow-sm overflow-x-auto">
               <CardContent className="p-0">
                 <div className="w-full">
                   <table className="w-full">
-                    <thead>
-                      <tr className="border-b border-[#E8EBE8] bg-[#FAFAF8]">
-                        <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Date</th>
-                        <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Seller</th>
-                        <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Buyer</th>
-                        <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Products</th>
-                        <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Total</th>
-                        <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Status</th>
-                        <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Deleted By</th>
-                        {isTreasurer && (
-                          <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Actions</th>
-                        )}
-                      </tr>
-                    </thead>
+<thead>
+                       <tr className="border-b border-[#E8EBE8] bg-[#FAFAF8]">
+                         <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap w-10">
+                           <Checkbox
+                             checked={deletedOrders.length > 0 && deletedOrders.every((o) => selectedDeletedOrders.has(o.id))}
+                             onCheckedChange={(checked) => handleSelectAllDeletedOrders(checked)}
+                           />
+                         </th>
+                         <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Date</th>
+                         <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Seller</th>
+                         <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Buyer</th>
+                         <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Products</th>
+                         <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Total</th>
+                         <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Status</th>
+                         <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Deleted By</th>
+                         {isTreasurer && (
+                           <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Actions</th>
+                         )}
+                       </tr>
+                     </thead>
                     <tbody>
-                      {deletedOrders.map((order) => {
-                        const productSummary = order.products && Array.isArray(order.products)
-                          ? order.products.map((p) => `${p.title || 'Item'} x${p.quantity || 1}`).join(', ')
-                          : order.productTitle || '-';
-                        return (
-                          <tr key={order.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5]">
-                            <td className="py-3 px-3 text-xs text-[#1E231F] whitespace-nowrap">
-                              {new Date(order.createdAt || order.created_at).toLocaleDateString()}
-                            </td>
+{deletedOrders.map((order) => {
+                         const productSummary = order.products && Array.isArray(order.products)
+                           ? order.products.map((p) => `${p.title || 'Item'} x${p.quantity || 1}`).join(', ')
+                           : order.productTitle || '-';
+                         return (
+                           <tr key={order.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5]">
+                             <td className="py-3 px-3 text-xs text-[#1E231F] whitespace-nowrap">
+                               <Checkbox
+                                 checked={selectedDeletedOrders.has(order.id)}
+                                 onCheckedChange={(checked) => handleToggleDeletedOrder(order.id)}
+                               />
+                             </td>
+                             <td className="py-3 px-3 text-xs text-[#1E231F] whitespace-nowrap">
+                               {new Date(order.createdAt || order.created_at).toLocaleDateString()}
+                             </td>
                             <td className="py-3 px-3 text-xs font-medium text-[#2C5530] whitespace-nowrap">{order.sellerName || '-'}</td>
                             <td className="py-3 px-3 text-xs text-[#1E231F] whitespace-nowrap">{order.buyerName || '-'}</td>
                             <td className="py-3 px-3 text-xs text-[#5C665D]">
