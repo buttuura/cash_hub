@@ -139,7 +139,7 @@ const CategoryPage = () => {
     try {
       const res = await axios.get(`${API_URL}/api/orders`, { headers: { Authorization: `Bearer ${localStorage.getItem('access_token')}` } });
       if (user?.name) {
-        setOrders(res.data.filter(o => (o.sellerName || '').toLowerCase() === user.name.toLowerCase()));
+        setOrders(res.data.filter(o => (o.sellerName || '').trim().toLowerCase() === (user.name || '').trim().toLowerCase()));
       } else {
         setOrders([]);
       }

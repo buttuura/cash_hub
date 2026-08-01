@@ -21,7 +21,7 @@ function getImageUrl(imageUrl) {
 function ProductDetailPage() {
   const { productId } = useParams();
   const navigate = useNavigate();
-  const { isAuthenticated, user } = useAuth();
+  const { user, getAuthHeaders } = useAuth();
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
   const [currentImgIndex, setCurrentImgIndex] = useState(0);
@@ -47,6 +47,11 @@ function ProductDetailPage() {
   const [buyerPhone, setBuyerPhone] = useState('');
   const [buyerNote, setBuyerNote] = useState('');
   const [submittingOrder, setSubmittingOrder] = useState(false);
+  const [cartBuyerName, setCartBuyerName] = useState('');
+  const [cartBuyerEmail, setCartBuyerEmail] = useState('');
+  const [cartBuyerPhone, setCartBuyerPhone] = useState('');
+  const [cartBuyerNote, setCartBuyerNote] = useState('');
+  const [cartOrderSubmitting, setCartOrderSubmitting] = useState(false);
   const [expandedDesc, setExpandedDesc] = useState(false);
 
   useEffect(() => {
@@ -158,11 +163,6 @@ function ProductDetailPage() {
   };
 
   const handleAddToCart = async () => {
-    if (!isAuthenticated) {
-      toast.error('Please log in to add items to cart');
-      navigate('/login');
-      return;
-    }
     setAddingToCart(true);
     try {
       const storedCart = JSON.parse(localStorage.getItem('cash_hub_cart') || '[]');
@@ -198,11 +198,6 @@ function ProductDetailPage() {
   };
 
   const handleBuyNow = () => {
-    if (!isAuthenticated) {
-      toast.error('Please log in to purchase');
-      navigate('/login');
-      return;
-    }
     setBuyerName(user?.name || '');
     setBuyerEmail(user?.email || '');
     setBuyerPhone('');
@@ -265,7 +260,7 @@ function ProductDetailPage() {
         status: 'pending',
         quantity: quantity,
       };
-      await axios.post(`${API_URL}/api/orders`, orderData);
+      await axios.post(`${API_URL}/api/orders`, orderData, { headers: getAuthHeaders() });
       toast.success('Order placed successfully! The seller will contact you shortly.');
       setBuyNowOpen(false);
       setQuantity(1);
@@ -273,6 +268,61 @@ function ProductDetailPage() {
       toast.error('Failed to place order. Please try again.');
     } finally {
       setSubmittingOrder(false);
+    }
+  };
+
+  const getCartItemsBySeller = () => {
+    const sellers = {};
+    cartItems.forEach(item => {
+      const seller = item.product?.sellerName || item.product?.seller_name || 'Member';
+      if (!sellers[seller]) sellers[seller] = [];
+      sellers[seller].push(item);
+    });
+    return sellers;
+  };
+
+  const submitOrder = async (orderData) => {
+    const response = await axios.post(`${API_URL}/api/orders`, orderData, { headers: getAuthHeaders() });
+    return response.data;
+  };
+
+  const handleCartCheckout = async () => {
+    if (!cartBuyerName.trim() || !cartBuyerPhone.trim()) {
+      toast.error('Please enter your name and phone number');
+      return;
+    }
+    setCartOrderSubmitting(true);
+    const sellersMap = getCartItemsBySeller();
+    try {
+      await Promise.all(
+        Object.entries(sellersMap).map(([seller, items]) => {
+          const total = items.reduce((sum, item) => sum + (item.product?.price || 0) * item.quantity, 0);
+          return submitOrder({
+            products: items.map(i => ({ productId: i.productId, quantity: i.quantity, title: i.product?.title, price: i.product?.price })),
+            sellerName: seller,
+            buyerName: cartBuyerName.trim(),
+            buyerEmail: cartBuyerEmail.trim(),
+            buyerPhone: cartBuyerPhone.trim(),
+            note: cartBuyerNote.trim(),
+            total,
+            status: 'pending',
+          });
+        })
+      );
+      localStorage.removeItem('cash_hub_cart');
+      setCartItems([]);
+      setCartCount(0);
+      setCartOpen(false);
+      setCartBuyerName('');
+      setCartBuyerEmail('');
+      setCartBuyerPhone('');
+      setCartBuyerNote('');
+      toast.success(`Orders sent to ${Object.keys(sellersMap).length} seller(s).`);
+    } catch (error) {
+      console.error('Failed to submit orders:', error);
+      toast.error(error.response?.data?.detail || 'Failed to submit orders');
+    } finally {
+      setCartOrderSubmitting(false);
     }
   };
 
@@ -626,6 +676,25 @@ function ProductDetailPage() {
                 <div className="border-t border-slate-200 pt-4">
                   <p className="text-lg font-semibold text-[#172B12]">Grand Total: UGX {getCartTotal().toLocaleString()}</p>
                 </div>
+                <div className="space-y-2">
+                  <Label htmlFor="cart-name" className="text-sm font-medium text-slate-700">Your name</Label>
+                  <Input id="cart-name" value={cartBuyerName} onChange={(e) => setCartBuyerName(e.target.value)} placeholder="Your name" />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="cart-email" className="text-sm font-medium text-slate-700">Email (optional)</Label>
+                  <Input id="cart-email" type="email" value={cartBuyerEmail} onChange={(e) => setCartBuyerEmail(e.target.value)} placeholder="you@example.com" />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="cart-phone" className="text-sm font-medium text-slate-700">Phone number</Label>
+                  <Input id="cart-phone" value={cartBuyerPhone} onChange={(e) => setCartBuyerPhone(e.target.value)} placeholder="e.g. 0771 234567" required />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="cart-note" className="text-sm font-medium text-slate-700">Message to sellers</Label>
+                  <Textarea id="cart-note" value={cartBuyerNote} onChange={(e) => setCartBuyerNote(e.target.value)} placeholder="Write a message to all sellers" rows={3} />
+                </div>
+                <Button onClick={handleCartCheckout} className="w-full bg-[#172B12] text-white hover:bg-[#0f2409]" disabled={cartOrderSubmitting}>
+                  {cartOrderSubmitting ? 'Sending requests...' : `Send ${cartItems.length} order(s)`}
+                </Button>
               </>
             )}
           </div>

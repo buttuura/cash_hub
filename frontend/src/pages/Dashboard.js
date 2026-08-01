@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import axios from 'axios';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
+import { Table, TableHeader, TableBody, TableHead, TableRow, TableCell } from '../components/ui/table';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -18,6 +19,7 @@ import {
 } from '../components/ui/dialog';
 import { Badge } from '../components/ui/badge';
 import { Checkbox } from '../components/ui/checkbox';
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '../components/ui/tooltip';
 import {
   Wallet,
   TrendingUp,
@@ -148,6 +150,7 @@ const Dashboard = () => {
   const [withdrawalReason, setWithdrawalReason] = useState('');
   const [myProducts, setMyProducts] = useState([]);
   const [orders, setOrders] = useState([]);
+  const [expandedProducts, setExpandedProducts] = useState(new Set());
   const sellerInitialTabSet = useRef(false);
   const wsRef = useRef(null);
 
@@ -170,7 +173,7 @@ const Dashboard = () => {
     setDataLoading(true);
     try {
       const headers = getAuthHeaders();
-      const [statsRes, rulesRes, financialsRes, depositsRes, loansRes, withdrawalsRes, membersRes] = await Promise.all([
+      const [statsRes, rulesRes, financialsRes, depositsRes, loansRes, withdrawalsRes, membersRes, ordersRes] = await Promise.all([
         axios.get(`${API_URL}/api/stats/group`, { headers }),
         axios.get(`${API_URL}/api/stats/rules`, { headers }),
         axios.get(`${API_URL}/api/stats/financial`, { headers }),
@@ -178,6 +181,7 @@ const Dashboard = () => {
         axios.get(`${API_URL}/api/loans`, { headers }),
         axios.get(`${API_URL}/api/withdrawals`, { headers }),
         axios.get(`${API_URL}/api/members`, { headers }),
+        axios.get(`${API_URL}/api/orders`, { headers }),
       ]);
       setStats(statsRes.data);
       setRules(rulesRes.data);
@@ -186,6 +190,7 @@ const Dashboard = () => {
       setLoans(loansRes.data);
       setWithdrawals(withdrawalsRes.data);
       setMembers(membersRes.data);
+      setOrders(ordersRes.data);
 
       if (isAdmin || isTreasurer) {
         try {
@@ -196,15 +201,13 @@ const Dashboard = () => {
           setQuickLoans([]);
         }
       } else {
-        setQuickLoans([]);
-      }
-
-      try {
-        const userQuickLoansRes = await axios.get(`${API_URL}/api/quick-loans/my`, { headers });
-        setUserQuickLoans(Array.isArray(userQuickLoansRes.data) ? userQuickLoansRes.data : []);
-      } catch (userQuickErr) {
-        console.warn('Failed to load user quick loans:', userQuickErr);
-        setUserQuickLoans([]);
+        try {
+          const userQuickLoansRes = await axios.get(`${API_URL}/api/quick-loans/my`, { headers });
+          setUserQuickLoans(Array.isArray(userQuickLoansRes.data) ? userQuickLoansRes.data : []);
+        } catch (userQuickErr) {
+          console.warn('Failed to load user quick loans:', userQuickErr);
+          setUserQuickLoans([]);
+        }
       }
       fetchData._cache = { ts: now };
     } catch (err) {
@@ -235,17 +238,6 @@ const Dashboard = () => {
     }
   }, [getAuthHeaders]);
 
-  const fetchOrders = useCallback(async () => {
-    try {
-      const response = await axios.get(`${API_URL}/api/orders`, {
-        headers: getAuthHeaders(),
-      });
-      setOrders(response.data);
-    } catch (err) {
-      console.warn('Unable to load orders:', err);
-      setOrders([]);
-    }
-  }, [getAuthHeaders]);
 
 
   // WebSocket connection for real-time order notifications
@@ -253,7 +245,7 @@ const Dashboard = () => {
     if (!user?.name) return;
     
     const connectWebSocket = () => {
-      const wsUrl = `${WS_URL}/ws/orders/${encodeURIComponent(user.name)}`;
+      const wsUrl = `${WS_URL}/ws/orders/${encodeURIComponent((user.name || '').trim())}`;
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
       
@@ -304,12 +296,19 @@ const Dashboard = () => {
     return myProducts.find(p => p.id === productId);
   };
 
-  const sellerOrders = user?.name
-    ? orders.filter((order) => (order.sellerName || '').toLowerCase() === user.name.toLowerCase())
-    : orders;
+  const sellerOrders = isAdmin
+    ? orders
+    : user?.name
+      ? orders.filter((order) => (order.sellerName || '').trim().toLowerCase() === (user.name || '').trim().toLowerCase())
+      : orders;
 
   const pendingOrdersCount = sellerOrders?.filter((o) => o.status === 'pending').length || 0;
   const isSellerMember = Boolean(isSeller || String(user?.membership_type || '').toLowerCase() === 'seller');
+  const userSlotCount = user?.max_guarantees || rules?.max_guarantees_per_member || 2;
+  const userMaxLoan = (rules?.max_loan_amount || 0) * userSlotCount;
+  const adminMemberForLoan = members.find((m) => m.id === adminLoanDialogOpenMemberId);
+  const adminMemberSlotCount = adminMemberForLoan?.max_guarantees || rules?.max_guarantees_per_member || 2;
+  const adminMemberMaxLoan = (rules?.max_loan_amount || 0) * adminMemberSlotCount;
 
   const handleSellerRestriction = useCallback((action = 'this feature') => {
     const message = `Hello admin, I need help with my seller account access. I was trying to use the ${action} feature and need assistance.`;
@@ -341,9 +340,8 @@ const Dashboard = () => {
   useEffect(() => {
     if (activeTab === 'marketplace') {
       fetchMyProducts();
-      fetchOrders();
     }
-  }, [activeTab, fetchMyProducts, fetchOrders]);
+  }, [activeTab, fetchMyProducts]);
 
   useEffect(() => {
     sellerInitialTabSet.current = false;
@@ -385,13 +383,55 @@ const Dashboard = () => {
         )
       );
       toast.success(`Order ${status === 'approved' ? 'approved' : status} successfully.`);
-    } catch (err) {
+     } catch (err) {
       console.error('Failed to update order status:', err);
       toast.error(err.response?.data?.detail || 'Failed to update order status');
     }
   };
 
-  const handleDeleteOrder = async (orderId) => {
+  const handleNotifyBuyer = (order) => {
+    const orderProducts = [];
+    if (order.products && Array.isArray(order.products) && order.products.length > 0) {
+      order.products.forEach((p) => {
+        const known = getProductById(p.productId || p.id);
+        orderProducts.push({
+          title: p.title || known?.title || 'Product',
+          price: p.price || known?.price || 0,
+          quantity: p.quantity || 1,
+        });
+      });
+    } else if (order.productId || order.productTitle) {
+      const known = getProductById(order.productId);
+      orderProducts.push({
+        title: order.productTitle || known?.title || 'Product',
+        price: order.productPrice || known?.price || 0,
+        quantity: 1,
+      });
+    }
+    const orderTotal = Number(order.total || orderProducts.reduce((sum, p) => sum + p.price * p.quantity, 0) || 0);
+    const productList = orderProducts.map((p) => `• ${p.title} - UGX ${Number(p.price).toLocaleString()} × ${p.quantity}`).join('\n');
+    const message = `Hello ${order.buyerName || 'there'},\n\nYour order #${order.id?.slice(-6).toUpperCase()} has been ${order.status === 'approved' ? 'approved and is being sent' : 'processed'} from our shop.\n\nOrder details:\n${productList}\n\nTotal: UGX ${orderTotal.toLocaleString()}\n\nThank you for your business!`;
+    const url = buildWhatsAppUrl(order.buyerPhone, message);
+    if (url) {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } else {
+      toast.error('Buyer phone number not available');
+     }
+   };
+
+   const handleToggleProductDescription = (productId) => {
+     setExpandedProducts((prev) => {
+       const next = new Set(prev);
+       if (next.has(productId)) {
+         next.delete(productId);
+       } else {
+         next.add(productId);
+       }
+       return next;
+     });
+   };
+
+   const handleDeleteOrder = async (orderId) => {
     if (!window.confirm('Delete this order? This action cannot be undone.')) return;
     try {
       await axios.delete(`${API_URL}/api/orders/${orderId}`, {
@@ -1503,6 +1543,7 @@ const Dashboard = () => {
                         required
                         min="1"
                       />
+                      <p className="text-xs text-[#6B7C61]">Max: UGX {userMaxLoan.toLocaleString()} ({rules?.max_loan_amount?.toLocaleString()} × {userSlotCount} slot{userSlotCount === 1 ? '' : 's'})</p>
                     </div>
                     <div className="space-y-2">
                       <Label>Guarantor</Label>
@@ -2104,82 +2145,86 @@ const Dashboard = () => {
               <CardContent className="p-0">
                 <div className="overflow-x-auto">
                   <table className="w-full">
-                    <thead>
-                      <tr className="border-b border-[#E8EBE8] bg-[#FAFAF8]">
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Date</th>
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Amount</th>
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Guarantor</th>
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Interest</th>
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Total Due</th>
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Status</th>
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {loans.map((l) => {
-                        const guarantor = members.find(m => m.id === l.guarantor_id);
-                        const isMyLoan = l.user_id === user?.id;
-                        const showNotifyGuarantor = isMyLoan && l.status === 'pending_guarantor' && guarantor?.phone;
-                        const waUrl = showNotifyGuarantor ? buildWhatsAppUrl(
-                          guarantor.phone,
-                          `Hi ${l.guarantor_name}, I (${user?.name}) have requested a UGX ${Number(l.amount).toLocaleString()} loan on Class One Savings with you as my guarantor. Total due will be UGX ${Number(getLoanDisplayBalance(l)).toLocaleString()} (3% interest). Please log in at ${window.location.origin} to approve or reject. Thank you!`
-                        ) : null;
-                        return (
-                        <tr key={l.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5] transition-colors">
-                          <td className="py-4 px-6 text-[#1E231F]">
-                            {new Date(l.created_at).toLocaleDateString()}
-                          </td>
-                          <td className="py-4 px-6 font-semibold text-[#D48C70] font-numbers">
-                            {formatCurrency(l.amount)}
-                          </td>
-                          <td className="py-4 px-6 text-[#1E231F]">
-                            <div className="flex items-center gap-1">
-                              <UserCheck className="w-4 h-4 text-[#5C665D]" />
-                              {l.guarantor_name}
-                            </div>
-                          </td>
-                          <td className="py-4 px-6 text-[#5C665D] font-numbers">
-                            {l.current_interest ? formatCurrency(l.current_interest) : '-'}
-                            {l.months_elapsed > 4 && (
-                              <span className="text-[#D05A49] text-xs ml-1">(5%)</span>
-                            )}
-                          </td>
-                          <td className="py-4 px-6 font-semibold text-[#1E231F] font-numbers">
-                            {formatCurrency(getLoanDisplayBalance(l))}
-                          </td>
-                          <td className="py-4 px-6">{getStatusBadge(l.status)}</td>
-                          <td className="py-4 px-6">
-                            <div className="flex items-center gap-2">
-                              {showNotifyGuarantor ? (
-                                <a
-                                  href={waUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  data-testid={`whatsapp-notify-${l.id}`}
-                                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-[#25D366] text-white text-xs font-medium hover:bg-[#1EA852] transition-colors"
-                                >
-                                  <MessageCircle className="w-3.5 h-3.5" />
-                                  Notify
-                                </a>
-                              ) : null}
-                              {(l.user_id === user?.id || isTreasurer) && (
-                                <button
-                                  onClick={() => handleDeleteRecord('loans', l.id)}
-                                  data-testid={`delete-loan-${l.id}`}
-                                  title="Delete record"
-                                  className="p-1.5 rounded-full text-[#D05A49] hover:bg-[#D05A49]/10 transition-colors"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
+                     <thead>
+                       <tr className="border-b border-[#E8EBE8] bg-[#FAFAF8]">
+                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Date</th>
+                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Member</th>
+                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Amount</th>
+                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Guarantor</th>
+                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Interest</th>
+                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Total Due</th>
+                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Status</th>
+                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Action</th>
+                       </tr>
+                     </thead>
+                      <tbody>
+                        {loans.map((l) => {
+                          const guarantor = members.find(m => m.id === l.guarantor_id);
+                          const isMyLoan = l.user_id === user?.id;
+                          const showNotifyGuarantor = isMyLoan && l.status === 'pending_guarantor' && guarantor?.phone;
+                          const waUrl = showNotifyGuarantor ? buildWhatsAppUrl(
+                            guarantor.phone,
+                            `Hi ${l.guarantor_name}, I (${user?.name}) have requested a UGX ${Number(l.amount).toLocaleString()} loan on Class One Savings with you as my guarantor. Total due will be UGX ${Number(getLoanDisplayBalance(l)).toLocaleString()} (3% interest). Please log in at ${window.location.origin} to approve or reject. Thank you!`
+                          ) : null;
+                          return (
+                          <tr key={l.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5] transition-colors">
+                            <td className="py-4 px-6 text-[#1E231F]">
+                              {new Date(l.created_at).toLocaleDateString()}
+                            </td>
+                            <td className="py-4 px-6 text-[#1E231F]">
+                              {l.user_name || '-'}
+                            </td>
+                            <td className="py-4 px-6 font-semibold text-[#D48C70] font-numbers">
+                              {formatCurrency(l.amount)}
+                            </td>
+                            <td className="py-4 px-6 text-[#1E231F]">
+                              <div className="flex items-center gap-1">
+                                <UserCheck className="w-4 h-4 text-[#5C665D]" />
+                                {l.guarantor_name}
+                              </div>
+                            </td>
+                            <td className="py-4 px-6 text-[#5C665D] font-numbers">
+                              {l.current_interest ? formatCurrency(l.current_interest) : '-'}
+                              {l.months_elapsed > 4 && (
+                                <span className="text-[#D05A49] text-xs ml-1">(5%)</span>
                               )}
-                              {!showNotifyGuarantor && !(l.user_id === user?.id || isTreasurer) && (
-                                <span className="text-[#5C665D] text-xs">-</span>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      );})}
-                    </tbody>
+                            </td>
+                            <td className="py-4 px-6 font-semibold text-[#1E231F] font-numbers">
+                              {formatCurrency(getLoanDisplayBalance(l))}
+                            </td>
+                            <td className="py-4 px-6">{getStatusBadge(l.status)}</td>
+                            <td className="py-4 px-6">
+                              <div className="flex items-center gap-2">
+                                {showNotifyGuarantor ? (
+                                  <a
+                                    href={waUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    data-testid={`whatsapp-notify-${l.id}`}
+                                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-[#25D366] text-white text-xs font-medium hover:bg-[#1EA852] transition-colors"
+                                  >
+                                    <MessageCircle className="w-3.5 h-3.5" />
+                                    Notify
+                                  </a>
+                                ) : null}
+                                {(l.user_id === user?.id || isTreasurer) && (
+                                  <button
+                                    onClick={() => handleDeleteRecord('loans', l.id)}
+                                    data-testid={`delete-loan-${l.id}`}
+                                    title="Delete record"
+                                    className="p-1.5 rounded-full text-[#D05A49] hover:bg-[#D05A49]/10 transition-colors"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                                {!showNotifyGuarantor && !(l.user_id === user?.id || isTreasurer) && (
+                                  <span className="text-[#5C665D] text-xs">-</span>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );})}
+                      </tbody>
                   </table>
                   {loans.length === 0 && (
                     <p className="text-center text-[#5C665D] py-8">No loans yet</p>
@@ -2531,6 +2576,7 @@ const Dashboard = () => {
                       required
                       min="1"
                     />
+                    <p className="text-xs text-[#6B7C61]">Max: UGX {adminMemberMaxLoan.toLocaleString()} ({rules?.max_loan_amount?.toLocaleString()} × {adminMemberSlotCount} slot{adminMemberSlotCount === 1 ? '' : 's'})</p>
                   </div>
                   <div className="space-y-2">
                     <Label>Optional Guarantor</Label>
@@ -2603,7 +2649,7 @@ const Dashboard = () => {
                 <CardContent className="p-4 text-center">
                   <CreditCard className="w-8 h-8 text-[#D48C70] mx-auto mb-2" />
                   <p className="text-sm text-[#5C665D]">Max Loan</p>
-                  <p className="font-bold text-[#1E231F]">{formatCurrency(rules?.max_loan_amount)}</p>
+                  <p className="font-bold text-[#1E231F]">{formatCurrency(userMaxLoan)}</p>
                 </CardContent>
               </Card>
               <Card className="bg-[#347242]/5 border border-[#347242]/20">
@@ -2637,147 +2683,137 @@ const Dashboard = () => {
                   When a buyer places an order, it appears here for you to approve and contact them.
                 </CardDescription>
               </CardHeader>
-               <CardContent className="space-y-5">
-                {sellerOrders.length === 0 ? (
-                  <div className="rounded-xl border border-[#E8EBE8] bg-[#F7FCF4] p-6 text-sm text-[#4B5A45]">
-                    No order requests found yet. Buyers can place orders from the shop page, and they will appear here for review.
-                  </div>
-                ) : (
-                  sellerOrders.map((order) => {
-                    const orderProducts = [];
-                    if (order.products && Array.isArray(order.products) && order.products.length > 0) {
-                      order.products.forEach((p) => {
-                        const known = getProductById(p.productId || p.id);
-                        orderProducts.push({
-                          id: p.productId || p.id,
-                          title: p.title || known?.title || 'Product',
-                          price: p.price || known?.price || 0,
-                          quantity: p.quantity || 1,
-                          image: known?.image_url || known?.image_urls?.[0] || known?.imageUrl || p.image || p.imageUrl || p.imageUrl || null,
-                          description: known?.description || '',
-                          sellerName: known?.sellerName || order.sellerName || 'Member',
-                        });
-                      });
-                    } else if (order.productId || order.productTitle) {
-                      const known = getProductById(order.productId);
-                      orderProducts.push({
-                        id: order.productId,
-                        title: order.productTitle || known?.title || 'Product',
-                        price: order.productPrice || known?.price || 0,
-                        quantity: 1,
-                        image: known?.image_url || known?.image_urls?.[0] || known?.imageUrl || order.productImage || order.productImageUrl || null,
-                        description: known?.description || '',
-                        sellerName: known?.sellerName || order.sellerName || 'Member',
-                      });
-                    }
+                <CardContent>
+                  {sellerOrders.length === 0 ? (
+                    <div className="rounded-xl border border-[#E8EBE8] bg-[#F7FCF4] p-6 text-sm text-[#4B5A45]">
+                      No order requests found yet. Buyers can place orders from the shop page, and they will appear here for review.
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Order #</TableHead>
+                            <TableHead>Products</TableHead>
+                            <TableHead>Buyer</TableHead>
+                            <TableHead className="text-right">Total</TableHead>
+                            <TableHead>Date</TableHead>
+                            <TableHead>Status</TableHead>
+                            <TableHead className="text-center">Actions</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {sellerOrders.map((order) => {
+                            const orderProducts = [];
+                            if (order.products && Array.isArray(order.products) && order.products.length > 0) {
+                              order.products.forEach((p) => {
+                                const known = getProductById(p.productId || p.id);
+                                orderProducts.push({
+                                  id: p.productId || p.id,
+                                  title: p.title || known?.title || 'Product',
+                                  price: p.price || known?.price || 0,
+                                  quantity: p.quantity || 1,
+                                  image: known?.image_url || known?.image_urls?.[0] || known?.imageUrl || p.image || p.imageUrl || p.imageUrl || null,
+                                  description: known?.description || '',
+                                  sellerName: known?.sellerName || order.sellerName || 'Member',
+                                });
+                              });
+                            } else if (order.productId || order.productTitle) {
+                              const known = getProductById(order.productId);
+                              orderProducts.push({
+                                id: order.productId,
+                                title: order.productTitle || known?.title || 'Product',
+                                price: order.productPrice || known?.price || 0,
+                                quantity: 1,
+                                image: known?.image_url || known?.image_urls?.[0] || known?.imageUrl || order.productImage || order.productImageUrl || null,
+                                description: known?.description || '',
+                                sellerName: known?.sellerName || order.sellerName || 'Member',
+                              });
+                            }
 
-                    const orderTotal = Number(order.total || orderProducts.reduce((sum, p) => sum + p.price * p.quantity, 0) || 0);
-                    const requestedDate = new Date(order.createdAt).toLocaleString('en-US', {
-                      month: 'short',
-                      day: 'numeric',
-                      year: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    });
+                            const orderTotal = Number(order.total || orderProducts.reduce((sum, p) => sum + p.price * p.quantity, 0) || 0);
+                            const requestedDate = new Date(order.created_at || order.createdAt).toLocaleString('en-US', {
+                              month: 'short',
+                              day: 'numeric',
+                              year: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            });
 
-                    return (
-                      <div key={order.id} className="rounded-3xl border border-[#E8EBE8] bg-white p-6 shadow-sm">
-                        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                          <div className="flex-1 space-y-4">
-                            <div className="flex items-center gap-2">
-                              <p className="text-xs uppercase tracking-[0.25em] text-[#2B6F38]">Request</p>
-                              <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${order.status === 'approved' ? 'bg-[#DEF2DD] text-[#2C5530]' : order.status === 'rejected' ? 'bg-[#FBD7D4] text-[#D05A49]' : 'bg-[#FEF6E8] text-[#C57A17]'}`}>
-                                {order.status === 'pending' ? 'Pending' : order.status === 'approved' ? 'Approved' : 'Rejected'}
-                              </span>
-                            </div>
-
-                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                              {orderProducts.map((p, idx) => (
-                                <div key={idx} className="rounded-xl border border-slate-200 bg-white p-3 flex gap-3">
-                                  {p.image ? (
-                                    <div className="h-16 w-16 shrink-0 rounded-lg overflow-hidden bg-slate-50">
-                                      <img src={getImageUrl(p.image)} alt={p.title} className="h-full w-full object-cover" />
-                                    </div>
-                                  ) : (
-                                    <div className="h-16 w-16 shrink-0 rounded-lg bg-slate-100 flex items-center justify-center">
-                                      <ImageIcon className="h-6 w-6 text-slate-400" />
-                                    </div>
-                                  )}
-                                  <div className="min-w-0">
-                                    <p className="text-sm font-semibold text-[#172B12] line-clamp-2">{p.title}</p>
-                                    <p className="text-xs text-[#4B5A45] mt-0.5">UGX {Number(p.price).toLocaleString()} × {p.quantity}</p>
-                                    <p className="text-sm font-bold text-[#2B6F38] mt-0.5">UGX {(p.price * p.quantity).toLocaleString()}</p>
+                            return (
+                              <TableRow key={order.id}>
+                                <TableCell className="font-mono text-xs">
+                                  #{order.id?.slice(-6).toUpperCase()}
+                                </TableCell>
+                                <TableCell>
+                                  <div className="space-y-2">
+                                    {orderProducts.map((p, idx) => (
+                                      <div key={idx} className="flex items-center gap-3">
+                                        {p.image ? (
+                                          <div className="h-10 w-10 shrink-0 rounded overflow-hidden bg-slate-50">
+                                            <img src={getImageUrl(p.image)} alt={p.title} className="h-full w-full object-cover" />
+                                          </div>
+                                        ) : (
+                                          <div className="h-10 w-10 shrink-0 rounded bg-slate-100 flex items-center justify-center">
+                                            <ImageIcon className="h-5 w-5 text-slate-400" />
+                                          </div>
+                                        )}
+                                        <div className="min-w-0">
+                                          <p className="text-sm font-semibold text-[#172B12] line-clamp-1 max-w-[180px] overflow-hidden text-ellipsis">{p.title}</p>
+                                          <p className="text-xs text-[#4B5A45]">UGX {Number(p.price).toLocaleString()} × {p.quantity}</p>
+                                        </div>
+                                      </div>
+                                    ))}
                                   </div>
-                                </div>
-                              ))}
-                            </div>
-
-                            <p className="text-sm font-semibold text-[#172B12]">Order total: <span className="text-[#EA580C]">UGX {orderTotal.toLocaleString()}</span></p>
-
-                            <div className="rounded-2xl bg-[#F7F9F5] p-4 text-sm text-[#4B5A45] space-y-2">
-                              <p>Buyer: <span className="font-semibold text-[#172B12]">{order.buyerName}</span></p>
-                              <p>Phone: <a className="text-[#172B12] underline" href={`tel:${order.buyerPhone}`}>{order.buyerPhone}</a></p>
-                              {order.buyerEmail && (
-                                <p>Email: <a className="text-[#172B12] underline" href={`mailto:${order.buyerEmail}`}>{order.buyerEmail}</a></p>
-                              )}
-                              <p className="text-xs text-[#6B7C61]">Requested {requestedDate}</p>
-                              <div className="flex flex-wrap gap-2 pt-1">
-                                {order.buyerPhone && (
-                                  <a
-                                    className="inline-flex items-center rounded-full border border-[#2C5530] px-3 py-1 text-sm text-[#2C5530] hover:bg-[#2C5530]/5"
-                                    href={buildWhatsAppUrl(order.buyerPhone, `Hello ${order.buyerName}, your order request is being reviewed.`)}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                  >
-                                    Message on WhatsApp
-                                  </a>
-                                )}
-                                {order.buyerEmail && (
-                                  <a className="inline-flex items-center rounded-full border border-[#2C5530] px-3 py-1 text-sm text-[#2C5530] hover:bg-[#2C5530]/5" href={`mailto:${order.buyerEmail}`}>
-                                    Send email
-                                  </a>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                          <div className="flex flex-col gap-2 lg:text-right">
-                            <p className="text-xs text-[#6B7C61]">Order #{order.id?.slice(-6).toUpperCase()}</p>
-                            <p className="text-xs text-[#6B7C61]">{requestedDate}</p>
-                          </div>
-                        </div>
-
-                        {order.note && (
-                          <div className="mt-4 rounded-2xl bg-[#F7F9F5] p-4 text-sm text-[#4B5A45]">
-                            <p className="font-semibold text-[#172B12] mb-1">Buyer note</p>
-                            <p>{order.note}</p>
-                          </div>
-                        )}
-
-                        {order.status === 'pending' && (
-                          <div className="mt-4 flex flex-wrap gap-3">
-                            <Button size="sm" className="bg-[#2C5530] text-white hover:bg-[#1A3B20]" onClick={() => handleOrderStatusChange(order.id, 'approved')}>
-                              Approve
-                            </Button>
-                            <Button size="sm" variant="outline" className="border-[#D05A49] text-[#D05A49] hover:bg-[#FDE8E7]" onClick={() => handleOrderStatusChange(order.id, 'rejected')}>
-                              Reject
-                            </Button>
-                            <Button size="sm" variant="outline" className="border-[#9B9B9B] text-[#5C665D] hover:bg-[#F1F1F1]" onClick={() => handleDeleteOrder(order.id)}>
-                              Delete
-                            </Button>
-                          </div>
-                        )}
-                        {order.status !== 'pending' && (
-                          <div className="mt-4 flex flex-wrap gap-3">
-                            <Button size="sm" variant="outline" className="border-[#9B9B9B] text-[#5C665D] hover:bg-[#F1F1F1]" onClick={() => handleDeleteOrder(order.id)}>
-                              Delete
-                            </Button>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })
-                )}
-              </CardContent>
+                                </TableCell>
+                                <TableCell>
+                                  <div className="space-y-1">
+                                    <p className="text-sm font-semibold text-[#172B12]">{order.buyerName}</p>
+                                    <p className="text-xs text-[#4B5A45]">{order.buyerPhone}</p>
+                                    {order.buyerEmail && (
+                                      <p className="text-xs text-[#4B5A45]">{order.buyerEmail}</p>
+                                    )}
+                                  </div>
+                                </TableCell>
+                                <TableCell className="text-right font-bold text-[#1E231F]">
+                                  UGX {orderTotal.toLocaleString()}
+                                </TableCell>
+                                <TableCell className="text-sm text-[#4B5A45]">
+                                  {requestedDate}
+                                </TableCell>
+                                <TableCell>
+                                  <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${order.status === 'approved' ? 'bg-[#DEF2DD] text-[#2C5530]' : order.status === 'rejected' ? 'bg-[#FBD7D4] text-[#D05A49]' : 'bg-[#FEF6E8] text-[#C57A17]'}`}>
+                                    {order.status === 'pending' ? 'Pending' : order.status === 'approved' ? 'Approved' : 'Rejected'}
+                                  </span>
+                                </TableCell>
+                                <TableCell>
+                                  <div className="flex justify-center gap-2">
+                                    {order.status === 'pending' && (
+                                      <>
+                                        <Button size="sm" className="bg-[#2C5530] text-white hover:bg-[#1A3B20]" onClick={() => handleOrderStatusChange(order.id, 'approved')}>
+                                          Approve
+                                        </Button>
+                                        <Button size="sm" variant="outline" className="border-[#D05A49] text-[#D05A49] hover:bg-[#FDE8E7]" onClick={() => handleOrderStatusChange(order.id, 'rejected')}>
+                                          Reject
+                                        </Button>
+                                      </>
+                                    )}
+                                    <Button size="sm" variant="outline" className="border-[#2C5530] text-[#2C5530] hover:bg-[#2C5530]/5" onClick={() => handleNotifyBuyer(order)}>
+                                      Notify Buyer
+                                    </Button>
+                                    <Button size="sm" variant="outline" className="border-[#9B9B9B] text-[#5C665D] hover:bg-[#F1F1F1]" onClick={() => handleDeleteOrder(order.id)}>
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                </CardContent>
             </Card>
 
             <Card className="bg-white border border-[#E8EBE8] shadow-sm">
@@ -2787,60 +2823,125 @@ const Dashboard = () => {
                   These are the items buyers can order from you on the shop page.
                 </CardDescription>
               </CardHeader>
-              <CardContent className="grid gap-4 md:grid-cols-2">
+              <CardContent>
                 {!Array.isArray(myProducts) || myProducts.length === 0 ? (
                   <div className="rounded-xl border border-[#E8EBE8] bg-[#F7FCF4] p-6 text-sm text-[#4B5A45]">
                     No products found. Your current shop listings will appear here when available.
                   </div>
-                ) : myProducts.map((product) => (
-                  <Card key={product.id} className="bg-white border border-[#E8EBE8] shadow-sm">
-                    {product.image_url && (
-                      <div className="overflow-hidden rounded-t-3xl relative">
-                        <img
-                          src={getImageUrl(product.image_url)}
-                          alt={product.title}
-                          className={`h-48 w-full object-cover ${product.sold_out ? 'opacity-60 grayscale' : ''}`}
-                        />
-                        {product.sold_out && (
-                          <span className="absolute top-3 left-3 inline-flex items-center rounded-full bg-[#D05A49] px-3 py-1 text-xs font-semibold text-white shadow">
-                            Sold Out
-                          </span>
-                        )}
-                      </div>
-                    )}
-                    <CardContent>
-                      <div className="flex items-center justify-between gap-3 mb-3">
-                        <div>
-                          <CardTitle className="text-lg">{product.title}</CardTitle>
-                          <p className="text-sm text-[#5C665D]">{PRODUCT_CATEGORIES.find((cat) => cat.value === product.category)?.label || product.category}</p>
-                        </div>
-                        <Badge variant="secondary">UGX {Number(product.price).toLocaleString()}</Badge>
-                      </div>
-                      <p className="text-sm text-[#5C665D] mb-3">{product.description || 'No description provided'}</p>
-                      <p className="text-xs text-[#6B7C61] mb-3">Uploaded {new Date(product.created_at || product.createdAt).toLocaleDateString()}</p>
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className={product.sold_out
-                            ? 'border-[#2C5530] text-[#2C5530] hover:bg-[#2C5530]/5'
-                            : 'border-[#C57A17] text-[#C57A17] hover:bg-[#FEF6E8]'}
-                          onClick={() => handleToggleSoldOut(product)}
-                        >
-                          {product.sold_out ? 'Mark Available' : 'Mark Sold Out'}
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="border-[#D05A49] text-[#D05A49] hover:bg-[#FDE8E7]"
-                          onClick={() => handleDeleteProduct(product.id)}
-                        >
-                          Delete
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
+                ) : (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Product</TableHead>
+                          <TableHead>Category</TableHead>
+                          <TableHead className="text-right">Price</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Uploaded</TableHead>
+                          <TableHead className="text-center">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {myProducts.map((product) => (
+                          <TableRow key={product.id}>
+                            <TableCell>
+                              <div className="flex items-center gap-3">
+                                {product.image_url ? (
+                                  <div className="h-12 w-12 shrink-0 rounded overflow-hidden bg-slate-50">
+                                    <img src={getImageUrl(product.image_url)} alt={product.title} className="h-full w-full object-cover" />
+                                  </div>
+                                ) : (
+                                  <div className="h-12 w-12 shrink-0 rounded bg-slate-100 flex items-center justify-center">
+                                    <ImageIcon className="h-6 w-6 text-slate-400" />
+                                  </div>
+                                )}
+                                <div className="min-w-0">
+                                  <p className="text-sm font-semibold text-[#172B12] line-clamp-1 max-w-[180px] overflow-hidden text-ellipsis">{product.title}</p>
+                                  <div className="hidden sm:block">
+                                    {expandedProducts.has(product.id) ? (
+                                      <>
+                                        <p className="text-xs text-[#4B5A45] mt-1">{product.description || 'No description provided'}</p>
+                                        <button
+                                          className="text-xs text-[#2C5530] hover:text-[#1A3B20] underline mt-1"
+                                          onClick={() => handleToggleProductDescription(product.id)}
+                                        >
+                                          Hide
+                                        </button>
+                                      </>
+                                    ) : (
+                                      <button
+                                        className="text-xs text-[#2C5530] hover:text-[#1A3B20] underline mt-1"
+                                        onClick={() => handleToggleProductDescription(product.id)}
+                                      >
+                                        {product.description ? 'Show description' : 'No description provided'}
+                                      </button>
+                                    )}
+                                  </div>
+                                  <div className="sm:hidden">
+                                    {product.description && (
+                                      <TooltipProvider>
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <p className="text-xs text-[#4B5A45] mt-1 line-clamp-2 cursor-help">{product.description}</p>
+                                          </TooltipTrigger>
+                                          <TooltipContent className="max-w-[240px] p-3 text-sm text-[#1E231F] bg-[#F7FCF4] border border-[#E8EBE8]">
+                                            {product.description}
+                                          </TooltipContent>
+                                        </Tooltip>
+                                      </TooltipProvider>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <p className="text-sm text-[#5C665D]">{PRODUCT_CATEGORIES.find((cat) => cat.value === product.category)?.label || product.category}</p>
+                            </TableCell>
+                            <TableCell className="text-right font-bold text-[#1E231F]">
+                              UGX {Number(product.price).toLocaleString()}
+                            </TableCell>
+                            <TableCell>
+                              {product.sold_out ? (
+                                <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-[#FBD7D4] text-[#D05A49]">
+                                  Sold Out
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-[#DEF2DD] text-[#2C5530]">
+                                  Available
+                                </span>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <p className="text-sm text-[#4B5A45]">{new Date(product.created_at || product.createdAt).toLocaleDateString()}</p>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex justify-center gap-2">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className={product.sold_out
+                                    ? 'border-[#2C5530] text-[#2C5530] hover:bg-[#2C5530]/5'
+                                    : 'border-[#C57A17] text-[#C57A17] hover:bg-[#FEF6E8]'}
+                                  onClick={() => handleToggleSoldOut(product)}
+                                >
+                                  {product.sold_out ? 'Mark Available' : 'Mark Sold Out'}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="border-[#D05A49] text-[#D05A49] hover:bg-[#FDE8E7]"
+                                  onClick={() => handleDeleteProduct(product.id)}
+                                >
+                                  Delete
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
@@ -2852,7 +2953,7 @@ const Dashboard = () => {
             <div className="flex items-center justify-between flex-wrap gap-2">
               <h2 className="text-2xl font-bold font-['Manrope'] text-[#1E231F]">Group Financials</h2>
               <div className="flex items-center gap-2 flex-wrap">
-                {isAdmin && (
+                {isAdmin && activeFinancialTab === 'overview' && (
                   <Button
                     variant="outline"
                     onClick={() => exportFullGroupReportPDF({ financials, deposits, loans, withdrawals, pettyCash: financials?.petty_cash_items || [], members })}
@@ -2863,7 +2964,7 @@ const Dashboard = () => {
                     Full Group Report
                   </Button>
                 )}
-                {financials?.petty_cash_items?.length > 0 && (
+                {activeFinancialTab === 'overview' && (financials?.petty_cash_items?.length > 0) && (
                   <Button
                     variant="outline"
                     onClick={() => exportPettyCashPDF(financials.petty_cash_items)}
@@ -2874,67 +2975,6 @@ const Dashboard = () => {
                     Export Petty Cash
                   </Button>
                 )}
-                {isAdmin && (
-                  <Dialog open={pettyCashDialogOpen} onOpenChange={setPettyCashDialogOpen}>
-                    <DialogTrigger asChild>
-                      <Button className="bg-[#D48C70] hover:bg-[#BD7B60] rounded-full">
-                        <Plus className="w-4 h-4 mr-2" />
-                        Add Petty Cash
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent className="sm:max-w-md">
-                      <DialogHeader>
-                        <DialogTitle className="text-[#1E231F]">Add Petty Cash Expense</DialogTitle>
-                        <DialogDescription className="text-[#5C665D]">
-                          Record group expenses (stationary, transport, etc.)
-                      </DialogDescription>
-                    </DialogHeader>
-                    <form onSubmit={handleAddPettyCash} className="space-y-4 mt-4">
-                      <div className="space-y-2">
-                        <Label className="text-[#1E231F]">Amount (UGX)</Label>
-                        <Input
-                          type="number"
-                          value={pettyCashAmount}
-                          onChange={(e) => setPettyCashAmount(e.target.value)}
-                          placeholder="5000"
-                          required
-                          min="1"
-                          className="bg-white border-[#E8EBE8] text-[#1E231F]"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label className="text-[#1E231F]">Category</Label>
-                        <Select value={pettyCashCategory} onValueChange={setPettyCashCategory}>
-                          <SelectTrigger className="bg-white">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="general">General</SelectItem>
-                            <SelectItem value="transport">Transport</SelectItem>
-                            <SelectItem value="stationary">Stationary</SelectItem>
-                            <SelectItem value="refreshments">Refreshments</SelectItem>
-                            <SelectItem value="communication">Communication</SelectItem>
-                            <SelectItem value="other">Other</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label className="text-[#1E231F]">Description</Label>
-                        <Textarea
-                          value={pettyCashDescription}
-                          onChange={(e) => setPettyCashDescription(e.target.value)}
-                          placeholder="What was the expense for?"
-                          required
-                          className="bg-white border-[#E8EBE8] text-[#1E231F]"
-                        />
-                      </div>
-                      <Button type="submit" className="w-full bg-[#D48C70] hover:bg-[#BD7B60] rounded-full">
-                        Add Expense
-                      </Button>
-                    </form>
-                  </DialogContent>
-                </Dialog>
-              )}
               </div>
             </div>
 
@@ -2942,37 +2982,37 @@ const Dashboard = () => {
               <div className="flex items-center gap-1 bg-[#F5F7F5] p-1 rounded-xl w-fit min-w-max">
                 <button 
                   onClick={() => setActiveFinancialTab('overview')}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition ${activeFinancialTab === 'overview' ? 'bg-white text-[#1E231F] shadow-sm' : 'text-[#5C665D] hover:text-[#1E231F]'}`}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition ${activeFinancialTab === 'overview' ? 'bg-[#2C5530] text-white shadow-sm' : 'text-[#5C665D] hover:text-[#1E231F]'}`}
                 >
                   Financials
                 </button>
                 <button 
                   onClick={() => setActiveFinancialTab('deposits')}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition ${activeFinancialTab === 'deposits' ? 'bg-white text-[#1E231F] shadow-sm' : 'text-[#5C665D] hover:text-[#1E231F]'}`}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition ${activeFinancialTab === 'deposits' ? 'bg-[#2C5530] text-white shadow-sm' : 'text-[#5C665D] hover:text-[#1E231F]'}`}
                 >
                   Deposits
                 </button>
                 <button 
                   onClick={() => setActiveFinancialTab('loans')}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition ${activeFinancialTab === 'loans' ? 'bg-white text-[#1E231F] shadow-sm' : 'text-[#5C665D] hover:text-[#1E231F]'}`}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition ${activeFinancialTab === 'loans' ? 'bg-[#2C5530] text-white shadow-sm' : 'text-[#5C665D] hover:text-[#1E231F]'}`}
                 >
                   Loans
                 </button>
                 <button 
                   onClick={() => setActiveFinancialTab('quick_loan')}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition ${activeFinancialTab === 'quick_loan' ? 'bg-white text-[#1E231F] shadow-sm' : 'text-[#5C665D] hover:text-[#1E231F]'}`}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition ${activeFinancialTab === 'quick_loan' ? 'bg-[#2C5530] text-white shadow-sm' : 'text-[#5C665D] hover:text-[#1E231F]'}`}
                 >
                   Quick Loan
                 </button>
                 <button 
                   onClick={() => setActiveFinancialTab('withdrawals')}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition ${activeFinancialTab === 'withdrawals' ? 'bg-white text-[#1E231F] shadow-sm' : 'text-[#5C665D] hover:text-[#1E231F]'}`}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition ${activeFinancialTab === 'withdrawals' ? 'bg-[#2C5530] text-white shadow-sm' : 'text-[#5C665D] hover:text-[#1E231F]'}`}
                 >
                   Withdrawals
                 </button>
                 <button 
                   onClick={() => setActiveFinancialTab('petty-cash')}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition ${activeFinancialTab === 'petty-cash' ? 'bg-white text-[#1E231F] shadow-sm' : 'text-[#5C665D] hover:text-[#1E231F]'}`}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition ${activeFinancialTab === 'petty-cash' ? 'bg-[#2C5530] text-white shadow-sm' : 'text-[#5C665D] hover:text-[#1E231F]'}`}
                 >
                   Petty Cash
                 </button>
@@ -3324,25 +3364,6 @@ const Dashboard = () => {
                         Delete Selected ({selectedFinancialLoans.size})
                       </Button>
                     )}
-                    {loans.length > 0 && (
-                      <Button
-                        variant="outline"
-                        className="border-[#D05A49] text-[#D05A49] rounded-full text-xs"
-                        onClick={() => {
-                          if (!window.confirm('Delete ALL loans? This action cannot be undone.')) return;
-                          axios.delete(`${API_URL}/api/loans`, { headers: getAuthHeaders() }).then(() => {
-                            setSelectedFinancialLoans(new Set());
-                            fetchData();
-                            toast.success('All loans deleted.');
-                          }).catch((err) => {
-                            toast.error(err.response?.data?.detail || 'Failed to delete all loans');
-                          });
-                        }}
-                      >
-                        <Trash2 className="w-4 h-4 mr-1" />
-                        Delete All Loans
-                      </Button>
-                    )}
                   </div>
                   <Select value={loanMonthFilter} onValueChange={setLoanMonthFilter}>
                     <SelectTrigger className="w-[180px]">
@@ -3360,66 +3381,73 @@ const Dashboard = () => {
               <CardContent className="p-0">
                 <div className="overflow-x-auto">
                   <table className="w-full">
-<thead>
-                       <tr className="border-b border-[#E8EBE8] bg-[#FAFAF8]">
-                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D] whitespace-nowrap w-10">
-                           <Checkbox
-                             checked={loans.length > 0 && loans.every((l) => selectedFinancialLoans.has(l.id))}
-                             onCheckedChange={(checked) => handleSelectAllFinancialLoans(checked)}
-                           />
-                         </th>
-                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Date</th>
-                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Amount</th>
-                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Guarantor</th>
-                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Interest</th>
-                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Total Due</th>
-                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Status</th>
-                         <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Action</th>
-                       </tr>
-                     </thead>
+                      <thead>
+                        <tr className="border-b border-[#E8EBE8] bg-[#FAFAF8]">
+                          <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D] whitespace-nowrap w-10">
+                            <Checkbox
+                              checked={loans.length > 0 && loans.every((l) => selectedFinancialLoans.has(l.id))}
+                              onCheckedChange={(checked) => handleSelectAllFinancialLoans(checked)}
+                            />
+                          </th>
+                          <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Date</th>
+                          <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Member</th>
+                          <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Amount</th>
+                          <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Guarantor</th>
+                          <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Interest</th>
+                          <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Total Due</th>
+                          <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Status</th>
+                          <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Action</th>
+                        </tr>
+                      </thead>
                      <tbody>
                        {loans.filter(l => loanMonthFilter === 'all' || (l.created_at ? new Date(l.created_at).toISOString().slice(0, 7) === loanMonthFilter : false)).slice(0, 20).map((l) => {
                          const canDelete = l.user_id === user?.id || isTreasurer;
                          const outstanding = l.outstanding_balance ?? l.total_due ?? l.initial_total_due ?? l.amount * 1.03;
                          return (
-                           <tr key={l.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5] transition-colors">
-                             <td className="py-4 px-6 text-[#1E231F] whitespace-nowrap">
-                               <Checkbox
-                                 checked={selectedFinancialLoans.has(l.id)}
-                                 onCheckedChange={(checked) => handleToggleFinancialLoan(l.id)}
-                               />
-                             </td>
-                            <td className="py-4 px-6 font-semibold text-[#D48C70] font-numbers">
-                              {formatCurrency(l.amount)}
-                            </td>
-                            <td className="py-4 px-6 text-[#1E231F]">
-                              <div className="flex items-center gap-1">
-                                <UserCheck className="w-4 h-4 text-[#5C665D]" />
-                                {l.guarantor_name || '-'}
-                              </div>
-                            </td>
-                            <td className="py-4 px-6 text-[#5C665D] font-numbers">
-                              {l.current_interest ? formatCurrency(l.current_interest) : '-'}
-                            </td>
-                            <td className="py-4 px-6 font-semibold text-[#1E231F] font-numbers">
-                              {formatCurrency(outstanding)}
-                            </td>
-                            <td className="py-4 px-6">{getStatusBadge(l.status)}</td>
-                            <td className="py-4 px-6">
-                              {canDelete ? (
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteRecord('loans', l.id)}
-                                  title="Delete"
-                                  className="p-1.5 rounded-full text-[#D05A49] hover:bg-[#D05A49]/10 transition-colors"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              ) : (
-                                <span className="text-[#5C665D] text-xs">-</span>
-                              )}
-                            </td>
-                          </tr>
+                            <tr key={l.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5] transition-colors">
+                              <td className="py-4 px-6 text-[#1E231F] whitespace-nowrap">
+                                <Checkbox
+                                  checked={selectedFinancialLoans.has(l.id)}
+                                  onCheckedChange={(checked) => handleToggleFinancialLoan(l.id)}
+                                />
+                              </td>
+                              <td className="py-4 px-6 text-[#1E231F]">
+                                {new Date(l.created_at).toLocaleDateString()}
+                              </td>
+                              <td className="py-4 px-6 text-[#1E231F]">
+                                {l.user_name || '-'}
+                              </td>
+                              <td className="py-4 px-6 font-semibold text-[#D48C70] font-numbers">
+                                {formatCurrency(l.amount)}
+                              </td>
+                              <td className="py-4 px-6 text-[#1E231F]">
+                                <div className="flex items-center gap-1">
+                                  <UserCheck className="w-4 h-4 text-[#5C665D]" />
+                                  {l.guarantor_name || '-'}
+                                </div>
+                              </td>
+                              <td className="py-4 px-6 text-[#5C665D] font-numbers">
+                                {l.current_interest ? formatCurrency(l.current_interest) : '-'}
+                              </td>
+                              <td className="py-4 px-6 font-semibold text-[#1E231F] font-numbers">
+                                {formatCurrency(outstanding)}
+                              </td>
+                              <td className="py-4 px-6">{getStatusBadge(l.status)}</td>
+                              <td className="py-4 px-6">
+                                {canDelete ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteRecord('loans', l.id)}
+                                    title="Delete"
+                                    className="p-1.5 rounded-full text-[#D05A49] hover:bg-[#D05A49]/10 transition-colors"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                ) : (
+                                  <span className="text-[#5C665D] text-xs">-</span>
+                                )}
+                              </td>
+                            </tr>
                         );
                       })}
                     </tbody>
@@ -3505,25 +3533,6 @@ const Dashboard = () => {
                       >
                         <Trash2 className="w-4 h-4 mr-1" />
                         Delete Selected ({selectedFinancialWithdrawals.size})
-                      </Button>
-                    )}
-                    {withdrawals.length > 0 && (
-                      <Button
-                        variant="outline"
-                        className="border-[#D05A49] text-[#D05A49] rounded-full text-xs"
-                        onClick={() => {
-                          if (!window.confirm('Delete ALL withdrawals? This action cannot be undone.')) return;
-                          axios.delete(`${API_URL}/api/withdrawals`, { headers: getAuthHeaders() }).then(() => {
-                            setSelectedFinancialWithdrawals(new Set());
-                            fetchData();
-                            toast.success('All withdrawals deleted.');
-                          }).catch((err) => {
-                            toast.error(err.response?.data?.detail || 'Failed to delete all withdrawals');
-                          });
-                        }}
-                      >
-                        <Trash2 className="w-4 h-4 mr-1" />
-                        Delete All Withdrawals
                       </Button>
                     )}
                   </div>
@@ -3616,37 +3625,18 @@ const Dashboard = () => {
                      <Receipt className="w-5 h-5 text-[#D48C70]" />
                      Petty Cash Expenses
                    </CardTitle>
-                   <div className="flex items-center gap-2">
-                     {selectedFinancialPettyCash.size > 0 && (
-                       <Button
-                         variant="outline"
-                         className="border-[#D05A49] text-[#D05A49] rounded-full text-xs"
-                         onClick={handleDeleteSelectedFinancialPettyCash}
-                       >
-                         <Trash2 className="w-4 h-4 mr-1" />
-                         Delete Selected ({selectedFinancialPettyCash.size})
-                       </Button>
-                     )}
-                     {(financials?.petty_cash_items || []).length > 0 && (
-                       <Button
-                         variant="outline"
-                         className="border-[#D05A49] text-[#D05A49] rounded-full text-xs"
-                         onClick={() => {
-                           if (!window.confirm('Delete ALL petty cash entries? This action cannot be undone.')) return;
-                           axios.delete(`${API_URL}/api/petty-cash`, { headers: getAuthHeaders() }).then(() => {
-                             setSelectedFinancialPettyCash(new Set());
-                             fetchData();
-                             toast.success('All petty cash entries deleted.');
-                           }).catch((err) => {
-                             toast.error(err.response?.data?.detail || 'Failed to delete all petty cash entries');
-                           });
-                         }}
-                       >
-                         <Trash2 className="w-4 h-4 mr-1" />
-                         Delete All Entries
-                       </Button>
-                     )}
-                   </div>
+                    <div className="flex items-center gap-2">
+                      {selectedFinancialPettyCash.size > 0 && (
+                        <Button
+                          variant="outline"
+                          className="border-[#D05A49] text-[#D05A49] rounded-full text-xs"
+                          onClick={handleDeleteSelectedFinancialPettyCash}
+                        >
+                          <Trash2 className="w-4 h-4 mr-1" />
+                          Delete Selected ({selectedFinancialPettyCash.size})
+                        </Button>
+                      )}
+                    </div>
                    <Select value={pettyCashMonthFilter} onValueChange={setPettyCashMonthFilter}>
                     <SelectTrigger className="w-[180px]">
                       <SelectValue placeholder="All months" />
@@ -3784,139 +3774,7 @@ const Dashboard = () => {
           </div>
         )}
 
-        {/* Petty Cash Tab */}
-        {activeTab === 'petty-cash' && isAdmin && (
-          <div className="space-y-6 animate-fade-in" data-testid="petty-cash-tab">
-            <div className="flex items-center justify-between flex-wrap gap-2">
-              <h2 className="text-2xl font-bold font-['Manrope'] text-[#1E231F]">Petty Cash Management</h2>
-              <div className="flex items-center gap-2">
-                {financials?.petty_cash_items?.length > 0 && (
-                  <Button
-                    variant="outline"
-                    onClick={() => exportPettyCashPDF(financials.petty_cash_items)}
-                    data-testid="export-petty-cash-pdf-tab"
-                    className="border-[#E8EBE8] rounded-full"
-                  >
-                    <FileDown className="w-4 h-4 mr-2" />
-                    Export PDF
-                  </Button>
-                )}
-                <Dialog open={pettyCashDialogOpen} onOpenChange={setPettyCashDialogOpen}>
-                  <DialogTrigger asChild>
-                    <Button className="bg-[#D48C70] hover:bg-[#BD7B60] rounded-full">
-                      <Plus className="w-4 h-4 mr-2" />
-                      Add Petty Cash
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="sm:max-w-md">
-                    <DialogHeader>
-                      <DialogTitle className="text-[#1E231F]">Add Petty Cash Expense</DialogTitle>
-                      <DialogDescription className="text-[#5C665D]">
-                        Record group expenses (stationary, transport, etc.)
-                      </DialogDescription>
-                    </DialogHeader>
-                    <form onSubmit={handleAddPettyCash} className="space-y-4 mt-4">
-                      <div className="space-y-2">
-                        <Label className="text-[#1E231F]">Amount (UGX)</Label>
-                        <Input
-                          type="number"
-                          value={pettyCashAmount}
-                          onChange={(e) => setPettyCashAmount(e.target.value)}
-                          placeholder="5000"
-                          required
-                          min="1"
-                          className="bg-white border-[#E8EBE8] text-[#1E231F]"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label className="text-[#1E231F]">Category</Label>
-                        <Select value={pettyCashCategory} onValueChange={setPettyCashCategory}>
-                          <SelectTrigger className="bg-white">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="general">General</SelectItem>
-                            <SelectItem value="transport">Transport</SelectItem>
-                            <SelectItem value="stationary">Stationary</SelectItem>
-                            <SelectItem value="refreshments">Refreshments</SelectItem>
-                            <SelectItem value="communication">Communication</SelectItem>
-                            <SelectItem value="other">Other</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label className="text-[#1E231F]">Description</Label>
-                        <Textarea
-                          value={pettyCashDescription}
-                          onChange={(e) => setPettyCashDescription(e.target.value)}
-                          placeholder="What was the expense for?"
-                          required
-                          className="bg-white border-[#E8EBE8] text-[#1E231F]"
-                        />
-                      </div>
-                      <Button type="submit" className="w-full bg-[#D48C70] hover:bg-[#BD7B60] rounded-full">
-                        Add Expense
-                      </Button>
-                    </form>
-                  </DialogContent>
-                </Dialog>
-              </div>
-            </div>
-
-            <Card className="bg-white border border-[#E8EBE8] shadow-sm">
-              <CardHeader>
-                <CardTitle className="font-['Manrope'] text-[#1E231F] flex items-center gap-2">
-                  <Receipt className="w-5 h-5 text-[#D48C70]" />
-                  All Petty Cash Expenses
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-0">
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b border-[#E8EBE8] bg-[#FAFAF8]">
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Date</th>
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Amount</th>
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Category</th>
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Description</th>
-                        <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D]">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(financials?.petty_cash_items || []).map((pc) => (
-                        <tr key={pc.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5] transition-colors">
-                          <td className="py-4 px-6 text-[#1E231F]">
-                            {new Date(pc.created_at).toLocaleDateString()}
-                          </td>
-                          <td className="py-4 px-6 font-semibold text-[#D48C70] font-numbers">
-                            {formatCurrency(pc.amount)}
-                          </td>
-                          <td className="py-4 px-6 text-[#1E231F]">
-                            {pc.category ? pc.category.charAt(0).toUpperCase() + pc.category.slice(1) : '-'}
-                          </td>
-                          <td className="py-4 px-6 text-[#5C665D]">{pc.description || '-'}</td>
-                          <td className="py-4 px-6">
-                            <button
-                              onClick={() => handleDeleteRecord('petty-cash', pc.id)}
-                              data-testid={`delete-petty-cash-main-${pc.id}`}
-                              title="Delete petty cash entry"
-                              className="p-1.5 rounded-full text-[#D05A49] hover:bg-[#D05A49]/10 transition-colors"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  {(!financials?.petty_cash_items || financials.petty_cash_items.length === 0) && (
-                    <p className="text-center text-[#5C665D] py-8">No petty cash expenses yet</p>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        )}
+        {/* Rules Tab */}
 
         {/* Rules Tab */}
         {activeTab === 'rules' && (
@@ -3950,7 +3808,7 @@ const Dashboard = () => {
                 <CardContent className="p-4 text-center">
                   <CreditCard className="w-8 h-8 text-[#D48C70] mx-auto mb-2" />
                   <p className="text-sm text-[#5C665D]">Max Loan</p>
-                  <p className="font-bold text-[#1E231F]">{formatCurrency(rules?.max_loan_amount)}</p>
+                  <p className="font-bold text-[#1E231F]">{formatCurrency(userMaxLoan)}</p>
                 </CardContent>
               </Card>
               <Card className="bg-[#347242]/5 border border-[#347242]/20">

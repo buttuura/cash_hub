@@ -1071,7 +1071,7 @@ async def create_order(order: OrderCreate, user: Optional[dict] = Depends(get_cu
     order_doc.pop("_id", None)
     
     # Send WebSocket notification to seller
-    await manager.broadcast_to_seller(order.sellerName, {
+    await manager.broadcast_to_seller(order_doc["sellerName"], {
         "type": "new_order",
         "order": order_doc
     })
@@ -1803,8 +1803,10 @@ async def request_loan(loan: LoanRequest, user: dict = Depends(get_current_user)
     if loan.amount <= 0:
         raise HTTPException(status_code=400, detail="Amount must be positive")
     
-    if loan.amount > MAX_LOAN_AMOUNT:
-        raise HTTPException(status_code=400, detail=f"Maximum loan is UGX {MAX_LOAN_AMOUNT:,}")
+    user_max_guarantees = user.get("max_guarantees", MAX_GUARANTEES_PER_MEMBER)
+    user_max_loan = MAX_LOAN_AMOUNT * user_max_guarantees
+    if loan.amount > user_max_loan:
+        raise HTTPException(status_code=400, detail=f"Maximum loan for your {user_max_guarantees} slot(s) is UGX {user_max_loan:,}")
     
     # Check for existing active loan
     existing_loan = await db.loans.find_one({
@@ -1879,15 +1881,17 @@ async def admin_create_loan(data: AdminLoanCreate, user: dict = Depends(require_
     if data.amount <= 0:
         raise HTTPException(status_code=400, detail="Amount must be positive")
 
-    if data.amount > MAX_LOAN_AMOUNT:
-        raise HTTPException(status_code=400, detail=f"Maximum loan is UGX {MAX_LOAN_AMOUNT:,}")
-
     if not is_valid_object_id(data.member_id):
         raise HTTPException(status_code=400, detail="Invalid member id")
 
     member = await db.users.find_one({"_id": ObjectId(data.member_id)})
     if not member:
         raise HTTPException(status_code=404, detail="Member not found")
+
+    member_max_guarantees = member.get("max_guarantees", MAX_GUARANTEES_PER_MEMBER)
+    member_max_loan = MAX_LOAN_AMOUNT * member_max_guarantees
+    if data.amount > member_max_loan:
+        raise HTTPException(status_code=400, detail=f"Maximum loan for this member's {member_max_guarantees} slot(s) is UGX {member_max_loan:,}")
 
     existing_loan = await db.loans.find_one({
         "user_id": data.member_id,
@@ -3162,7 +3166,7 @@ async def get_group_rules():
             f"Monthly savings: UGX {MONTHLY_SAVINGS:,} (due 1st-10th)",
             f"Late fee: UGX {LATE_FEE_PER_POSITION:,} per position after 10th",
             f"Development fee: UGX {DEVELOPMENT_FEE:,} per month (non-withdrawable)",
-            f"Max loan: UGX {MAX_LOAN_AMOUNT:,}",
+            f"Max loan: UGX {MAX_LOAN_AMOUNT:,} per slot (up to {MAX_GUARANTEES_PER_MEMBER} slots = UGX {MAX_LOAN_AMOUNT * MAX_GUARANTEES_PER_MEMBER:,})",
             "Loan interest: 3% per month (within 4 months), 5% beyond",
             "Each loan requires a guarantor (max 2 guarantees per member)",
             "2 months notice required to leave group",
