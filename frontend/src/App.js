@@ -9,6 +9,7 @@ import ShopPage from './pages/ShopPage';
 import CategoryPage from './pages/CategoryPage';
 import ProductDetailPage from './pages/ProductDetailPage';
 import ServicesManagement from './pages/ServicesManagement';
+import NotificationSound from './components/NotificationSound';
 import './App.css';
 
 // Protected Route Component
@@ -98,6 +99,7 @@ function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
+        <NotificationSound />
         <AppRoutes />
       </AuthProvider>
     </BrowserRouter>

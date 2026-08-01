@@ -32,7 +32,6 @@ const ICON_MAP = {
 };
 
 const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
-const WS_URL = API_URL.replace(/^http/, 'ws');
 
 const DEFAULT_CATEGORIES = [
   {
@@ -150,7 +149,6 @@ const ShopPage = () => {
   const [selectedCategory, setSelectedCategory] = useState('food');
   const [products, setProducts] = useState(DEFAULT_PRODUCTS);
   const [orders, setOrders] = useState([]);
-  const audioRef = useRef(null);
   const [addCategoryOpen, setAddCategoryOpen] = useState(false);
   const [addProductOpen, setAddProductOpen] = useState(false);
   const [quickLoanOpen, setQuickLoanOpen] = useState(false);
@@ -503,43 +501,6 @@ const ShopPage = () => {
     }
   }, [user?.name]);
 
-  // WebSocket connection for real-time order notifications
-  useEffect(() => {
-    if (!user?.name) return;
-
-    const ws = new WebSocket(`${WS_URL}/ws/orders/${encodeURIComponent(user.name)}`);
-
-    ws.onopen = () => {
-      console.log('WebSocket connected for order notifications');
-    };
-
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data.type === 'new_order') {
-        setOrders(prev => [data.order, ...prev]);
-        if (audioRef.current) {
-          audioRef.current.loop = true;
-          audioRef.current.play().catch(() => {});
-        }
-        toast.info(`New order received from ${data.order.buyerName || 'a buyer'}`);
-      }
-    };
-
-    ws.onclose = () => {
-      setTimeout(() => {
-        new WebSocket(`${WS_URL}/ws/orders/${encodeURIComponent(user.name)}`);
-      }, 3000);
-    };
-
-    ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
-    };
-
-    return () => {
-      ws.close();
-    };
-  }, [user?.name]);
-
   const categoryMap = categories.reduce((acc, category) => {
     acc[category.id] = category;
     return acc;
@@ -820,7 +781,6 @@ const handleOpenPurchase = (product) => {
   return (
     <div className="min-h-screen bg-[#F7FAF3] px-4 py-8 sm:px-6 lg:px-8">
       <Toaster position="top-right" />
-      <audio ref={audioRef} src="/images/app_icons/cart_images/order_ring_tone.m4a" preload="auto" />
       
 {/* Top Navigation Bar */}
         <nav className="sticky top-0 z-40 backdrop-blur border-b border-slate-200 mb-6">

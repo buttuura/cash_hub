@@ -67,7 +67,6 @@ import { resolveImageUrl } from '../lib/utils';
 import { getLoanDisplayBalance } from '../utils/loanDisplay';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
-const WS_URL = API_URL.replace(/^http/, 'ws');
 
 const formatCurrency = (amount) => {
   return `UGX ${Number(amount || 0).toLocaleString()}`;
@@ -152,9 +151,6 @@ const Dashboard = () => {
   const [orders, setOrders] = useState([]);
   const [expandedProducts, setExpandedProducts] = useState(new Set());
   const sellerInitialTabSet = useRef(false);
-  const wsRef = useRef(null);
-
-  const audioRef = useRef(null);
 
   // Dialog states
   const [depositDialogOpen, setDepositDialogOpen] = useState(false);
@@ -240,53 +236,6 @@ const Dashboard = () => {
 
 
 
-  // WebSocket connection for real-time order notifications
-  useEffect(() => {
-    if (!user?.name) return;
-    
-    const connectWebSocket = () => {
-      const wsUrl = `${WS_URL}/ws/orders/${encodeURIComponent((user.name || '').trim())}`;
-      const ws = new WebSocket(wsUrl);
-      wsRef.current = ws;
-      
-      ws.onopen = () => {
-        console.log('WebSocket connected for order notifications');
-      };
-      
-      ws.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        if (data.type === 'new_order') {
-          // Add new order to state
-          setOrders(prev => [data.order, ...prev]);
-          // Play notification sound with loop
-          if (audioRef.current) {
-            audioRef.current.loop = true;
-            audioRef.current.play().catch(() => {});
-          }
-          // Show toast notification
-          toast.info(`New order received from ${data.order.buyerName || 'a buyer'}`);
-        }
-      };
-      
-      ws.onclose = () => {
-        setTimeout(connectWebSocket, 3000);
-      };
-      
-      ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
-        ws.close();
-      };
-    };
-    
-    connectWebSocket();
-    
-    return () => {
-      if (wsRef.current) {
-        wsRef.current.close();
-      }
-    };
-  }, [user?.name]);
-
   const getImageUrl = (imageUrl) => {
     return resolveImageUrl(imageUrl, API_URL);
   };
@@ -318,20 +267,6 @@ const Dashboard = () => {
     }
     toast.error('Seller accounts can only use Overview and Orders. Please contact the admin on WhatsApp for other access.');
   }, []);
-
-  useEffect(() => {
-    if (pendingOrdersCount > 0) {
-      if (audioRef.current) {
-        audioRef.current.loop = true;
-        audioRef.current.play().catch(() => {});
-      }
-    } else {
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current.currentTime = 0;
-      }
-    }
-  }, [pendingOrdersCount, user?.name, orders]);
 
   useEffect(() => {
     fetchData();
@@ -1127,7 +1062,6 @@ const Dashboard = () => {
   return (
     <div className="min-h-screen bg-[#FAFAF8]">
       <Toaster position="top-right" richColors />
-      <audio ref={audioRef} src="/images/app_icons/cart_images/order_ring_tone.m4a" preload="auto" />
       
       {dataLoading && (
         <div className="fixed top-16 left-0 right-0 bg-[#E8B25C]/20 text-[#E8B25C] p-2 text-center text-sm z-40">
