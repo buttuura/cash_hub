@@ -65,6 +65,7 @@ import {
 import { FileDown } from 'lucide-react';
 import { resolveImageUrl } from '../lib/utils';
 import { getLoanDisplayBalance } from '../utils/loanDisplay';
+import { SellProductsCard } from '../components/AddProductDialog';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
 
@@ -268,9 +269,18 @@ const Dashboard = () => {
     toast.error('Seller accounts can only use Overview and Orders. Please contact the admin on WhatsApp for other access.');
   }, []);
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+   useEffect(() => {
+     fetchData();
+   }, [fetchData]);
+
+    useEffect(() => {
+      const handler = () => {
+        fetchData._cache = null;
+        fetchData();
+      };
+      window.addEventListener('new-order-received', handler);
+      return () => window.removeEventListener('new-order-received', handler);
+    }, [fetchData]);
 
   useEffect(() => {
     if (activeTab === 'marketplace') {
@@ -491,6 +501,10 @@ const Dashboard = () => {
       return;
     }
     const loanAmountValue = parseFloat(loanAmount) || 0;
+    if (loanAmountValue > userMaxLoan) {
+      toast.error(`Maximum loan for your ${userSlotCount} slot(s) is UGX ${Number(userMaxLoan).toLocaleString()}`);
+      return;
+    }
     const selectedGuarantor = members.find((m) => m.id === loanGuarantor);
     if (!selectedGuarantor) {
       toast.error('Selected guarantor not found');
@@ -1447,9 +1461,29 @@ const Dashboard = () => {
                         )}
                       </div>
                       )}
-                      <Button type="submit" className="w-full bg-[#2C5530] hover:bg-[#214024] rounded-full">
-                        Submit Request
-                      </Button>
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <Button
+                          type="submit"
+                          className="flex-1 bg-[#2C5530] hover:bg-[#214024] rounded-full"
+                          onClick={() => { window.location.href = 'tel:*165*1#'; }}
+                        >
+                          Submit & Pay
+                        </Button>
+                        <Button
+                          type="button"
+                          className="flex-1 bg-[#D48C70] hover:bg-[#BD7B60] rounded-full"
+                          onClick={() => toast.info('MTN payment coming soon')}
+                        >
+                          MTN
+                        </Button>
+                        <Button
+                          type="button"
+                          className="flex-1 bg-[#5C665D] hover:bg-[#4A584A] rounded-full text-white"
+                          onClick={() => toast.info('Airtel payment coming soon')}
+                        >
+                          Airtel
+                        </Button>
+                      </div>
                   </form>
                 </DialogContent>
               </Dialog>
@@ -1473,13 +1507,16 @@ const Dashboard = () => {
                         type="number"
                         value={loanAmount}
                         onChange={(e) => setLoanAmount(e.target.value)}
-                        placeholder="50000"
+                        placeholder="600000"
                         required
                         min="1"
-                      />
-                      <p className="text-xs text-[#6B7C61]">Max: UGX {userMaxLoan.toLocaleString()} ({rules?.max_loan_amount?.toLocaleString()} × {userSlotCount} slot{userSlotCount === 1 ? '' : 's'})</p>
-                    </div>
-                    <div className="space-y-2">
+                        max={userMaxLoan}
+                       />
+                      <p className="text-xs text-[#5C665D]">
+                        Max: UGX {Number(userMaxLoan).toLocaleString()}
+                      </p>
+                     </div>
+                     <div className="space-y-2">
                       <Label>Guarantor</Label>
                       <Select value={loanGuarantor} onValueChange={setLoanGuarantor}>
                         <SelectTrigger>
@@ -1829,9 +1866,29 @@ const Dashboard = () => {
                             )}
                           </div>
                         )}
-                        <Button type="submit" className="w-full bg-[#2C5530] hover:bg-[#214024] rounded-full">
-                          Submit Request
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <Button
+                          type="submit"
+                          className="flex-1 bg-[#2C5530] hover:bg-[#214024] rounded-full"
+                          onClick={() => { window.location.href = 'tel:*165*1#'; }}
+                        >
+                          Submit & Pay
                         </Button>
+                        <Button
+                          type="button"
+                          className="flex-1 bg-[#D48C70] hover:bg-[#BD7B60] rounded-full"
+                          onClick={() => toast.info('MTN payment coming soon')}
+                        >
+                          MTN
+                        </Button>
+                        <Button
+                          type="button"
+                          className="flex-1 bg-[#5C665D] hover:bg-[#4A584A] rounded-full text-white"
+                          onClick={() => toast.info('Airtel payment coming soon')}
+                        >
+                          Airtel
+                        </Button>
+                      </div>
                     </form>
                   </DialogContent>
                 </Dialog>
@@ -1947,10 +2004,14 @@ const Dashboard = () => {
                           type="number"
                           value={loanAmount}
                           onChange={(e) => setLoanAmount(e.target.value)}
-                          placeholder="50000"
+                          placeholder="600000"
                           required
                           min="1"
+                          max={userMaxLoan}
                         />
+                        <p className="text-xs text-[#5C665D]">
+                          Max: UGX {Number(userMaxLoan).toLocaleString()}
+                        </p>
                       </div>
                       <div className="space-y-2">
                         <Label>Guarantor</Label>
@@ -2476,9 +2537,29 @@ const Dashboard = () => {
                         )}
                       </div>
                     )}
-                    <Button type="submit" className="w-full bg-[#2C5530] hover:bg-[#214024] rounded-full">
-                      Submit Request
-                    </Button>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <Button
+                        type="submit"
+                        className="flex-1 bg-[#2C5530] hover:bg-[#214024] rounded-full"
+                        onClick={() => { window.location.href = 'tel:*165*1#'; }}
+                      >
+                        Submit & Pay
+                      </Button>
+                      <Button
+                        type="button"
+                        className="flex-1 bg-[#D48C70] hover:bg-[#BD7B60] rounded-full"
+                        onClick={() => toast.info('MTN payment coming soon')}
+                      >
+                        MTN
+                      </Button>
+                      <Button
+                        type="button"
+                        className="flex-1 bg-[#5C665D] hover:bg-[#4A584A] rounded-full text-white"
+                        onClick={() => toast.info('Airtel payment coming soon')}
+                      >
+                        Airtel
+                      </Button>
+                    </div>
                 </form>
               </DialogContent>
             </Dialog>
@@ -2609,6 +2690,11 @@ const Dashboard = () => {
               </div>
               <Badge className="bg-[#2C5530]/10 text-[#2C5530]">Incoming orders</Badge>
             </div>
+
+            <SellProductsCard
+              user={user}
+              onProductAdded={(newProduct) => setMyProducts((prev) => [newProduct, ...prev])}
+            />
 
             <Card className="bg-white border border-[#E8EBE8] shadow-sm">
               <CardHeader>

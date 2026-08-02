@@ -31,6 +31,7 @@ const NotificationSound = () => {
             audioRef.current.play().catch(() => {});
           }
           toast.info(`New order received from ${data.order.buyerName || 'a buyer'}`);
+          window.dispatchEvent(new Event('new-order-received'));
         }
       };
 

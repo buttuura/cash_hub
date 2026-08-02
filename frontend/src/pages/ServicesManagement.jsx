@@ -119,12 +119,20 @@ const ServicesManagement = () => {
     }
   }, [getAuthHeaders]);
 
-  useEffect(() => {
-    if (activeTab === 'orders') fetchOrders();
-    if (activeTab === 'deleted') fetchDeletedOrders();
-    if (activeTab === 'quick-loans') fetchQuickLoans();
-    if (activeTab === 'sellers') fetchAllProducts();
-  }, [activeTab, fetchOrders, fetchDeletedOrders, fetchQuickLoans, fetchAllProducts]);
+   useEffect(() => {
+     if (activeTab === 'orders') fetchOrders();
+     if (activeTab === 'deleted') fetchDeletedOrders();
+     if (activeTab === 'quick-loans') fetchQuickLoans();
+     if (activeTab === 'sellers') fetchAllProducts();
+   }, [activeTab, fetchOrders, fetchDeletedOrders, fetchQuickLoans, fetchAllProducts]);
+
+   useEffect(() => {
+     const handler = () => {
+       if (activeTab === 'orders') fetchOrders();
+     };
+     window.addEventListener('new-order-received', handler);
+     return () => window.removeEventListener('new-order-received', handler);
+   }, [activeTab, fetchOrders]);
 
   const handleOrderStatusChange = async (orderId, status) => {
     try {
