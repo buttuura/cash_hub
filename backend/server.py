@@ -1071,6 +1071,10 @@ async def create_project(project: ProjectCreate, user: dict = Depends(get_curren
 
         result = await db.projects.insert_one(project_data)
         project_id = str(result.inserted_id)
+        await db.projects.update_one(
+            {"_id": result.inserted_id},
+            {"$set": {"project_id": project_id, "id": project_id}},
+        )
         project_data["id"] = project_id
         project_data["project_id"] = project_id
 
@@ -1125,7 +1129,10 @@ async def add_project_comment(project_id: str, comment: ProjectCommentCreate, us
     if user.get("role") != "member":
         raise HTTPException(status_code=403, detail="Members only")
 
-    project = await db.projects.find_one({"project_id": project_id})
+    project_query = {"project_id": project_id}
+    if ObjectId.is_valid(project_id):
+        project_query = {"$or": [{"project_id": project_id}, {"_id": ObjectId(project_id)}]}
+    project = await db.projects.find_one(project_query)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
@@ -1146,7 +1153,10 @@ async def list_project_comments(project_id: str, user: dict = Depends(get_curren
     if user.get("role") != "member":
         raise HTTPException(status_code=403, detail="Members only")
 
-    project = await db.projects.find_one({"project_id": project_id})
+    project_query = {"project_id": project_id}
+    if ObjectId.is_valid(project_id):
+        project_query = {"$or": [{"project_id": project_id}, {"_id": ObjectId(project_id)}]}
+    project = await db.projects.find_one(project_query)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
@@ -1155,6 +1165,25 @@ async def list_project_comments(project_id: str, user: dict = Depends(get_curren
         comment["id"] = str(comment["_id"])
         comment.pop("_id", None)
     return comments
+
+@api_router.delete("/projects/{project_id}")
+async def delete_project(project_id: str, user: dict = Depends(get_current_user)):
+    if user.get("role") not in ["admin", "super_admin", "treasurer"]:
+        raise HTTPException(status_code=403, detail="Admins only")
+
+    project_query = {"project_id": project_id}
+    if ObjectId.is_valid(project_id):
+        project_query = {"$or": [{"project_id": project_id}, {"_id": ObjectId(project_id)}]}
+    project = await db.projects.find_one(project_query)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    delete_result = await db.projects.delete_one({"_id": project["_id"]})
+    if delete_result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    await db.project_comments.delete_many({"project_id": project_id})
+    return {"message": "Project deleted", "id": project_id}
 
 @api_router.get("/products/{product_id}")
 async def get_product(product_id: str):

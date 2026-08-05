@@ -241,6 +241,18 @@ const Dashboard = () => {
     }
   }, [getAuthHeaders]);
 
+  const fetchProjects = useCallback(async () => {
+    try {
+      const response = await axios.get(`${API_URL}/api/projects`, {
+        headers: getAuthHeaders(),
+      });
+      setProjects(Array.isArray(response.data) ? response.data : []);
+    } catch (err) {
+      console.warn('Unable to load projects:', err);
+      setProjects([]);
+    }
+  }, [getAuthHeaders]);
+
 
 
   const getImageUrl = (imageUrl) => {
@@ -343,6 +355,12 @@ const Dashboard = () => {
       fetchMyProducts();
     }
   }, [activeTab, fetchMyProducts]);
+
+  useEffect(() => {
+    if (activeTab === 'projects') {
+      fetchProjects();
+    }
+  }, [activeTab, fetchProjects]);
 
   useEffect(() => {
     sellerInitialTabSet.current = false;
@@ -842,6 +860,17 @@ const Dashboard = () => {
       fetchData();
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Failed to delete member');
+    }
+  };
+
+  const handleDeleteProject = async (projectId) => {
+    if (!window.confirm('Are you sure you want to delete this project?')) return;
+    try {
+      await axios.delete(`${API_URL}/api/projects/${projectId}`, { headers: getAuthHeaders() });
+      toast.success('Project deleted');
+      fetchProjects();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Failed to delete project');
     }
   };
 
@@ -2776,6 +2805,16 @@ const Dashboard = () => {
                             {project.average_rating?.toFixed(1) || '0.0'} / 5
                           </p>
                           <p className="text-xs text-[#5C665D]">{project.rating_count || 0} reviews</p>
+                          {isAdmin && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleDeleteProject(project.id)}
+                              className="mt-2 border-[#D05A49] text-[#D05A49] hover:bg-[#D05A49]/10"
+                            >
+                              Delete
+                            </Button>
+                          )}
                         </div>
                       </div>
                       <p className="text-sm text-[#5C665D] whitespace-pre-line">{project.description || 'No description provided.'}</p>
