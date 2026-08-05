@@ -225,6 +225,15 @@ class ProductCreate(BaseModel):
     category: str
     image_url: Optional[str] = None
 
+class ProjectCreate(BaseModel):
+    title: str
+    description: Optional[str] = None
+    category: Optional[str] = None
+
+class ProjectCommentCreate(BaseModel):
+    comment: Optional[str] = None
+    rating: int = Field(..., ge=1, le=5)
+
 class OrderCreate(BaseModel):
     products: Optional[List[dict]] = None
     productId: Optional[str] = None
@@ -1039,6 +1048,113 @@ async def list_my_products(user: dict = Depends(get_current_user)):
         product["id"] = str(product["_id"])
         product.pop("_id", None)
     return products
+
+@api_router.post("/projects")
+async def create_project(project: ProjectCreate, user: dict = Depends(get_current_user)):
+    if user.get("role") != "member":
+        raise HTTPException(status_code=403, detail="Members only")
+
+    try:
+        title = project.title.strip()
+        if not title:
+            raise HTTPException(status_code=400, detail="Project title is required")
+
+        project_id = None
+        project_data = {
+            "title": title,
+            "description": project.description.strip() if project.description else None,
+            "category": project.category.strip() if project.category else None,
+            "author_id": user["id"],
+            "author_name": user.get("name") or user.get("full_name") or "Member",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+        result = await db.projects.insert_one(project_data)
+        project_id = str(result.inserted_id)
+        project_data["id"] = project_id
+        project_data["project_id"] = project_id
+
+        # Ensure we don't accidentally include any non-serializable BSON types
+        for k, v in list(project_data.items()):
+            if isinstance(v, ObjectId):
+                project_data[k] = str(v)
+
+        return project_data
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Failed to create project", exc_info=True)
+        # Return the original exception message to help debugging (temporary)
+        raise HTTPException(status_code=500, detail=str(exc))
+
+@api_router.get("/projects")
+async def list_projects(user: dict = Depends(get_current_user)):
+    if user.get("role") != "member":
+        raise HTTPException(status_code=403, detail="Members only")
+
+    projects = await db.projects.find({}).sort("created_at", -1).to_list(200)
+    project_ids = [str(project.get("project_id") or project.get("id") or str(project.get("_id"))) for project in projects]
+    comments = []
+    if project_ids:
+        comments = await db.project_comments.find({"project_id": {"$in": project_ids}}).sort("created_at", -1).to_list(500)
+
+    comments_by_project = {}
+    for comment in comments:
+        comment["id"] = str(comment["_id"])
+        comment.pop("_id", None)
+        comments_by_project.setdefault(comment["project_id"], []).append(comment)
+
+    result = []
+    for project in projects:
+        project_id = str(project.get("project_id") or project.get("id") or str(project.get("_id")))
+        project["id"] = project_id
+        project.pop("_id", None)
+        project["project_id"] = project_id
+        project_comments = comments_by_project.get(project_id, [])
+        project["comments"] = project_comments
+        project["rating_count"] = len(project_comments)
+        project["average_rating"] = (
+            round(sum((c.get("rating") or 0) for c in project_comments) / len(project_comments), 2)
+            if project_comments else 0
+        )
+        result.append(project)
+    return result
+
+@api_router.post("/projects/{project_id}/comments")
+async def add_project_comment(project_id: str, comment: ProjectCommentCreate, user: dict = Depends(get_current_user)):
+    if user.get("role") != "member":
+        raise HTTPException(status_code=403, detail="Members only")
+
+    project = await db.projects.find_one({"project_id": project_id})
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    comment_data = {
+        "project_id": project_id,
+        "user_id": user["id"],
+        "user_name": user.get("name") or user.get("full_name") or "Member",
+        "comment": comment.comment.strip() if comment.comment else None,
+        "rating": comment.rating,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    result = await db.project_comments.insert_one(comment_data)
+    comment_data["id"] = str(result.inserted_id)
+    return comment_data
+
+@api_router.get("/projects/{project_id}/comments")
+async def list_project_comments(project_id: str, user: dict = Depends(get_current_user)):
+    if user.get("role") != "member":
+        raise HTTPException(status_code=403, detail="Members only")
+
+    project = await db.projects.find_one({"project_id": project_id})
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    comments = await db.project_comments.find({"project_id": project_id}).sort("created_at", -1).to_list(200)
+    for comment in comments:
+        comment["id"] = str(comment["_id"])
+        comment.pop("_id", None)
+    return comments
 
 @api_router.get("/products/{product_id}")
 async def get_product(product_id: str):

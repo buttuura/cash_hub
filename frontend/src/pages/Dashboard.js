@@ -123,6 +123,12 @@ const Dashboard = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [copiedMemberCode, setCopiedMemberCode] = useState(false);
   const [activeFinancialTab, setActiveFinancialTab] = useState('overview');
+  const [projects, setProjects] = useState([]);
+  const [projectTitle, setProjectTitle] = useState('');
+  const [projectDescription, setProjectDescription] = useState('');
+  const [projectCategory, setProjectCategory] = useState('');
+  const [projectCommentText, setProjectCommentText] = useState({});
+  const [projectCommentRating, setProjectCommentRating] = useState({});
 
   // Form states
   const [depositAmount, setDepositAmount] = useState('500');
@@ -244,6 +250,56 @@ const Dashboard = () => {
   const getProductById = (productId) => {
     if (!productId || !Array.isArray(myProducts)) return null;
     return myProducts.find(p => p.id === productId);
+  };
+
+  const handleCreateProject = async (e) => {
+    e.preventDefault();
+    if (!projectTitle.trim()) {
+      toast.error('Project title is required');
+      return;
+    }
+    try {
+      await axios.post(
+        `${API_URL}/api/projects`,
+        {
+          title: projectTitle.trim(),
+          description: projectDescription.trim(),
+          category: projectCategory.trim() || undefined,
+        },
+        { headers: getAuthHeaders() }
+      );
+      toast.success('Project added successfully');
+      setProjectTitle('');
+      setProjectDescription('');
+      setProjectCategory('');
+      fetchProjects();
+    } catch (err) {
+      console.error('Failed to create project:', err);
+      toast.error(err.response?.data?.detail || 'Failed to create project');
+    }
+  };
+
+  const handleSubmitProjectComment = async (projectId) => {
+    const comment = String(projectCommentText[projectId] || '').trim();
+    const rating = parseInt(projectCommentRating[projectId], 10) || 0;
+    if (rating < 1 || rating > 5) {
+      toast.error('Please select a rating between 1 and 5');
+      return;
+    }
+    try {
+      await axios.post(
+        `${API_URL}/api/projects/${projectId}/comments`,
+        { comment: comment || undefined, rating },
+        { headers: getAuthHeaders() }
+      );
+      toast.success('Comment submitted');
+      setProjectCommentText((prev) => ({ ...prev, [projectId]: '' }));
+      setProjectCommentRating((prev) => ({ ...prev, [projectId]: '5' }));
+      fetchProjects();
+    } catch (err) {
+      console.error('Failed to submit comment:', err);
+      toast.error(err.response?.data?.detail || 'Failed to submit comment');
+    }
   };
 
   const sellerOrders = isAdmin
@@ -1027,6 +1083,7 @@ const Dashboard = () => {
     );
   };
 
+  const isMember = user?.role === 'member';
   const navItems = isSellerMember
     ? [
         { id: 'overview', label: 'Overview', icon: Wallet },
@@ -1036,6 +1093,7 @@ const Dashboard = () => {
         { id: 'overview', label: 'Overview', icon: Wallet },
         { id: 'financials', label: 'Financials', icon: BarChart3 },
         { id: 'members', label: 'Members', icon: Users },
+        ...(isMember ? [{ id: 'projects', label: 'Projects', icon: MessageCircle }] : []),
         { id: 'marketplace', label: 'Orders', icon: ShoppingCart },
       ];
 
@@ -2636,6 +2694,163 @@ const Dashboard = () => {
                 </form>
               </DialogContent>
             </Dialog>
+          </div>
+        )}
+
+        {activeTab === 'projects' && (
+          <div className="space-y-6 animate-fade-in" data-testid="projects-tab">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-2xl font-bold font-['Manrope'] text-[#1E231F]">Member Projects</h2>
+                <p className="text-sm text-[#5C665D] max-w-2xl">
+                  Add new projects and let other members comment and rate them.
+                </p>
+              </div>
+              <Badge className="bg-[#2C5530]/10 text-[#2C5530]">Members only</Badge>
+            </div>
+
+            <Card className="bg-white border border-[#E8EBE8] shadow-sm">
+              <CardContent className="p-6">
+                <h3 className="text-lg font-semibold text-[#1E231F]">Submit a project</h3>
+                <form onSubmit={handleCreateProject} className="space-y-4 mt-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="project-title">Project title</Label>
+                      <Input
+                        id="project-title"
+                        value={projectTitle}
+                        onChange={(e) => setProjectTitle(e.target.value)}
+                        placeholder="Project name"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="project-category">Category</Label>
+                      <Input
+                        id="project-category"
+                        value={projectCategory}
+                        onChange={(e) => setProjectCategory(e.target.value)}
+                        placeholder="Optional category"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="project-description">Description</Label>
+                    <Textarea
+                      id="project-description"
+                      value={projectDescription}
+                      onChange={(e) => setProjectDescription(e.target.value)}
+                      placeholder="Describe the project..."
+                      rows={4}
+                    />
+                  </div>
+                  <Button type="submit" className="bg-[#2C5530] hover:bg-[#214024] rounded-full">
+                    Add Project
+                  </Button>
+                </form>
+              </CardContent>
+            </Card>
+
+            {projects.length === 0 ? (
+              <Card className="bg-[#FAFAF8] border border-[#E8EBE8] shadow-sm">
+                <CardContent className="p-6 text-[#5C665D]">
+                  No projects have been added yet. Be the first member to share a project idea.
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {projects.map((project) => (
+                  <Card key={project.id} className="bg-white border border-[#E8EBE8] shadow-sm">
+                    <CardContent className="p-6 space-y-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <h3 className="text-xl font-semibold text-[#1E231F]">{project.title}</h3>
+                          <p className="text-sm text-[#5C665D]">
+                            {project.category ? `${project.category} • ` : ''}
+                            by {project.author_name}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm text-[#5C665D]">Rating</p>
+                          <p className="text-lg font-bold text-[#2C5530]">
+                            {project.average_rating?.toFixed(1) || '0.0'} / 5
+                          </p>
+                          <p className="text-xs text-[#5C665D]">{project.rating_count || 0} reviews</p>
+                        </div>
+                      </div>
+                      <p className="text-sm text-[#5C665D] whitespace-pre-line">{project.description || 'No description provided.'}</p>
+
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="rounded-2xl bg-[#F7FCF4] p-3">
+                            <p className="text-xs text-[#5C665D]">Created</p>
+                            <p className="text-sm font-semibold text-[#1E231F]">{new Date(project.created_at).toLocaleDateString()}</p>
+                          </div>
+                          <div className="rounded-2xl bg-[#F4F0E8] p-3">
+                            <p className="text-xs text-[#5C665D]">Comments</p>
+                            <p className="text-sm font-semibold text-[#1E231F]">{project.comments?.length || 0}</p>
+                          </div>
+                        </div>
+
+                        <div className="space-y-3">
+                          {(project.comments || []).slice(0, 3).map((comment) => (
+                            <div key={comment.id} className="rounded-2xl bg-[#FAFAF8] p-3 border border-[#E8EBE8]">
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="text-sm font-semibold text-[#1E231F]">{comment.user_name}</p>
+                                <Badge className="bg-[#2C5530]/10 text-[#2C5530]">{comment.rating} / 5</Badge>
+                              </div>
+                              <p className="text-sm text-[#5C665D] mt-2">{comment.comment || 'No comment provided.'}</p>
+                            </div>
+                          ))}
+                          {project.comments?.length > 3 && (
+                            <p className="text-xs text-[#5C665D]">Showing latest 3 comments.</p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="space-y-3">
+                        <h4 className="text-sm font-semibold text-[#1E231F]">Add your comment</h4>
+                        <div className="grid grid-cols-1 gap-3">
+                          <div className="space-y-2">
+                            <Label htmlFor={`comment-${project.id}`}>Comment</Label>
+                            <Textarea
+                              id={`comment-${project.id}`}
+                              value={projectCommentText[project.id] || ''}
+                              onChange={(e) => setProjectCommentText((prev) => ({ ...prev, [project.id]: e.target.value }))}
+                              rows={3}
+                              placeholder="Share feedback or suggestions"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor={`rating-${project.id}`}>Rating</Label>
+                            <Select
+                              value={projectCommentRating[project.id] || '5'}
+                              onValueChange={(value) => setProjectCommentRating((prev) => ({ ...prev, [project.id]: value }))}
+                            >
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {[5, 4, 3, 2, 1].map((value) => (
+                                  <SelectItem key={value} value={String(value)}>{value} stars</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <Button
+                            type="button"
+                            className="bg-[#2C5530] hover:bg-[#214024] rounded-full"
+                            onClick={() => handleSubmitProjectComment(project.id)}
+                          >
+                            Submit Comment
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
