@@ -1,7 +1,7 @@
 import importlib
 import os
 import sys
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch, MagicMock, AsyncMock
 
 import pytest
 from fastapi import HTTPException
@@ -80,6 +80,39 @@ def test_get_loan_outstanding_balance_keeps_existing_balance_when_repayments_exi
     }
 
     assert server_module.get_loan_outstanding_balance(loan) == 70000.0
+
+
+def test_get_loan_outstanding_balance_uses_existing_stored_balance(server_module):
+    loan = {
+        "amount": 600000,
+        "amount_repaid": 36540,
+        "interest_repaid": 0,
+        "outstanding_balance": 563460,
+        "repaid": False,
+    }
+
+    assert server_module.get_loan_outstanding_balance(loan) == 563460.0
+
+
+def test_get_members_includes_remaining_guarantee_slots(server_module):
+    import asyncio
+
+    async def run_test():
+        cursor = MagicMock()
+        cursor.to_list = AsyncMock(return_value=[
+            {"_id": "user1", "name": "Alice", "role": "member", "max_guarantees": 2},
+            {"_id": "user2", "name": "Bob", "role": "member", "max_guarantees": 3},
+        ])
+        server_module.db = MagicMock()
+        server_module.db.users.find.return_value = cursor
+        server_module.db.loans.count_documents = AsyncMock(side_effect=[1, 0])
+
+        result = await server_module.get_members({"role": "member"})
+
+        assert result[0]["remaining_guarantee_slots"] == 1
+        assert result[1]["remaining_guarantee_slots"] == 3
+
+    asyncio.run(run_test())
 
 
 class TestForgotPassword:

@@ -21,4 +21,14 @@ describe('getLoanDisplayBalance', () => {
 
     expect(getLoanDisplayBalance(loan)).toBe(600000);
   });
+
+  it('uses the stored outstanding balance when it is already up to date', () => {
+    const loan = {
+      amount: 600000,
+      outstanding_balance: 563460,
+      amount_repaid: 36540,
+    };
+
+    expect(getLoanDisplayBalance(loan)).toBe(563460);
+  });
 });

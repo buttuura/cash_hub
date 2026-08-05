@@ -305,10 +305,15 @@ const Dashboard = () => {
     }
   }, [activeTab, isSellerMember]);
 
+  const stopOrderNotificationSound = useCallback(() => {
+    window.dispatchEvent(new Event('stop-order-notification-sound'));
+  }, []);
+
   const handleOrderStatusChange = async (orderId, status) => {
     try {
       // When rejected, delete the order entirely per product requirement
       if (status === 'rejected') {
+        stopOrderNotificationSound();
         await axios.delete(`${API_URL}/api/orders/${orderId}`, {
           headers: getAuthHeaders(),
         });
@@ -316,6 +321,7 @@ const Dashboard = () => {
         toast.success('Order rejected and removed.');
         return;
       }
+      stopOrderNotificationSound();
       await axios.patch(`${API_URL}/api/orders/${orderId}/status`, {
         status,
         notes: '',
@@ -335,6 +341,7 @@ const Dashboard = () => {
   };
 
   const handleNotifyBuyer = (order) => {
+    stopOrderNotificationSound();
     const orderProducts = [];
     if (order.products && Array.isArray(order.products) && order.products.length > 0) {
       order.products.forEach((p) => {
@@ -378,6 +385,7 @@ const Dashboard = () => {
 
    const handleDeleteOrder = async (orderId) => {
     if (!window.confirm('Delete this order? This action cannot be undone.')) return;
+    stopOrderNotificationSound();
     try {
       await axios.delete(`${API_URL}/api/orders/${orderId}`, {
         headers: getAuthHeaders(),
@@ -428,9 +436,7 @@ const Dashboard = () => {
       !loan.repaid
     )
     .reduce((total, loan) => {
-      const total_repaid = (loan.amount_repaid || 0) + (loan.interest_repaid || 0);
-      const outstanding = Math.max(0, getLoanDisplayBalance(loan) - total_repaid);
-      return total + outstanding;
+      return total + Math.max(0, getLoanDisplayBalance(loan));
     }, 0);
 
   const targetDepositMember = depositTargetUserId
@@ -1044,6 +1050,10 @@ const Dashboard = () => {
   const loanAmountValue = parseFloat(loanAmount) || 0;
 
   const getRemainingGuaranteeSlots = (member) => {
+    if (typeof member?.remaining_guarantee_slots === 'number') {
+      return Math.max(0, member.remaining_guarantee_slots);
+    }
+
     const currentGuarantees = loans.filter(l => 
       l.guarantor_id === member.id && 
       ['pending_guarantor', 'pending_admin', 'approved'].includes(l.status) && 
@@ -1518,21 +1528,21 @@ const Dashboard = () => {
                      </div>
                      <div className="space-y-2">
                       <Label>Guarantor</Label>
-                      <Select value={loanGuarantor} onValueChange={setLoanGuarantor}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select a guarantor" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {eligibleGuarantors.map((m) => {
-                            const remainingSlots = getRemainingGuaranteeSlots(m);
-                            return (
-                              <SelectItem key={m.id} value={m.id}>
-                                {m.name} ({remainingSlots} slot{remainingSlots === 1 ? '' : 's'} left)
-                              </SelectItem>
-                            );
-                          })}
-                        </SelectContent>
-                      </Select>
+                      <select
+                        value={loanGuarantor}
+                        onChange={(e) => setLoanGuarantor(e.target.value)}
+                        className="flex h-10 w-full appearance-none rounded-md border border-[#E8EBE8] bg-white px-3 py-2 text-sm text-[#1E231F] shadow-sm focus:outline-none focus:ring-1 focus:ring-[#2C5530]"
+                      >
+                        <option value="">Select a guarantor</option>
+                        {eligibleGuarantors.map((m) => {
+                          const remainingSlots = getRemainingGuaranteeSlots(m);
+                          return (
+                            <option key={m.id} value={m.id}>
+                              {m.name} ({remainingSlots} slot{remainingSlots === 1 ? '' : 's'} left)
+                            </option>
+                          );
+                        })}
+                      </select>
                     </div>
                     <div className="space-y-2">
                       <Label>Reason</Label>
@@ -1579,21 +1589,20 @@ const Dashboard = () => {
                     </div>
                     <div className="space-y-2">
                       <Label>Optional Guarantor</Label>
-                      <Select value={adminLoanGuarantor} onValueChange={setAdminLoanGuarantor}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="None" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="no_guarantor">No guarantor</SelectItem>
-                          {members
-                            .filter((m) => m.id !== adminLoanDialogOpenMemberId)
-                            .map((m) => (
-                              <SelectItem key={m.id} value={m.id}>
-                                {m.name} ({m.membership_type})
-                              </SelectItem>
-                            ))}
-                        </SelectContent>
-                      </Select>
+                      <select
+                        value={adminLoanGuarantor}
+                        onChange={(e) => setAdminLoanGuarantor(e.target.value)}
+                        className="flex h-10 w-full appearance-none rounded-md border border-[#E8EBE8] bg-white px-3 py-2 text-sm text-[#1E231F] shadow-sm focus:outline-none focus:ring-1 focus:ring-[#2C5530]"
+                      >
+                        <option value="no_guarantor">No guarantor</option>
+                        {members
+                          .filter((m) => m.id !== adminLoanDialogOpenMemberId)
+                          .map((m) => (
+                            <option key={m.id} value={m.id}>
+                              {m.name} ({m.membership_type})
+                            </option>
+                          ))}
+                      </select>
                     </div>
                     <div className="space-y-2">
                       <Label>Reason</Label>
@@ -1833,8 +1842,7 @@ const Dashboard = () => {
                                     </SelectTrigger>
                                     <SelectContent>
                                       {loans.filter(l => l.user_id === user?.id && l.status === 'approved' && !l.repaid).map((l) => {
-                                        const total_repaid = (l.amount_repaid || 0) + (l.interest_repaid || 0);
-                                        const outstanding = Math.max(0, getLoanDisplayBalance(l) - total_repaid);
+                                        const outstanding = Math.max(0, getLoanDisplayBalance(l));
                                         return (
                                           <SelectItem key={l.id} value={l.id}>
                                             {formatCurrency(l.amount)} - {l.guarantor_name} (Due: {formatCurrency(outstanding)})
@@ -1855,8 +1863,7 @@ const Dashboard = () => {
                                     max={repayLoanId ? (() => {
                                       const loan = loans.find(l => l.id === repayLoanId);
                                       if (!loan) return 0;
-                                      const total_repaid = (loan.amount_repaid || 0) + (loan.interest_repaid || 0);
-                                      return Math.max(0, getLoanDisplayBalance(loan) - total_repaid);
+                                      return Math.max(0, getLoanDisplayBalance(loan));
                                     })() : 0}
                                   />
                                 </div>
@@ -2015,21 +2022,21 @@ const Dashboard = () => {
                       </div>
                       <div className="space-y-2">
                         <Label>Guarantor</Label>
-                        <Select value={loanGuarantor} onValueChange={setLoanGuarantor}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select a guarantor" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {eligibleGuarantors.map((m) => {
-                              const remainingSlots = getRemainingGuaranteeSlots(m);
-                              return (
-                                <SelectItem key={m.id} value={m.id}>
-                                  {m.name} ({remainingSlots} slot{remainingSlots === 1 ? '' : 's'} left)
-                                </SelectItem>
-                              );
-                            })}
-                          </SelectContent>
-                        </Select>
+                        <select
+                          value={loanGuarantor}
+                          onChange={(e) => setLoanGuarantor(e.target.value)}
+                          className="flex h-10 w-full appearance-none rounded-md border border-[#E8EBE8] bg-white px-3 py-2 text-sm text-[#1E231F] shadow-sm focus:outline-none focus:ring-1 focus:ring-[#2C5530]"
+                        >
+                          <option value="">Select a guarantor</option>
+                          {eligibleGuarantors.map((m) => {
+                            const remainingSlots = getRemainingGuaranteeSlots(m);
+                            return (
+                              <option key={m.id} value={m.id}>
+                                {m.name} ({remainingSlots} slot{remainingSlots === 1 ? '' : 's'} left)
+                              </option>
+                            );
+                          })}
+                        </select>
                       </div>
                       <div className="space-y-2">
                         <Label>Reason</Label>

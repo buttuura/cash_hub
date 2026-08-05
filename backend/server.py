@@ -546,9 +546,9 @@ def get_loan_outstanding_balance(loan: dict) -> float:
     else:
         stored_balance = float(stored_balance)
 
-    if stored_balance is not None and float(stored_balance) > 0 and loan.get("outstanding_balance") is None:
-        repaid = float(loan.get("amount_repaid", 0) or 0)
-        if repaid > 0:
+    repaid = float(loan.get("amount_repaid", 0) or 0) + float(loan.get("interest_repaid", 0) or 0)
+    if stored_balance is not None and float(stored_balance) > 0:
+        if loan.get("outstanding_balance") is None:
             stored_balance = max(0, float(stored_balance) - repaid)
 
     return float(stored_balance or 0)
@@ -607,6 +607,12 @@ async def get_member_guarantee_count(member_id: str) -> int:
         "repaid": False
     })
     return count
+
+async def get_member_remaining_guarantee_slots(member_id: str, max_guarantees: Optional[int] = None) -> int:
+    """Return how many guarantee slots remain for a member."""
+    active_count = await get_member_guarantee_count(member_id)
+    limit = max_guarantees if max_guarantees is not None else MAX_GUARANTEES_PER_MEMBER
+    return max(0, limit - active_count)
 
 async def check_can_leave_group(member_id: str) -> dict:
     """Check if member can leave the group"""
@@ -952,6 +958,8 @@ async def get_members(user: dict = Depends(get_current_user)):
         # Hide admin role from non-super-admins
         if not is_treasurer and m.get("role") == "admin":
             m["role"] = "member"
+        max_guarantees = m.get("max_guarantees", MAX_GUARANTEES_PER_MEMBER)
+        m["remaining_guarantee_slots"] = await get_member_remaining_guarantee_slots(m["id"], max_guarantees)
         result.append(m)
     return result
 
@@ -966,6 +974,8 @@ async def get_member(member_id: str, user: dict = Depends(get_current_user)):
     # Hide admin role from non-super-admins
     if user.get("role") not in ["super_admin", "treasurer"] and member.get("role") in ["admin", "super_admin", "treasurer"]:
         member["role"] = "member"
+    max_guarantees = member.get("max_guarantees", MAX_GUARANTEES_PER_MEMBER)
+    member["remaining_guarantee_slots"] = await get_member_remaining_guarantee_slots(member["id"], max_guarantees)
     return member
 
 @api_router.post("/products")
