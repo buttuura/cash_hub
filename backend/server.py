@@ -1482,8 +1482,9 @@ async def create_project(project: ProjectCreate, user: dict = Depends(get_curren
 
 @api_router.get("/projects")
 async def list_projects(user: dict = Depends(get_current_user)):
-    if user.get("role") != "member":
-        raise HTTPException(status_code=403, detail="Members only")
+    allowed_roles = {"member", "admin", "super_admin", "treasurer"}
+    if user.get("role") not in allowed_roles:
+        raise HTTPException(status_code=403, detail="Members or staff only")
 
     projects = await db.projects.find({}).sort("created_at", -1).to_list(200)
     project_ids = [str(project.get("project_id") or project.get("id") or str(project.get("_id"))) for project in projects]
@@ -1601,6 +1602,56 @@ async def delete_project(project_id: str, user: dict = Depends(get_current_user)
     await db.project_comments.delete_many({"project_id": project_id})
     await db.project_ratings.delete_many({"project_id": project_id})
     return {"message": "Project deleted", "id": project_id}
+
+
+class BatchProjectDelete(BaseModel):
+    ids: List[str]
+
+
+@api_router.get("/admin/projects")
+async def admin_list_projects(user: dict = Depends(require_admin)):
+    """Return all projects including DB `_id` (as `db_id`) for admin operations."""
+    projects = await db.projects.find({}).to_list(1000)
+    out = []
+    for p in projects:
+        db_id = str(p.get("_id"))
+        project_id = p.get("project_id") or p.get("id") or db_id
+        p_out = p.copy()
+        p_out["db_id"] = db_id
+        p_out["project_id"] = project_id
+        p_out.pop("_id", None)
+        out.append(serialize_mongo_document(p_out))
+    return out
+
+
+@api_router.delete("/admin/projects")
+async def admin_delete_projects(data: BatchProjectDelete, user: dict = Depends(require_admin)):
+    """Delete projects by database `_id` or `project_id` (admin only).
+
+    Example payload: {"ids": ["64b...", "project-123"]}
+    """
+    deleted = 0
+    for ident in data.ids:
+        # Try to delete by DB _id first
+        try:
+            oid = ObjectId(ident)
+            res = await db.projects.delete_one({"_id": oid})
+            if res.deleted_count:
+                deleted += 1
+                await db.project_comments.delete_many({"project_id": str(ident)})
+                await db.project_ratings.delete_many({"project_id": str(ident)})
+                continue
+        except Exception:
+            pass
+
+        # Fall back to deleting by project_id
+        res = await db.projects.delete_one({"project_id": ident})
+        if res.deleted_count:
+            deleted += 1
+            await db.project_comments.delete_many({"project_id": ident})
+            await db.project_ratings.delete_many({"project_id": ident})
+
+    return {"deleted": deleted}
 
 @api_router.delete("/members/{member_id}")
 async def delete_member(member_id: str, user: dict = Depends(require_treasurer)):
