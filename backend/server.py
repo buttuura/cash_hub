@@ -610,6 +610,16 @@ def is_valid_object_id(value: Optional[str]) -> bool:
         return False
     return ObjectId.is_valid(value)
 
+
+def serialize_mongo_document(value):
+    if isinstance(value, ObjectId):
+        return str(value)
+    if isinstance(value, dict):
+        return {k: serialize_mongo_document(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [serialize_mongo_document(v) for v in value]
+    return value
+
 async def get_member_guarantee_count(member_id: str) -> int:
     """Count how many active loans this member is guaranteeing"""
     count = await db.loans.count_documents({
@@ -1511,7 +1521,7 @@ async def list_projects(user: dict = Depends(get_current_user)):
             round(sum((r.get("rating") or 0) for r in project_ratings) / len(project_ratings), 2)
             if project_ratings else 0
         )
-        result.append(project)
+        result.append(serialize_mongo_document(project))
     return result
 
 @api_router.post("/projects/{project_id}/comments")
