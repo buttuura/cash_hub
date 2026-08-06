@@ -128,7 +128,8 @@ const Dashboard = () => {
   const [projectDescription, setProjectDescription] = useState('');
   const [projectCategory, setProjectCategory] = useState('');
   const [projectCommentText, setProjectCommentText] = useState({});
-  const [projectCommentRating, setProjectCommentRating] = useState({});
+  const [projectCommentSubmitting, setProjectCommentSubmitting] = useState({});
+  const [projectRatingSubmitting, setProjectRatingSubmitting] = useState({});
 
   // Form states
   const [depositAmount, setDepositAmount] = useState('500');
@@ -253,10 +254,20 @@ const Dashboard = () => {
     }
   }, [getAuthHeaders]);
 
-
-
   const getImageUrl = (imageUrl) => {
     return resolveImageUrl(imageUrl, API_URL);
+  };
+
+  const formatServerError = (err, defaultMsg = 'Server error') => {
+    const detail = err?.response?.data?.detail;
+    if (!detail) return defaultMsg;
+    if (typeof detail === 'string') return detail;
+    if (Array.isArray(detail)) return detail.map((d) => (typeof d === 'string' ? d : JSON.stringify(d))).join(', ');
+    try {
+      return JSON.stringify(detail);
+    } catch (e) {
+      return String(detail);
+    }
   };
 
   const getProductById = (productId) => {
@@ -271,7 +282,7 @@ const Dashboard = () => {
       return;
     }
     try {
-      await axios.post(
+      const response = await axios.post(
         `${API_URL}/api/projects`,
         {
           title: projectTitle.trim(),
@@ -280,37 +291,87 @@ const Dashboard = () => {
         },
         { headers: getAuthHeaders() }
       );
-      toast.success('Project added successfully');
+      const createdProject = response.data;
+      toast.success('Project submitted successfully');
       setProjectTitle('');
       setProjectDescription('');
       setProjectCategory('');
-      fetchProjects();
+      setProjects((prev) => [
+        {
+          ...createdProject,
+          comments: createdProject.comments || [],
+          rating_count: createdProject.rating_count || 0,
+          average_rating: createdProject.average_rating || 0,
+        },
+        ...prev,
+      ]);
+      await fetchProjects();
     } catch (err) {
       console.error('Failed to create project:', err);
-      toast.error(err.response?.data?.detail || 'Failed to create project');
+      toast.error(err.response?.data?.detail || 'Failed to submit project');
     }
   };
 
   const handleSubmitProjectComment = async (projectId) => {
+    if (projectCommentSubmitting[projectId]) return;
     const comment = String(projectCommentText[projectId] || '').trim();
-    const rating = parseInt(projectCommentRating[projectId], 10) || 0;
-    if (rating < 1 || rating > 5) {
-      toast.error('Please select a rating between 1 and 5');
+    if (!comment) {
+      toast.error('Please enter a comment');
       return;
     }
     try {
-      await axios.post(
+      setProjectCommentSubmitting((prev) => ({ ...prev, [projectId]: true }));
+      const response = await axios.post(
         `${API_URL}/api/projects/${projectId}/comments`,
-        { comment: comment || undefined, rating },
+        { comment },
         { headers: getAuthHeaders() }
       );
-      toast.success('Comment submitted');
+      const newComment = response.data;
+      toast.success('Comment added');
       setProjectCommentText((prev) => ({ ...prev, [projectId]: '' }));
-      setProjectCommentRating((prev) => ({ ...prev, [projectId]: '5' }));
-      fetchProjects();
+      setProjects((prev) =>
+        prev.map((project) =>
+          project.id === projectId
+            ? { ...project, comments: [newComment, ...(project.comments || [])] }
+            : project
+        )
+      );
+      await fetchProjects();
     } catch (err) {
       console.error('Failed to submit comment:', err);
-      toast.error(err.response?.data?.detail || 'Failed to submit comment');
+      toast.error(err.response?.data?.detail || 'Failed to add comment');
+    } finally {
+      setProjectCommentSubmitting((prev) => ({ ...prev, [projectId]: false }));
+    }
+  };
+
+  const handleRateProject = async (projectId, rating) => {
+    if (projectRatingSubmitting[projectId]) return;
+    try {
+      setProjectRatingSubmitting((prev) => ({ ...prev, [projectId]: true }));
+      await axios.post(
+        `${API_URL}/api/projects/${projectId}/ratings`,
+        { rating },
+        { headers: getAuthHeaders() }
+      );
+      toast.success('Rating submitted');
+      fetchProjects();
+    } catch (err) {
+      console.error('Failed to rate project:', err);
+      toast.error(err.response?.data?.detail || 'Failed to submit rating');
+    } finally {
+      setProjectRatingSubmitting((prev) => ({ ...prev, [projectId]: false }));
+    }
+  };
+
+  const handleDeleteProject = async (projectId) => {
+    if (!window.confirm('Are you sure you want to delete this project?')) return;
+    try {
+      await axios.delete(`${API_URL}/api/projects/${projectId}`, { headers: getAuthHeaders() });
+      toast.success('Project deleted');
+      fetchProjects();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Failed to delete project');
     }
   };
 
@@ -863,17 +924,6 @@ const Dashboard = () => {
     }
   };
 
-  const handleDeleteProject = async (projectId) => {
-    if (!window.confirm('Are you sure you want to delete this project?')) return;
-    try {
-      await axios.delete(`${API_URL}/api/projects/${projectId}`, { headers: getAuthHeaders() });
-      toast.success('Project deleted');
-      fetchProjects();
-    } catch (err) {
-      toast.error(err.response?.data?.detail || 'Failed to delete project');
-    }
-  };
-
   const handleRepayLoan = async (loanId, amount) => {
     const repayAmount = prompt('Enter repayment amount:');
     if (!repayAmount) return;
@@ -1122,7 +1172,7 @@ const Dashboard = () => {
         { id: 'overview', label: 'Overview', icon: Wallet },
         { id: 'financials', label: 'Financials', icon: BarChart3 },
         { id: 'members', label: 'Members', icon: Users },
-        ...(isMember ? [{ id: 'projects', label: 'Projects', icon: MessageCircle }] : []),
+        { id: 'projects', label: 'Projects', icon: MessageCircle },
         { id: 'marketplace', label: 'Orders', icon: ShoppingCart },
       ];
 
@@ -2732,7 +2782,7 @@ const Dashboard = () => {
               <div>
                 <h2 className="text-2xl font-bold font-['Manrope'] text-[#1E231F]">Member Projects</h2>
                 <p className="text-sm text-[#5C665D] max-w-2xl">
-                  Add new projects and let other members comment and rate them.
+                  Submit project ideas, rate them with stars, and add comments. The top-rated project will be implemented next year.
                 </p>
               </div>
               <Badge className="bg-[#2C5530]/10 text-[#2C5530]">Members only</Badge>
@@ -2774,7 +2824,7 @@ const Dashboard = () => {
                     />
                   </div>
                   <Button type="submit" className="bg-[#2C5530] hover:bg-[#214024] rounded-full">
-                    Add Project
+                    Submit Project
                   </Button>
                 </form>
               </CardContent>
@@ -2783,7 +2833,7 @@ const Dashboard = () => {
             {projects.length === 0 ? (
               <Card className="bg-[#FAFAF8] border border-[#E8EBE8] shadow-sm">
                 <CardContent className="p-6 text-[#5C665D]">
-                  No projects have been added yet. Be the first member to share a project idea.
+                  No projects have been submitted yet. Be the first to share an idea.
                 </CardContent>
               </Card>
             ) : (
@@ -2831,58 +2881,64 @@ const Dashboard = () => {
                           </div>
                         </div>
 
+                        <div className="space-y-2">
+                          <p className="text-sm font-semibold text-[#1E231F]">Rate this project</p>
+                          <div className="flex items-center gap-2">
+                            {[5, 4, 3, 2, 1].map((value) => (
+                              <button
+                                key={value}
+                                type="button"
+                                onClick={() => handleRateProject(project.id, value)}
+                                disabled={Boolean(projectRatingSubmitting[project.id])}
+                                className={`text-2xl transition-colors ${
+                                  value <= (project.average_rating || 0)
+                                    ? 'text-[#E8B25C]'
+                                    : 'text-[#E8EBE8]'
+                                } hover:text-[#E8B25C] disabled:opacity-50`}
+                                title={`Rate ${value} star${value === 1 ? '' : 's'}`}
+                              >
+                                ★
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
                         <div className="space-y-3">
-                          {(project.comments || []).slice(0, 3).map((comment) => (
+                          <p className="text-sm font-semibold text-[#1E231F]">Comments</p>
+                          {(project.comments || []).slice(0, 5).map((comment) => (
                             <div key={comment.id} className="rounded-2xl bg-[#FAFAF8] p-3 border border-[#E8EBE8]">
                               <div className="flex items-center justify-between gap-2">
                                 <p className="text-sm font-semibold text-[#1E231F]">{comment.user_name}</p>
-                                <Badge className="bg-[#2C5530]/10 text-[#2C5530]">{comment.rating} / 5</Badge>
+                                <p className="text-xs text-[#5C665D]">{new Date(comment.created_at).toLocaleDateString()}</p>
                               </div>
                               <p className="text-sm text-[#5C665D] mt-2">{comment.comment || 'No comment provided.'}</p>
                             </div>
                           ))}
-                          {project.comments?.length > 3 && (
-                            <p className="text-xs text-[#5C665D]">Showing latest 3 comments.</p>
+                          {project.comments?.length > 5 && (
+                            <p className="text-xs text-[#5C665D]">Showing latest 5 comments.</p>
                           )}
                         </div>
-                      </div>
 
-                      <div className="space-y-3">
-                        <h4 className="text-sm font-semibold text-[#1E231F]">Add your comment</h4>
-                        <div className="grid grid-cols-1 gap-3">
-                          <div className="space-y-2">
-                            <Label htmlFor={`comment-${project.id}`}>Comment</Label>
+                        <div className="space-y-2">
+                          <Label htmlFor={`comment-${project.id}`}>Add your comment</Label>
+                          <div className="flex gap-2">
                             <Textarea
                               id={`comment-${project.id}`}
                               value={projectCommentText[project.id] || ''}
                               onChange={(e) => setProjectCommentText((prev) => ({ ...prev, [project.id]: e.target.value }))}
-                              rows={3}
-                              placeholder="Share feedback or suggestions"
+                              rows={2}
+                              placeholder="Share feedback or suggestions..."
+                              className="flex-1"
                             />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor={`rating-${project.id}`}>Rating</Label>
-                            <Select
-                              value={projectCommentRating[project.id] || '5'}
-                              onValueChange={(value) => setProjectCommentRating((prev) => ({ ...prev, [project.id]: value }))}
+                            <Button
+                              type="button"
+                              className="bg-[#2C5530] hover:bg-[#214024] rounded-full self-end"
+                              onClick={() => handleSubmitProjectComment(project.id)}
+                              disabled={Boolean(projectCommentSubmitting[project.id])}
                             >
-                              <SelectTrigger>
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {[5, 4, 3, 2, 1].map((value) => (
-                                  <SelectItem key={value} value={String(value)}>{value} stars</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                              {projectCommentSubmitting[project.id] ? '...' : 'Post'}
+                            </Button>
                           </div>
-                          <Button
-                            type="button"
-                            className="bg-[#2C5530] hover:bg-[#214024] rounded-full"
-                            onClick={() => handleSubmitProjectComment(project.id)}
-                          >
-                            Submit Comment
-                          </Button>
                         </div>
                       </div>
                     </CardContent>
