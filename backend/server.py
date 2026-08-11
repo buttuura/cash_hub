@@ -29,6 +29,7 @@ from datetime import datetime, timezone, timedelta
 import anyio
 import cloudinary
 import cloudinary.uploader
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 # Configure logging
 logging.basicConfig(
@@ -45,6 +46,8 @@ if not mongo_url:
 logger.info(f"Connecting to MongoDB: {mongo_url[:25]}...")  # This will print part of the URL
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
+
+scheduler = None
 
 UPLOAD_DIR = ROOT_DIR / 'uploads'
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -221,8 +224,9 @@ class ResetPasswordRequest(BaseModel):
 class ProductCreate(BaseModel):
     title: str
     description: Optional[str] = None
-    price: float
+    price: Optional[float] = None
     category: str
+    contact_phone: Optional[str] = None
     image_url: Optional[str] = None
 
 class ProjectCreate(BaseModel):
@@ -588,7 +592,8 @@ async def accrue_loan_interest_on_db(loan: dict) -> dict:
 
     total_months_elapsed = count_interest_periods(approved_date)
     current_balance = get_loan_outstanding_balance(loan)
-    interest = calculate_loan_interest(current_balance, total_months_elapsed, months_to_accrue)
+    principal = float(loan.get("amount", 0) or 0)
+    interest = calculate_loan_interest(principal, total_months_elapsed, months_to_accrue)
     new_balance = current_balance + interest
 
     update_fields = {
@@ -603,6 +608,21 @@ async def accrue_loan_interest_on_db(loan: dict) -> dict:
 
     loan.update(update_fields)
     return loan
+
+
+async def accrue_interest_for_all_loans():
+    """Background job: accrue monthly interest for all approved outstanding loans."""
+    try:
+        cursor = db.loans.find({"status": "approved", "repaid": False})
+        loans = await cursor.to_list(1000)
+        for loan in loans:
+            try:
+                await accrue_loan_interest_on_db(loan)
+            except Exception as e:
+                logger.error(f"Failed to accrue interest for loan {loan.get('id') or loan.get('_id')}: {e}")
+        logger.info(f"Monthly interest accrual completed for {len(loans)} loans")
+    except Exception as e:
+        logger.error(f"Monthly interest accrual job failed: {e}")
 
 
 def is_valid_object_id(value: Optional[str]) -> bool:
@@ -1003,11 +1023,18 @@ async def get_member(member_id: str, user: dict = Depends(get_current_user)):
 async def create_product(
     title: str = Form(...),
     description: Optional[str] = Form(None),
-    price: float = Form(...),
+    price: Optional[str] = Form(None),
     category: str = Form(...),
+    contact_phone: Optional[str] = Form(None),
     user: dict = Depends(get_current_user),
     images: List[UploadFile] = File(default=[]),
 ):
+    parsed_price = float(price) if price is not None and str(price).strip() != "" else None
+    if parsed_price is None and not contact_phone:
+        raise HTTPException(status_code=400, detail="Provide either a price or a contact phone number")
+    if parsed_price is not None and parsed_price < 0:
+        raise HTTPException(status_code=400, detail="Price cannot be negative")
+
     image_urls = []
     if images:
         for img in images:
@@ -1020,8 +1047,9 @@ async def create_product(
     product_data = {
         "title": title,
         "description": description,
-        "price": price,
+        "price": parsed_price,
         "category": category,
+        "contact_phone": contact_phone,
         "image_url": image_urls[0] if image_urls else None,
         "image_urls": image_urls,
         "seller_id": user.get("id"),
@@ -1746,11 +1774,6 @@ async def request_deposit(deposit: DepositRequest, user: dict = Depends(get_curr
     if deposit.amount <= 0:
         raise HTTPException(status_code=400, detail="Amount must be positive")
 
-    deposit_type = "savings" if deposit.deposit_type == "development_fee" else deposit.deposit_type
-    allowed_deposit_types = ["savings", "loan_payment", "interest_payment"]
-    if deposit_type not in allowed_deposit_types:
-        raise HTTPException(status_code=400, detail="Invalid deposit type")
-
     target_user = user
     if deposit.target_user_id:
         if user.get("role") not in ["super_admin", "treasurer"]:
@@ -1762,6 +1785,16 @@ async def request_deposit(deposit: DepositRequest, user: dict = Depends(get_curr
             raise HTTPException(status_code=404, detail="Target member not found")
         target_user["id"] = str(target_user["_id"])
         target_user.pop("_id", None)
+
+    if deposit.deposit_type == "development_fee" and user.get("role") in ["super_admin", "treasurer"]:
+        deposit_type = "development_fee"
+        allowed_deposit_types = ["savings", "loan_payment", "interest_payment", "development_fee"]
+    else:
+        deposit_type = "savings" if deposit.deposit_type == "development_fee" else deposit.deposit_type
+        allowed_deposit_types = ["savings", "loan_payment", "interest_payment"]
+    
+    if deposit_type not in allowed_deposit_types:
+        raise HTTPException(status_code=400, detail="Invalid deposit type")
     
     # Calculate late fee if applicable
     today = datetime.now(timezone.utc)
@@ -1936,18 +1969,27 @@ async def approve_deposit(approval: TransactionApproval, user: dict = Depends(re
             remaining_after_late_fee = max(0, deposit["amount"] - late_fee_amount)
 
             member = await db.users.find_one({"_id": ObjectId(deposit["user_id"])})
-            num_slots = member.get("max_guarantees", MAX_GUARANTEES_PER_MEMBER) if member else MAX_GUARANTEES_PER_MEMBER
-            monthly_development_fee_cap = DEVELOPMENT_FEE * num_slots
-            monthly_development_fee_applied = await get_monthly_development_fee_applied(deposit["user_id"], deposit.get("month"))
-            remaining_development_fee_cap = max(0, monthly_development_fee_cap - monthly_development_fee_applied)
-            development_fee_amount = min(remaining_development_fee_cap, remaining_after_late_fee)
-            savings_amount = max(0, remaining_after_late_fee - development_fee_amount)
+            is_treasurer = member.get("role") in ["super_admin", "treasurer"] if member else False
+            
+            if is_treasurer:
+                balance_updates = {"total_savings": remaining_after_late_fee}
+                if late_fee_amount > 0:
+                    balance_updates["total_late_fees"] = late_fee_amount
+                development_fee_amount = 0
+                savings_amount = remaining_after_late_fee
+            else:
+                num_slots = member.get("max_guarantees", MAX_GUARANTEES_PER_MEMBER) if member else MAX_GUARANTEES_PER_MEMBER
+                monthly_development_fee_cap = DEVELOPMENT_FEE * num_slots
+                monthly_development_fee_applied = await get_monthly_development_fee_applied(deposit["user_id"], deposit.get("month"))
+                remaining_development_fee_cap = max(0, monthly_development_fee_cap - monthly_development_fee_applied)
+                development_fee_amount = min(remaining_development_fee_cap, remaining_after_late_fee)
+                savings_amount = max(0, remaining_after_late_fee - development_fee_amount)
 
-            balance_updates = {"total_savings": savings_amount}
-            if late_fee_amount > 0:
-                balance_updates["total_late_fees"] = late_fee_amount
-            if development_fee_amount > 0:
-                balance_updates["development_fund"] = development_fee_amount
+                balance_updates = {"total_savings": savings_amount}
+                if late_fee_amount > 0:
+                    balance_updates["total_late_fees"] = late_fee_amount
+                if development_fee_amount > 0:
+                    balance_updates["development_fund"] = development_fee_amount
 
             await db.users.update_one(
                 {"_id": ObjectId(deposit["user_id"])},
@@ -3466,6 +3508,13 @@ async def seed_treasurer():
 
 @app.on_event("startup")
 async def startup_event():
+    global scheduler
+    if scheduler is None or not scheduler.running:
+        scheduler = AsyncIOScheduler()
+        scheduler.add_job(accrue_interest_for_all_loans, 'cron', hour=0, minute=0, timezone='UTC')
+        scheduler.start()
+        logger.info("Monthly interest accrual scheduler started")
+
     try:
         await client.admin.command('ping')
         logger.info("MongoDB connected successfully")
@@ -3481,7 +3530,7 @@ async def startup_event():
         duplicates = await get_duplicate_normalized_phones()
         if duplicates:
             logger.error(
-                "Found duplicate normalized_phone values while creating unique index, please clean the following duplicates first: %s",
+                "Found duplicate normalized_phone values when creating unique index, please clean the following duplicates first: %s",
                 [{"normalized_phone": dup["_id"], "count": dup["count"], "ids": [str(i) for i in dup["ids"]]} for dup in duplicates]
             )
         else:
@@ -3529,6 +3578,9 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
+    global scheduler
+    if scheduler and scheduler.running:
+        scheduler.shutdown()
     client.close()
 # Include the API router
 app.include_router(api_router)

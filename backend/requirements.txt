@@ -29,3 +29,6 @@ requests
 
 # WebSocket
 websockets
+
+# Scheduled tasks
+apscheduler

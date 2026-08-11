@@ -9,7 +9,7 @@ import { Textarea } from '../components/ui/textarea';
 import { Label } from '../components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../components/ui/dialog';
 import { Toaster, toast } from 'sonner';
-import { ShoppingCart, Heart, Share2, ChevronLeft, ChevronRight, MapPin, Shield, ArrowLeft, X } from 'lucide-react';
+import { ShoppingCart, Heart, Share2, ChevronLeft, ChevronRight, MapPin, Shield, ArrowLeft, X, Phone, MessageCircle } from 'lucide-react';
 import { resolveImageUrl } from '../lib/utils';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
@@ -53,6 +53,22 @@ function ProductDetailPage() {
   const [cartBuyerNote, setCartBuyerNote] = useState('');
   const [cartOrderSubmitting, setCartOrderSubmitting] = useState(false);
   const [expandedDesc, setExpandedDesc] = useState(false);
+
+  const contactPhone = product?.contact_phone;
+  const hasPrice = product && Number(product.price) > 0;
+
+  const handleCallSeller = () => {
+    if (contactPhone) {
+      window.location.href = `tel:${contactPhone}`;
+    }
+  };
+
+  const handleWhatsAppSeller = () => {
+    if (contactPhone) {
+      const digits = contactPhone.replace(/[^0-9]/g, '');
+      window.open(`https://wa.me/${digits}`, '_blank', 'noopener,noreferrer');
+    }
+  };
 
   useEffect(() => {
     const fetchProduct = async () => {
@@ -163,6 +179,14 @@ function ProductDetailPage() {
   };
 
   const handleAddToCart = async () => {
+    if (!hasPrice) {
+      if (contactPhone) {
+        toast.info(`Contact seller: ${contactPhone}`, { duration: 5000 });
+      } else {
+        toast.error('No price or contact info provided for this item');
+      }
+      return;
+    }
     setAddingToCart(true);
     try {
       const storedCart = JSON.parse(localStorage.getItem('cash_hub_cart') || '[]');
@@ -198,6 +222,14 @@ function ProductDetailPage() {
   };
 
   const handleBuyNow = () => {
+    if (!hasPrice) {
+      if (contactPhone) {
+        toast.info(`Contact seller: ${contactPhone}`, { duration: 5000 });
+      } else {
+        toast.error('No price or contact info provided for this item');
+      }
+      return;
+    }
     setBuyerName(user?.name || '');
     setBuyerEmail(user?.email || '');
     setBuyerPhone('');
@@ -420,9 +452,9 @@ function ProductDetailPage() {
     );
   }
 
-  const price = Number(product.price);
-  const originalPrice = Math.round(price * 1.2);
-  const discountPercent = Math.round(((originalPrice - price) / originalPrice) * 100);
+  const price = hasPrice ? Number(product.price) : 0;
+  const originalPrice = hasPrice ? Math.round(price * 1.2) : 0;
+  const discountPercent = hasPrice ? Math.round(((originalPrice - price) / originalPrice) * 100) : 0;
 
   return (
     <div className="min-h-screen bg-[#FAFAF8]">
@@ -536,50 +568,82 @@ function ProductDetailPage() {
             </div>
 
             <div className="bg-white rounded-xl border border-slate-200 p-4">
-              <div className="flex items-baseline gap-3 mb-3">
-                <span className="text-sm text-[#2B6F38] font-medium">{discountPercent}% off</span>
-                <span className="text-xs text-[#6B7C61] line-through">UGX {originalPrice.toLocaleString()}</span>
-              </div>
-              <p className="text-3xl font-bold text-[#2B6F38] mb-4">UGX {price.toLocaleString()}</p>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <label className="text-sm font-medium text-[#172B12]">Quantity</label>
+              {hasPrice ? (
+                <>
+                  <div className="flex items-baseline gap-3 mb-3">
+                    <span className="text-sm text-[#2B6F38] font-medium">{discountPercent}% off</span>
+                    <span className="text-xs text-[#6B7C61] line-through">UGX {originalPrice.toLocaleString()}</span>
+                  </div>
+                  <p className="text-3xl font-bold text-[#2B6F38] mb-4">UGX {price.toLocaleString()}</p>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <label className="text-sm font-medium text-[#172B12]">Quantity</label>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setQuantity((prev) => Math.max(1, prev - 1))}
+                        className="h-10 w-10 rounded-xl border border-slate-200 flex items-center justify-center text-[#172B12] hover:bg-slate-50 transition-colors text-lg font-medium"
+                      >
+                        -
+                      </button>
+                      <span className="flex-1 text-center font-semibold text-[#172B12]">{quantity}</span>
+                      <button
+                        type="button"
+                        onClick={() => setQuantity((prev) => prev + 1)}
+                        className="h-10 w-10 rounded-xl border border-slate-200 flex items-center justify-center text-[#172B12] hover:bg-slate-50 transition-colors text-lg font-medium"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+                  <div className="space-y-2 mt-4">
+                    <Button
+                      onClick={handleAddToCart}
+                      disabled={addingToCart}
+                      className={`w-full h-12 text-base font-medium shadow-sm ${addedToCart ? 'bg-[#2B6F38] text-white hover:bg-[#1B5E20]' : 'bg-[#172B12] text-white hover:bg-[#0f2409]'}`}
+                    >
+                      <ShoppingCart className="h-5 w-5 mr-2" />
+                      {addedToCart ? 'Added ✓' : addingToCart ? 'Adding...' : 'Add to Cart'}
+                    </Button>
+                    <Button
+                      onClick={handleBuyNow}
+                      disabled={addingToCart}
+                      className="w-full h-12 bg-white text-[#172B12] border border-[#172B12] hover:bg-[#ECF8E9] text-base font-medium shadow-sm"
+                    >
+                      Buy Now
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <div className="text-center py-6">
+                  <p className="text-2xl font-bold text-[#D48C70] mb-2">Contact seller</p>
+                  <p className="text-sm text-[#5C665D] mb-4">This item does not have a fixed price. Reach out to the seller directly.</p>
+                  <div className="flex items-center justify-center gap-3">
+                    {contactPhone && (
+                      <>
+                        <Button
+                          onClick={handleCallSeller}
+                          className="bg-[#172B12] text-white hover:bg-[#0f2409]"
+                        >
+                          <Phone className="h-4 w-4 mr-2" />
+                          Call
+                        </Button>
+                        <Button
+                          onClick={handleWhatsAppSeller}
+                          className="bg-[#25D366] text-white hover:bg-[#128C7E]"
+                        >
+                          <MessageCircle className="h-4 w-4 mr-2" />
+                          WhatsApp
+                        </Button>
+                      </>
+                    )}
+                    {!contactPhone && (
+                      <p className="text-sm text-slate-500">No contact info provided</p>
+                    )}
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setQuantity((prev) => Math.max(1, prev - 1))}
-                    className="h-10 w-10 rounded-xl border border-slate-200 flex items-center justify-center text-[#172B12] hover:bg-slate-50 transition-colors text-lg font-medium"
-                  >
-                    -
-                  </button>
-                  <span className="flex-1 text-center font-semibold text-[#172B12]">{quantity}</span>
-                  <button
-                    type="button"
-                    onClick={() => setQuantity((prev) => prev + 1)}
-                    className="h-10 w-10 rounded-xl border border-slate-200 flex items-center justify-center text-[#172B12] hover:bg-slate-50 transition-colors text-lg font-medium"
-                  >
-                    +
-                  </button>
-                </div>
-              </div>
-              <div className="space-y-2 mt-4">
-                <Button
-                  onClick={handleAddToCart}
-                  disabled={addingToCart}
-                  className={`w-full h-12 text-base font-medium shadow-sm ${addedToCart ? 'bg-[#2B6F38] text-white hover:bg-[#1B5E20]' : 'bg-[#172B12] text-white hover:bg-[#0f2409]'}`}
-                >
-                  <ShoppingCart className="h-5 w-5 mr-2" />
-                  {addedToCart ? 'Added ✓' : addingToCart ? 'Adding...' : 'Add to Cart'}
-                </Button>
-                <Button
-                  onClick={handleBuyNow}
-                  disabled={addingToCart}
-                  className="w-full h-12 bg-white text-[#172B12] border border-[#172B12] hover:bg-[#ECF8E9] text-base font-medium shadow-sm"
-                >
-                  Buy Now
-                </Button>
-              </div>
+              )}
             </div>
 
             <div className="bg-white rounded-xl border border-slate-200 p-4">
@@ -611,15 +675,40 @@ function ProductDetailPage() {
 
             <div className="bg-white rounded-xl border border-slate-200 p-4">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <MapPin className="h-4 w-4 text-[#4B5A45]" />
                   <span className="text-sm text-[#4B5A45]">Sold by: <span className="font-medium text-[#172B12]">{product.sellerName || product.seller_name || 'Member'}</span></span>
+                  {contactPhone && (
+                    <span className="text-sm text-[#5C665D]">
+                      ({contactPhone})
+                    </span>
+                  )}
                 </div>
                 <Badge className="bg-[#ECF8E9] text-[#2B6F38] hover:bg-[#ECF8E9]">
                   <Shield className="h-3 w-3 mr-1" />
                   Secure
                 </Badge>
               </div>
+              {contactPhone && (
+                <div className="flex items-center gap-2 mt-3">
+                  <a
+                    href={`tel:${contactPhone}`}
+                    className="inline-flex items-center gap-1 text-xs text-[#172B12] hover:text-[#2B6F38] font-medium"
+                  >
+                    <Phone className="h-3 w-3" />
+                    Call
+                  </a>
+                  <a
+                    href={`https://wa.me/${contactPhone.replace(/[^0-9]/g, '')}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 text-xs text-[#25D366] hover:text-[#128C7E] font-medium"
+                  >
+                    <MessageCircle className="h-3 w-3" />
+                    WhatsApp
+                  </a>
+                </div>
+              )}
             </div>
 
             <div className="flex items-center gap-3">

@@ -601,6 +601,7 @@ const Dashboard = () => {
       );
       toast.success('Deposit request submitted for approval');
 
+      fetchData._cache = null;
       setDepositDialogOpen(false);
       setDepositTargetUserId(null);
       setDepositDeductLateFee(false);
@@ -1517,20 +1518,21 @@ const Dashboard = () => {
                 <DialogContent className="sm:max-w-md">
                   <DialogHeader>
                     <DialogTitle className="font-['Manrope'] text-[#1E231F]">New Deposit</DialogTitle>
-                    <DialogDescription className="text-[#5C665D]">Submit a savings deposit request; development fees are applied automatically on approval</DialogDescription>
+                     <DialogDescription className="text-[#5C665D]">{isTreasurer ? 'Submit a deposit request. Development fees can be added manually or applied automatically on savings approval.' : 'Submit a savings deposit request; development fees are applied automatically on approval'}</DialogDescription>
                   </DialogHeader>
                   <form onSubmit={handleDeposit} className="space-y-4 mt-4">
                     <div className="space-y-2">
                       <Label>Deposit Type</Label>
-                       <Select value={depositType} onValueChange={setDepositType}>
-                         <SelectTrigger>
-                           <SelectValue />
-                         </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="savings">Savings</SelectItem>
-                            <SelectItem value="loan_payment">Pay Back Loan</SelectItem>
-                          </SelectContent>
-                       </Select>
+                        <Select value={depositType} onValueChange={setDepositType}>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                           <SelectContent>
+                             <SelectItem value="savings">Savings</SelectItem>
+                             {isTreasurer && <SelectItem value="development_fee">Development Fee</SelectItem>}
+                             <SelectItem value="loan_payment">Pay Back Loan</SelectItem>
+                           </SelectContent>
+                        </Select>
                     </div>
                     <div className="space-y-2">
                       <Label>Amount (UGX)</Label>
@@ -1922,19 +1924,20 @@ const Dashboard = () => {
                    <DialogContent className="sm:max-w-md">
                     <DialogHeader>
                       <DialogTitle className="font-['Manrope'] text-[#1E231F]">New Deposit</DialogTitle>
-                      <DialogDescription className="text-[#5C665D]">Submit a savings deposit request; development fees are applied automatically on approval</DialogDescription>
+                      <DialogDescription className="text-[#5C665D]">{isTreasurer ? 'Submit a deposit request. Development fees can be added manually or applied automatically on savings approval.' : 'Submit a savings deposit request; development fees are applied automatically on approval'}</DialogDescription>
                     </DialogHeader>
                     <form onSubmit={handleDeposit} className="space-y-4 mt-4">
                       <div className="space-y-2">
                         <Label>Deposit Type</Label>
-                        <Select value={depositType} onValueChange={setDepositType}>
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="savings">Savings</SelectItem>
-                          </SelectContent>
-                        </Select>
+                         <Select value={depositType} onValueChange={setDepositType}>
+                           <SelectTrigger>
+                             <SelectValue />
+                           </SelectTrigger>
+                           <SelectContent>
+                             <SelectItem value="savings">Savings</SelectItem>
+                             {isTreasurer && <SelectItem value="development_fee">Development Fee</SelectItem>}
+                           </SelectContent>
+                         </Select>
                       </div>
                       <div className="space-y-2">
                         <Label>Amount (UGX)</Label>
@@ -2590,20 +2593,21 @@ const Dashboard = () => {
               <DialogContent className="sm:max-w-md">
                 <DialogHeader>
                   <DialogTitle className="font-['Manrope'] text-[#1E231F]">New Deposit</DialogTitle>
-                  <DialogDescription className="text-[#5C665D]">Submit a savings deposit request; development fees are applied automatically on approval</DialogDescription>
+                  <DialogDescription className="text-[#5C665D]">{isTreasurer ? 'Submit a deposit request. Development fees can be added manually or applied automatically on savings approval.' : 'Submit a savings deposit request; development fees are applied automatically on approval'}</DialogDescription>
                 </DialogHeader>
                 <form onSubmit={handleDeposit} className="space-y-4 mt-4">
                   <div className="space-y-2">
                     <Label>Deposit Type</Label>
-                     <Select value={depositType} onValueChange={setDepositType}>
-                       <SelectTrigger>
-                         <SelectValue />
-                       </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="savings">Savings</SelectItem>
-                          <SelectItem value="loan_payment">Pay Back Loan</SelectItem>
-                        </SelectContent>
-                     </Select>
+                      <Select value={depositType} onValueChange={setDepositType}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                         <SelectContent>
+                           <SelectItem value="savings">Savings</SelectItem>
+                           {isTreasurer && <SelectItem value="development_fee">Development Fee</SelectItem>}
+                           <SelectItem value="loan_payment">Pay Back Loan</SelectItem>
+                         </SelectContent>
+                      </Select>
                   </div>
                   <div className="space-y-2">
                     <Label>Amount (UGX)</Label>
@@ -3235,7 +3239,13 @@ const Dashboard = () => {
                               <p className="text-sm text-[#5C665D]">{PRODUCT_CATEGORIES.find((cat) => cat.value === product.category)?.label || product.category}</p>
                             </TableCell>
                             <TableCell className="text-right font-bold text-[#1E231F]">
-                              UGX {Number(product.price).toLocaleString()}
+                              {product.price !== null && product.price !== undefined && Number(product.price) > 0 ? (
+                                `UGX ${Number(product.price).toLocaleString()}`
+                              ) : product.contact_phone ? (
+                                <span className="text-[#D48C70]">Contact: {product.contact_phone}</span>
+                              ) : (
+                                <span className="text-slate-400">Contact seller</span>
+                              )}
                             </TableCell>
                             <TableCell>
                               {product.sold_out ? (

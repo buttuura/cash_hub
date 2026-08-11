@@ -895,7 +895,13 @@ const ServicesManagement = () => {
                               <Badge variant="secondary" className="bg-[#E8F0E3] text-[#2C5530]">{product.category || '-'}</Badge>
                             </td>
                             <td className="py-3 px-3 text-xs font-semibold text-[#1E231F] font-numbers whitespace-nowrap">
-                              UGX {Number(product.price || 0).toLocaleString()}
+                              {product.price !== null && product.price !== undefined && Number(product.price) > 0 ? (
+                                `UGX ${Number(product.price).toLocaleString()}`
+                              ) : product.contact_phone ? (
+                                <span className="text-[#D48C70]">Contact: {product.contact_phone}</span>
+                              ) : (
+                                <span className="text-slate-400">Contact seller</span>
+                              )}
                             </td>
                             <td className="py-3 px-3 text-xs font-medium text-[#2C5530] whitespace-nowrap">
                               {product.seller_name || product.sellerName || 'Unknown'}

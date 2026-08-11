@@ -43,6 +43,7 @@ const AddProductDialog = ({
   const [newProductCategory, setNewProductCategory] = useState('food');
   const [newProductImages, setNewProductImages] = useState([]);
   const [newProductPrice, setNewProductPrice] = useState('');
+  const [newProductContactPhone, setNewProductContactPhone] = useState('');
   const [uploadingProduct, setUploadingProduct] = useState(false);
 
   const categoryMap = categories.reduce((acc, category) => {
@@ -92,6 +93,7 @@ const AddProductDialog = ({
     setNewProductTitle('');
     setNewProductDescription('');
     setNewProductPrice('');
+    setNewProductContactPhone('');
     setNewProductCategory('food');
     setNewProductImages([]);
   };
@@ -106,9 +108,14 @@ const AddProductDialog = ({
       toast.error('Pick a valid category');
       return;
     }
-    const price = Number(newProductPrice) || 0;
-    if (!price || price <= 0) {
-      toast.error('Enter a valid price');
+    const price = newProductPrice.trim() === '' ? null : Number(newProductPrice);
+    const contactPhone = newProductContactPhone.trim();
+    if (price === null && !contactPhone) {
+      toast.error('Enter either a price or a contact phone number');
+      return;
+    }
+    if (price !== null && price < 0) {
+      toast.error('Price cannot be negative');
       return;
     }
     if (!user) {
@@ -121,8 +128,13 @@ const AddProductDialog = ({
       const formData = new FormData();
       formData.append('title', newProductTitle.trim());
       formData.append('description', newProductDescription.trim());
-      formData.append('price', price);
+      if (price !== null) {
+        formData.append('price', String(price));
+      }
       formData.append('category', newProductCategory);
+      if (contactPhone) {
+        formData.append('contact_phone', contactPhone);
+      }
 
       newProductImages.forEach((img) => {
         formData.append('images', img);
@@ -145,7 +157,7 @@ const AddProductDialog = ({
         category: newProductCategory,
         title: responseData.title || newProductTitle.trim(),
         description: responseData.description || newProductDescription.trim(),
-        price: responseData.price || price,
+        price: responseData.price ?? price,
         sellerName: user?.name || 'Member',
         seller_name: user?.name || 'Member',
         image_url: responseData.image_url,
@@ -212,7 +224,7 @@ const AddProductDialog = ({
             </select>
           </div>
           <div>
-            <Label htmlFor="product-price" className="text-sm font-medium text-slate-700">Price (UGX)</Label>
+            <Label htmlFor="product-price" className="text-sm font-medium text-slate-700">Price (UGX) <span className="text-slate-400">optional</span></Label>
             <Input
               id="product-price"
               type="number"
@@ -221,6 +233,19 @@ const AddProductDialog = ({
               placeholder="e.g. 50000"
               disabled={uploadingProduct}
             />
+            <p className="text-xs text-slate-400 mt-1">Leave empty if buyers should contact you directly</p>
+          </div>
+          <div>
+            <Label htmlFor="product-contact-phone" className="text-sm font-medium text-slate-700">WhatsApp / Contact phone <span className="text-slate-400">optional if price is set</span></Label>
+            <Input
+              id="product-contact-phone"
+              type="tel"
+              value={newProductContactPhone}
+              onChange={(event) => setNewProductContactPhone(event.target.value)}
+              placeholder="e.g. +256 700 000 000"
+              disabled={uploadingProduct}
+            />
+            <p className="text-xs text-slate-400 mt-1">Required when no price is provided</p>
           </div>
           <div>
             <Label htmlFor="product-images" className="text-sm font-medium text-slate-700">Product images</Label>

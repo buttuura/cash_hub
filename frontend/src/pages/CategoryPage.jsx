@@ -149,6 +149,14 @@ const CategoryPage = () => {
   };
 
   const addToCart = (product) => {
+    if (!product.price || Number(product.price) <= 0) {
+      if (product.contact_phone) {
+        toast.info(`Contact seller: ${product.contact_phone}`, { duration: 5000 });
+      } else {
+        toast.error('No price or contact info provided for this item');
+      }
+      return;
+    }
     setCart(prev => {
       const existing = prev.find(item => item.productId === product.id);
       const newCart = existing ? prev.map(item => item.productId === product.id ? { ...item, quantity: item.quantity + 1 } : item) : [...prev, { productId: product.id, quantity: 1, product }];
@@ -285,7 +293,18 @@ const CategoryPage = () => {
     }
   };
 
-  const handleOpenPurchase = (product) => { setPurchaseProduct(product); setPurchaseOpen(true); };
+  const handleOpenPurchase = (product) => {
+    if (!product.price || Number(product.price) <= 0) {
+      if (product.contact_phone) {
+        toast.info(`Contact seller: ${product.contact_phone}`, { duration: 5000 });
+      } else {
+        toast.error('No price or contact info provided for this item');
+      }
+      return;
+    }
+    setPurchaseProduct(product);
+    setPurchaseOpen(true);
+  };
   const getImageUrl = (imageUrl) => { return resolveImageUrl(imageUrl, API_URL); };
 
   const category = categories.find(c => c.id === categoryId);

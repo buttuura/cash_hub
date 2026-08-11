@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ShoppingCart } from 'lucide-react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Phone, MessageCircle } from 'lucide-react';
 
 function ProductCard({ product, onAddToCart, onBuyNow, getImageUrl }) {
   const [currentImgIndex, setCurrentImgIndex] = useState(0);
@@ -93,24 +93,52 @@ function ProductCard({ product, onAddToCart, onBuyNow, getImageUrl }) {
           {product.description && (
             <p className="line-clamp-2 text-xs text-[#4B5A45] mb-2">{product.description}</p>
           )}
-          <p className="text-xs font-bold text-[#2B6F38] mb-2">UGX {Number(product.price).toLocaleString()}</p>
-          <div className="flex items-center gap-1">
-            <Button
-              size="sm"
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); onAddToCart(product); }}
-              className="flex-1 h-6 px-1 text-[10px] bg-[#172B12] text-white hover:bg-[#0f2409] shadow-sm"
-            >
-              <ShoppingCart className="h-3 w-3 mr-1" />
-              Add
-            </Button>
-            <Button
-              size="sm"
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); onBuyNow(product); }}
-              className="flex-1 h-6 px-1 text-[10px] bg-white text-[#172B12] border border-[#172B12] hover:bg-[#ECF8E9]"
-            >
-              Buy
-            </Button>
-          </div>
+          {product.price !== null && product.price !== undefined && Number(product.price) > 0 ? (
+            <p className="text-xs font-bold text-[#2B6F38] mb-2">UGX {Number(product.price).toLocaleString()}</p>
+          ) : (
+            <p className="text-xs font-bold text-[#D48C70] mb-2">Contact seller</p>
+          )}
+          {!Number(product.price) > 0 && product.contact_phone && (
+            <div className="flex items-center gap-2 mb-2">
+              <a
+                href={`tel:${product.contact_phone}`}
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                className="inline-flex items-center gap-1 text-xs text-[#172B12] hover:text-[#2B6F38] font-medium"
+              >
+                <Phone className="h-3 w-3" />
+                Call
+              </a>
+              <a
+                href={`https://wa.me/${product.contact_phone.replace(/[^0-9]/g, '')}`}
+                target="_blank"
+                rel="noreferrer"
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                className="inline-flex items-center gap-1 text-xs text-[#25D366] hover:text-[#128C7E] font-medium"
+              >
+                <MessageCircle className="h-3 w-3" />
+                WhatsApp
+              </a>
+            </div>
+          )}
+          {Number(product.price) > 0 && (
+            <div className="flex items-center gap-1">
+              <Button
+                size="sm"
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); onAddToCart(product); }}
+                className="flex-1 h-6 px-1 text-[10px] bg-[#172B12] text-white hover:bg-[#0f2409] shadow-sm"
+              >
+                <ShoppingCart className="h-3 w-3 mr-1" />
+                Add
+              </Button>
+              <Button
+                size="sm"
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); onBuyNow(product); }}
+                className="flex-1 h-6 px-1 text-[10px] bg-white text-[#172B12] border border-[#172B12] hover:bg-[#ECF8E9]"
+              >
+                Buy
+              </Button>
+            </div>
+          )}
         </div>
       </Card>
     </Link>

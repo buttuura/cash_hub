@@ -10,7 +10,7 @@ import { Label } from '../components/ui/label';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '../components/ui/dialog';
 import { Badge } from '../components/ui/badge';
 import { Toaster, toast } from 'sonner';
-import { ShoppingCart, FastForward, Cpu, Sparkles, ShoppingBag, HardHat, PenTool, Shirt, HeartPulse, Home, BookOpen, Dumbbell, Gamepad2, Briefcase, Menu, X, Search } from 'lucide-react';
+import { ShoppingCart, FastForward, Cpu, Sparkles, ShoppingBag, HardHat, PenTool, Shirt, HeartPulse, Home, BookOpen, Dumbbell, Gamepad2, Briefcase, Menu, X, Search, Phone, MessageCircle } from 'lucide-react';
 import ProductCard from '../components/ProductCard';
 import { SellProductsCard } from '../components/AddProductDialog';
 import { exportLoanAgreementPDF } from '../utils/pdfExport';
@@ -226,6 +226,14 @@ const ShopPage = () => {
   };
 
   const addToCart = (product) => {
+    if (!product.price || Number(product.price) <= 0) {
+      if (product.contact_phone) {
+        toast.info(`Contact seller: ${product.contact_phone}`, { duration: 5000 });
+      } else {
+        toast.error('No price or contact info provided for this item');
+      }
+      return;
+    }
     setCart(prev => {
       const existing = prev.find(item => item.productId === product.id);
       let newCart;
@@ -267,7 +275,10 @@ const ShopPage = () => {
   };
 
   const getCartTotal = () => {
-    return cart.reduce((total, item) => total + item.product.price * item.quantity, 0);
+    return cart.reduce((total, item) => {
+      const itemPrice = Number(item.product?.price || 0);
+      return total + (itemPrice > 0 ? itemPrice * item.quantity : 0);
+    }, 0);
   };
 
   const getCartItemsBySeller = () => {
@@ -656,6 +667,14 @@ const ShopPage = () => {
 };
 
 const handleOpenPurchase = (product) => {
+    if (!product.price || Number(product.price) <= 0) {
+      if (product.contact_phone) {
+        toast.info(`Contact seller: ${product.contact_phone}`, { duration: 5000 });
+      } else {
+        toast.error('No price or contact info provided for this item');
+      }
+      return;
+    }
     setPurchaseProduct(product);
     setPurchaseOpen(true);
   };
@@ -955,26 +974,55 @@ const handleOpenPurchase = (product) => {
                                     )}
                                     <div className="p-3">
                                       <p className="line-clamp-2 text-xs font-semibold leading-4 text-[#172B12] mb-1">{product.title}</p>
-                                      <p className="text-xs font-bold text-[#2B6F38] mb-2">UGX {Number(product.price).toLocaleString()}</p>
-                                      <div
-                                        role="button"
-                                        tabIndex={0}
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          addToCart(product);
-                                        }}
-                                        onKeyDown={(e) => {
-                                          if (e.key === 'Enter' || e.key === ' ') {
-                                            e.preventDefault();
+                                      {product.price !== null && product.price !== undefined && Number(product.price) > 0 ? (
+                                        <p className="text-xs font-bold text-[#2B6F38] mb-2">UGX {Number(product.price).toLocaleString()}</p>
+                                      ) : (
+                                        <p className="text-xs font-bold text-[#D48C70] mb-2">Contact seller</p>
+                                      )}
+                                      {Number(product.price) > 0 ? (
+                                        <div
+                                          role="button"
+                                          tabIndex={0}
+                                          onClick={(e) => {
                                             e.stopPropagation();
                                             addToCart(product);
-                                          }
-                                        }}
-                                        className="inline-flex items-center gap-1 text-xs text-[#172B12] hover:text-[#2B6F38] font-medium cursor-pointer"
-                                      >
-                                        <ShoppingCart className="h-3 w-3" />
-                                        Add to Cart
-                                      </div>
+                                          }}
+                                          onKeyDown={(e) => {
+                                            if (e.key === 'Enter' || e.key === ' ') {
+                                              e.preventDefault();
+                                              e.stopPropagation();
+                                              addToCart(product);
+                                            }
+                                          }}
+                                          className="inline-flex items-center gap-1 text-xs text-[#172B12] hover:text-[#2B6F38] font-medium cursor-pointer"
+                                        >
+                                          <ShoppingCart className="h-3 w-3" />
+                                          Add to Cart
+                                        </div>
+                                      ) : product.contact_phone ? (
+                                        <div className="flex items-center gap-2">
+                                          <a
+                                            href={`tel:${product.contact_phone}`}
+                                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                                            className="inline-flex items-center gap-1 text-xs text-[#172B12] hover:text-[#2B6F38] font-medium"
+                                          >
+                                            <Phone className="h-3 w-3" />
+                                            Call
+                                          </a>
+                                          <a
+                                            href={`https://wa.me/${product.contact_phone.replace(/[^0-9]/g, '')}`}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                                            className="inline-flex items-center gap-1 text-xs text-[#25D366] hover:text-[#128C7E] font-medium"
+                                          >
+                                            <MessageCircle className="h-3 w-3" />
+                                            WhatsApp
+                                          </a>
+                                        </div>
+                                      ) : (
+                                        <p className="text-[10px] text-slate-500">No contact info</p>
+                                      )}
                                     </div>
                                   </button>
                                 );
