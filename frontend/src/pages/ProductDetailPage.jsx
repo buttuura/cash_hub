@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
@@ -25,6 +25,7 @@ function ProductDetailPage() {
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
   const [currentImgIndex, setCurrentImgIndex] = useState(0);
+  const mainImageScrollRef = useRef(null);
   const [quantity, setQuantity] = useState(1);
   const [addingToCart, setAddingToCart] = useState(false);
   const [addedToCart, setAddedToCart] = useState(false);
@@ -170,12 +171,27 @@ function ProductDetailPage() {
 
   const goToPrev = (e) => {
     e.preventDefault();
-    setCurrentImgIndex((prev) => (prev === 0 ? allImages.length - 1 : prev - 1));
+    if (mainImageScrollRef.current) {
+      mainImageScrollRef.current.scrollBy({ left: -mainImageScrollRef.current.offsetWidth, behavior: 'smooth' });
+    }
   };
 
   const goToNext = (e) => {
     e.preventDefault();
-    setCurrentImgIndex((prev) => (prev === allImages.length - 1 ? 0 : prev + 1));
+    if (mainImageScrollRef.current) {
+      mainImageScrollRef.current.scrollBy({ left: mainImageScrollRef.current.offsetWidth, behavior: 'smooth' });
+    }
+  };
+
+  const scrollToImage = (idx) => {
+    setCurrentImgIndex(idx);
+    if (mainImageScrollRef.current) {
+      const scrollContainer = mainImageScrollRef.current;
+      const target = scrollContainer.children[idx];
+      if (target) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'start' });
+      }
+    }
   };
 
   const handleAddToCart = async () => {
@@ -471,12 +487,25 @@ function ProductDetailPage() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           <div className="lg:col-span-4">
             <div className="bg-white rounded-2xl border border-slate-200 p-3 sticky top-4">
-              <div className="relative overflow-hidden rounded-xl mb-3 bg-slate-50">
-                <img
-                  src={getImageUrl(allImages[currentImgIndex])}
-                  alt={product.title}
-                  className="w-full h-96 object-cover"
-                />
+              <div className="relative rounded-xl mb-3 bg-slate-50">
+              <div
+                ref={mainImageScrollRef}
+                className="flex overflow-x-auto scroll-smooth snap-x snap-mandatory rounded-xl mb-3 bg-slate-50"
+                style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+              >
+                  {allImages.map((img, idx) => (
+                    <div
+                      key={idx}
+                      className="shrink-0 w-full snap-center"
+                    >
+                      <img
+                        src={getImageUrl(img)}
+                        alt={`${product.title} ${idx + 1}`}
+                        className="w-full h-96 object-cover"
+                      />
+                    </div>
+                  ))}
+                </div>
                 {allImages.length > 1 && (
                   <>
                     <button
@@ -506,7 +535,7 @@ function ProductDetailPage() {
                       type="button"
                       onClick={(e) => {
                         e.preventDefault();
-                        setCurrentImgIndex(idx);
+                        scrollToImage(idx);
                       }}
                       className={`shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 transition-all ${
                         idx === currentImgIndex

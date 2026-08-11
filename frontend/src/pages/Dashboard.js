@@ -53,6 +53,7 @@ import {
   Check,
   Settings,
   Image as ImageIcon,
+  Search,
 } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
 import {
@@ -121,6 +122,7 @@ const Dashboard = () => {
   const [activeTab, setActiveTab] = useState('overview');
   const [activeAdminPage, setActiveAdminPage] = useState('admin-panel');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [copiedMemberCode, setCopiedMemberCode] = useState(false);
   const [activeFinancialTab, setActiveFinancialTab] = useState('overview');
   const [projects, setProjects] = useState([]);
@@ -1311,6 +1313,25 @@ const Dashboard = () => {
                 {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
               </button>
             </div>
+          </div>
+        </div>
+
+        {/* Mobile Search */}
+        <div className="md:hidden px-4 py-2 border-b border-[#E8EBE8]">
+          <div className="flex items-center gap-2">
+            <Input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search products..."
+              className="flex-1 rounded-full border border-slate-300 bg-[#F7FAF3] px-4 py-2 text-sm focus:border-[#2B6F38] focus:ring-2 focus:ring-[#2B6F38]/20"
+            />
+            <Button
+              type="button"
+              onClick={() => { if (searchQuery.trim()) navigate(`/category/all?search=${encodeURIComponent(searchQuery.trim())}`); }}
+              className="bg-[#172B12] text-white hover:bg-[#0f2409] rounded-full px-3"
+            >
+              <Search className="h-4 w-4" />
+            </Button>
           </div>
         </div>
 

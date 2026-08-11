@@ -409,39 +409,39 @@ return (
             </div>
           </div>
           
-          <div className="flex md:hidden items-center justify-between py-2">
-            <button type="button" onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="p-2 text-[#172B12]">
-              {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
-            </button>
-            <Button onClick={() => navigate('/')} className="bg-white text-[#172B12] border border-slate-200 hover:bg-[#ECF8E9]">Shop</Button>
-            <Button onClick={() => setCartOpen(true)} className="bg-white text-[#172B12] border border-[#172B12] hover:bg-[#ECF8E9] relative">
-              <ShoppingCart className="h-4 w-4 mr-2" />
-              Cart ({cart.length})
-            </Button>
-          </div>
-          
-          {mobileMenuOpen && (
-            <div className="md:hidden pb-4 space-y-4 overflow-y-auto max-h-96 w-full">
-              <Input
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search products..."
-                className="rounded-full border border-slate-300 bg-[#F7FAF3] px-4 py-2 text-sm"
-              />
-              <div className="flex flex-col gap-2 max-h-64 overflow-y-auto">
-                <button type="button" onClick={() => { navigate('/'); setMobileMenuOpen(false); }} className="px-3 py-2 rounded-full text-sm font-medium text-left bg-white text-[#172B12] border border-slate-200 hover:bg-[#ECF8E9]">Shop</button>
-                {categories.map(cat => {
-                  const Icon = ICON_MAP[cat.id] || Sparkles;
-                  return (
-                    <button key={cat.id} type="button" onClick={() => { navigate(`/category/${cat.id}`); setMobileMenuOpen(false); }} className={`flex items-center gap-2 px-3 py-2 rounded-full text-sm font-medium text-left ${cat.id === categoryId ? 'bg-[#172B12] text-white' : 'bg-white text-[#172B12] border border-slate-200 hover:bg-[#ECF8E9]'}`}>
-                      <Icon className="h-4 w-4" />
-                      {cat.name}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+           <div className="flex md:hidden items-center gap-2 py-2">
+             <button type="button" onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="p-2 text-[#172B12]">
+               {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+             </button>
+             <Input
+               value={searchQuery}
+               onChange={(e) => setSearchQuery(e.target.value)}
+               placeholder="Search products..."
+               className="flex-1 rounded-full border border-slate-300 bg-[#F7FAF3] px-4 py-2 text-sm focus:border-[#2B6F38] focus:ring-2 focus:ring-[#2B6F38]/20"
+             />
+             <Button onClick={() => navigate('/')} className="bg-white text-[#172B12] border border-slate-200 hover:bg-[#ECF8E9]">Shop</Button>
+             <Button onClick={() => setCartOpen(true)} className="bg-white text-[#172B12] border border-[#172B12] hover:bg-[#ECF8E9] relative">
+               <ShoppingCart className="h-4 w-4 mr-2" />
+               Cart ({cart.length})
+             </Button>
+           </div>
+           
+           {mobileMenuOpen && (
+             <div className="md:hidden pb-4 space-y-4 overflow-y-auto max-h-96 w-full">
+               <div className="flex flex-col gap-2 max-h-64 overflow-y-auto">
+                 <button type="button" onClick={() => { navigate('/'); setMobileMenuOpen(false); }} className="px-3 py-2 rounded-full text-sm font-medium text-left bg-white text-[#172B12] border border-slate-200 hover:bg-[#ECF8E9]">Shop</button>
+                 {categories.map(cat => {
+                   const Icon = ICON_MAP[cat.id] || Sparkles;
+                   return (
+                     <button key={cat.id} type="button" onClick={() => { navigate(`/category/${cat.id}`); setMobileMenuOpen(false); }} className={`flex items-center gap-2 px-3 py-2 rounded-full text-sm font-medium text-left ${cat.id === categoryId ? 'bg-[#172B12] text-white' : 'bg-white text-[#172B12] border border-slate-200 hover:bg-[#ECF8E9]'}`}>
+                       <Icon className="h-4 w-4" />
+                       {cat.name}
+                     </button>
+                   );
+                 })}
+               </div>
+             </div>
+           )}
         </div>
       </nav>
 

@@ -102,7 +102,7 @@ function ProductCard({ product, onAddToCart, onBuyNow, getImageUrl }) {
             <div className="flex items-center gap-2 mb-2">
               <a
                 href={`tel:${product.contact_phone}`}
-                onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                onClick={(e) => e.stopPropagation()}
                 className="inline-flex items-center gap-1 text-xs text-[#172B12] hover:text-[#2B6F38] font-medium"
               >
                 <Phone className="h-3 w-3" />
@@ -112,7 +112,7 @@ function ProductCard({ product, onAddToCart, onBuyNow, getImageUrl }) {
                 href={`https://wa.me/${product.contact_phone.replace(/[^0-9]/g, '')}`}
                 target="_blank"
                 rel="noreferrer"
-                onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                onClick={(e) => e.stopPropagation()}
                 className="inline-flex items-center gap-1 text-xs text-[#25D366] hover:text-[#128C7E] font-medium"
               >
                 <MessageCircle className="h-3 w-3" />

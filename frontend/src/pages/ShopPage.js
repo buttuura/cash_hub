@@ -8,7 +8,6 @@ import { Input } from '../components/ui/input';
 import { Textarea } from '../components/ui/textarea';
 import { Label } from '../components/ui/label';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '../components/ui/dialog';
-import { Badge } from '../components/ui/badge';
 import { Toaster, toast } from 'sonner';
 import { ShoppingCart, FastForward, Cpu, Sparkles, ShoppingBag, HardHat, PenTool, Shirt, HeartPulse, Home, BookOpen, Dumbbell, Gamepad2, Briefcase, Menu, X, Search, Phone, MessageCircle } from 'lucide-react';
 import ProductCard from '../components/ProductCard';
@@ -908,9 +907,6 @@ const handleOpenPurchase = (product) => {
                             <Icon className="h-5 w-5 shrink-0 text-[#2B6F38]" />
                             <p className="truncate text-base font-semibold text-[#1B3A16]">{category.name}</p>
                           </div>
-                          <Badge variant="secondary" className="bg-[#ECF8E9] text-[#172B12] font-medium">
-                            {categoryProducts.length} {categoryProducts.length === 1 ? 'item' : 'items'}
-                          </Badge>
                         </div>
 
                         {categoryProducts.length === 0 ? (
@@ -948,7 +944,7 @@ const handleOpenPurchase = (product) => {
                             </>
                             <div
                               data-popular-row={category.id}
-                              className="flex gap-4 overflow-x-auto scroll-smooth pb-2 px-10 hide-scrollbar"
+                               className="flex gap-4 overflow-x-auto pb-2 px-10 hide-scrollbar touch-pan-x overscroll-x-contain"
                             >
 {visibleProducts.map((product) => {
                                 const displayImage = product.image_urls?.[0] || product.image_url;
@@ -957,7 +953,7 @@ const handleOpenPurchase = (product) => {
                                     key={product.id}
                                     type="button"
                                     onClick={() => navigate(`/product/${product.id}`)}
-                                    className="snap-start shrink-0 rounded-2xl border border-slate-200 bg-white text-left shadow-sm transition-all duration-200 hover:shadow-md hover:border-[#2B6F38]/50 w-44 group"
+                                    className="shrink-0 rounded-2xl border border-slate-200 bg-white text-left shadow-sm transition-all duration-200 hover:shadow-md hover:border-[#2B6F38]/50 w-44 group"
                                   >
                                     {displayImage ? (
                                       <div className="overflow-hidden rounded-t-2xl bg-[#F4F8EF] relative">
@@ -1003,7 +999,7 @@ const handleOpenPurchase = (product) => {
                                         <div className="flex items-center gap-2">
                                           <a
                                             href={`tel:${product.contact_phone}`}
-                                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                                            onClick={(e) => e.stopPropagation()}
                                             className="inline-flex items-center gap-1 text-xs text-[#172B12] hover:text-[#2B6F38] font-medium"
                                           >
                                             <Phone className="h-3 w-3" />
@@ -1013,7 +1009,7 @@ const handleOpenPurchase = (product) => {
                                             href={`https://wa.me/${product.contact_phone.replace(/[^0-9]/g, '')}`}
                                             target="_blank"
                                             rel="noreferrer"
-                                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                                            onClick={(e) => e.stopPropagation()}
                                             className="inline-flex items-center gap-1 text-xs text-[#25D366] hover:text-[#128C7E] font-medium"
                                           >
                                             <MessageCircle className="h-3 w-3" />
