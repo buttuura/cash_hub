@@ -141,6 +141,7 @@ class UserCreate(BaseModel):
     name: str
     email: Optional[EmailStr] = None
     next_of_kin_name: Optional[str] = None
+    next_of_kin_phone: Optional[str] = None
     national_id: Optional[str] = None
 
 class UserLogin(BaseModel):
@@ -771,10 +772,13 @@ async def register(user_data: UserCreate):
     
     email = user_data.email.lower() if user_data.email else None
     next_of_kin_name = user_data.next_of_kin_name.strip() if user_data.next_of_kin_name else None
+    next_of_kin_phone = user_data.next_of_kin_phone.strip() if user_data.next_of_kin_phone else None
     national_id = user_data.national_id.strip() if user_data.national_id else None
 
     if not next_of_kin_name:
         raise HTTPException(status_code=400, detail="Next of kin name is required")
+    if not next_of_kin_phone:
+        raise HTTPException(status_code=400, detail="Next of kin phone number is required")
     if national_id and len(national_id) != 14:
         raise HTTPException(status_code=400, detail="National ID must be exactly 14 characters")
     
@@ -794,7 +798,7 @@ async def register(user_data: UserCreate):
         "normalized_phone": normalized_phone,
         "password_hash": hash_password(user_data.password),
         "name": user_data.name,
-        "role": "member",
+        "role": "seller",
         "membership_type": "ordinary",
         "total_savings": 0,
         "development_fund": 0,
@@ -808,6 +812,7 @@ async def register(user_data: UserCreate):
     if email:
         user_doc["email"] = email
     user_doc["next_of_kin_name"] = next_of_kin_name
+    user_doc["next_of_kin_phone"] = next_of_kin_phone
     if national_id:
         user_doc["national_id"] = national_id
     
@@ -823,8 +828,9 @@ async def register(user_data: UserCreate):
         "phone": phone,
         "name": user_data.name,
         "next_of_kin_name": next_of_kin_name,
+        "next_of_kin_phone": next_of_kin_phone,
         "national_id": national_id,
-        "role": "member",
+        "role": "seller",
         "membership_type": "ordinary",
         "member_code": user_doc.get("member_code"),
         "access_token": access_token,
@@ -1481,7 +1487,7 @@ async def update_product(product_id: str, payload: dict = Body(...), user: dict 
 
 @api_router.post("/projects")
 async def create_project(project: ProjectCreate, user: dict = Depends(get_current_user)):
-    if user.get("role") != "member":
+    if user.get("role") not in ["member", "seller"]:
         raise HTTPException(status_code=403, detail="Members only")
 
     title = project.title.strip()
@@ -1510,7 +1516,7 @@ async def create_project(project: ProjectCreate, user: dict = Depends(get_curren
 
 @api_router.get("/projects")
 async def list_projects(user: dict = Depends(get_current_user)):
-    allowed_roles = {"member", "admin", "super_admin", "treasurer"}
+    allowed_roles = {"member", "seller", "admin", "super_admin", "treasurer"}
     if user.get("role") not in allowed_roles:
         raise HTTPException(status_code=403, detail="Members or staff only")
 
@@ -1555,7 +1561,7 @@ async def list_projects(user: dict = Depends(get_current_user)):
 
 @api_router.post("/projects/{project_id}/comments")
 async def add_project_comment(project_id: str, comment: ProjectCommentCreate, user: dict = Depends(get_current_user)):
-    if user.get("role") != "member":
+    if user.get("role") not in ["member", "seller"]:
         raise HTTPException(status_code=403, detail="Members only")
 
     project = await db.projects.find_one({"project_id": project_id})
@@ -1577,7 +1583,7 @@ async def add_project_comment(project_id: str, comment: ProjectCommentCreate, us
 
 @api_router.post("/projects/{project_id}/ratings")
 async def rate_project(project_id: str, rating: ProjectRatingCreate, user: dict = Depends(get_current_user)):
-    if user.get("role") != "member":
+    if user.get("role") not in ["member", "seller"]:
         raise HTTPException(status_code=403, detail="Members only")
 
     project = await db.projects.find_one({"project_id": project_id})
@@ -1604,7 +1610,7 @@ async def rate_project(project_id: str, rating: ProjectRatingCreate, user: dict 
 
 @api_router.get("/projects/{project_id}/ratings")
 async def get_project_ratings(project_id: str, user: dict = Depends(get_current_user)):
-    if user.get("role") != "member":
+    if user.get("role") not in ["member", "seller"]:
         raise HTTPException(status_code=403, detail="Members only")
 
     project = await db.projects.find_one({"project_id": project_id})
@@ -1700,7 +1706,7 @@ async def delete_member(member_id: str, user: dict = Depends(require_treasurer))
 
 @api_router.post("/admin/set-role")
 async def set_user_role(data: RoleUpdate, user: dict = Depends(require_treasurer)):
-    if data.new_role not in ["admin", "member"]:
+    if data.new_role not in ["admin", "member", "seller"]:
         raise HTTPException(status_code=400, detail="Invalid role")
     
     target_user = await db.users.find_one({"_id": ObjectId(data.user_id)})

@@ -108,7 +108,7 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const register = async (name, phone, password, email, nextOfKinName, nationalId) => {
+  const register = async (name, phone, password, email, nextOfKinName, nextOfKinPhone, nationalId) => {
     setError(null);
     try {
       if (!API_URL) {
@@ -116,7 +116,7 @@ export const AuthProvider = ({ children }) => {
         setError(missingUrlError);
         throw new Error(missingUrlError);
       }
-      const payload = { name, phone, password, next_of_kin_name: nextOfKinName };
+      const payload = { name, phone, password, next_of_kin_name: nextOfKinName, next_of_kin_phone: nextOfKinPhone };
       if (email) payload.email = email;
       if (nationalId) payload.national_id = nationalId;
       const response = await axios.post(`${API_URL}/api/auth/register`, payload);
@@ -197,7 +197,7 @@ export const AuthProvider = ({ children }) => {
     isAdmin: user?.role === 'admin' || user?.role === 'super_admin' || user?.role === 'treasurer',
     isTreasurer: user?.role === 'super_admin' || user?.role === 'treasurer',
     isPremium: user?.membership_type === 'premium',
-    isSeller: String(user?.membership_type || '').toLowerCase() === 'seller',
+    isSeller: String(user?.membership_type || '').toLowerCase() === 'seller' || user?.role === 'seller',
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

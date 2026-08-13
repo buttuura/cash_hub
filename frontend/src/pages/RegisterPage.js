@@ -12,6 +12,7 @@ const RegisterPage = () => {
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [nextOfKinName, setNextOfKinName] = useState('');
+  const [nextOfKinPhone, setNextOfKinPhone] = useState('');
   const [nationalId, setNationalId] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -41,6 +42,16 @@ const RegisterPage = () => {
       return;
     }
 
+    if (!nextOfKinPhone.trim()) {
+      setError('Next of kin phone number is required');
+      return;
+    }
+
+    if (nextOfKinPhone.trim().length < 7) {
+      setError('Next of kin phone number must be at least 7 characters');
+      return;
+    }
+
     if (nationalId.trim() && nationalId.trim().length !== 14) {
       setError('National ID must be exactly 14 characters if provided');
       return;
@@ -60,6 +71,7 @@ const RegisterPage = () => {
         password,
         email.trim() || null,
         nextOfKinName.trim(),
+        nextOfKinPhone.trim(),
         nationalId.trim() || null
       );
       navigate('/dashboard');
@@ -166,6 +178,20 @@ const RegisterPage = () => {
                   onChange={(e) => setNextOfKinName(e.target.value)}
                   required
                   data-testid="register-next-of-kin-input"
+                  className="h-11 border-[#E8EBE8] focus:ring-[#2C5530] focus:border-[#2C5530]"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="nextOfKinPhone" className="text-[#1E231F] font-medium">Next of kin's phone number <span className="text-[#D05A49]">*</span></Label>
+                <Input
+                  id="nextOfKinPhone"
+                  type="tel"
+                  placeholder="0700000000"
+                  value={nextOfKinPhone}
+                  onChange={(e) => setNextOfKinPhone(e.target.value)}
+                  required
+                  data-testid="register-next-of-kin-phone-input"
                   className="h-11 border-[#E8EBE8] focus:ring-[#2C5530] focus:border-[#2C5530]"
                 />
               </div>
