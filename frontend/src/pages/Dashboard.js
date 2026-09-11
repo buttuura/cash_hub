@@ -66,6 +66,7 @@ import {
 import { FileDown } from 'lucide-react';
 import { resolveImageUrl } from '../lib/utils';
 import { getLoanDisplayBalance } from '../utils/loanDisplay';
+import { buildWhatsAppUrl as buildNormalizedWhatsAppUrl } from '../utils/whatsapp';
 import { SellProductsCard } from '../components/AddProductDialog';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
@@ -88,12 +89,10 @@ const PRODUCT_CATEGORIES = [
 ];
 
 // Build a wa.me link that opens WhatsApp (Messenger or Business) with pre-typed text.
-// Uganda numbers: replace leading 0 with 256. Strips spaces, dashes, +.
+// Uganda numbers: replace a leading 0 with +256 so the message can be delivered correctly.
 const buildWhatsAppUrl = (phone, message) => {
   if (!phone) return null;
-  let digits = String(phone).replace(/[^\d]/g, '');
-  if (digits.startsWith('0')) digits = '256' + digits.slice(1);
-  return `https://wa.me/${digits}?text=${encodeURIComponent(message)}`;
+  return buildNormalizedWhatsAppUrl(phone, message);
 };
 
 const CONTACT_ADMIN_PHONE = '+256776944322';
@@ -164,11 +163,32 @@ const Dashboard = () => {
 
   // Dialog states
   const [depositDialogOpen, setDepositDialogOpen] = useState(false);
+  const [depositPaymentChoiceOpen, setDepositPaymentChoiceOpen] = useState(false);
   const [loanDialogOpen, setLoanDialogOpen] = useState(false);
   const [adminLoanDialogOpen, setAdminLoanDialogOpen] = useState(false);
   const [withdrawalDialogOpen, setWithdrawalDialogOpen] = useState(false);
   const [balanceDialogOpen, setBalanceDialogOpen] = useState(false);
   const [pettyCashDialogOpen, setPettyCashDialogOpen] = useState(false);
+  const [notifyGuarantorDialog, setNotifyGuarantorDialog] = useState(null);
+  const [announcementText, setAnnouncementText] = useState('');
+  const [announcementHistory, setAnnouncementHistory] = useState([]);
+  const [currentAnnouncement, setCurrentAnnouncement] = useState({ message: '', author: '', updated_at: null });
+  const [announcementDismissed, setAnnouncementDismissed] = useState(false);
+  const [guarantorLoanPopupDismissed, setGuarantorLoanPopupDismissed] = useState(false);
+
+  const popupAnnouncements = [
+    ...(currentAnnouncement.message ? [{
+      id: currentAnnouncement.updated_at ? `current-${currentAnnouncement.updated_at}` : 'current',
+      message: currentAnnouncement.message,
+      author: currentAnnouncement.author,
+      updated_at: currentAnnouncement.updated_at,
+    }] : []),
+    ...announcementHistory.filter((item) => {
+      if (!item?.message) return false;
+      if (!currentAnnouncement.message) return true;
+      return !(item.message === currentAnnouncement.message && item.author === currentAnnouncement.author);
+    })
+  ].slice(0, 4);
 
   const fetchData = useCallback(async () => {
     const now = Date.now();
@@ -216,6 +236,26 @@ const Dashboard = () => {
         }
       }
       fetchData._cache = { ts: now };
+
+      try {
+        const [announcementRes, historyRes] = await Promise.all([
+          axios.get(`${API_URL}/api/announcements/current`, { headers }),
+          axios.get(`${API_URL}/api/admin/announcements/history`, { headers }).catch(() => ({ data: [] })),
+        ]);
+        setCurrentAnnouncement({
+          message: announcementRes.data?.message || '',
+          author: announcementRes.data?.author || '',
+          updated_at: announcementRes.data?.updated_at || null,
+        });
+        setAnnouncementHistory(Array.isArray(historyRes.data) ? historyRes.data : []);
+        const dismissedKey = `cashhub-announcement-dismissed:${user?.id || 'guest'}`;
+        const dismissed = localStorage.getItem(dismissedKey) === 'true';
+        setAnnouncementDismissed(Boolean(dismissed && announcementRes.data?.message));
+      } catch (announcementErr) {
+        console.warn('Failed to load announcement:', announcementErr);
+        setCurrentAnnouncement({ message: '', author: '', updated_at: null });
+        setAnnouncementHistory([]);
+      }
     } catch (err) {
       console.error('Failed to fetch data:', err);
       toast.error('Failed to load data');
@@ -584,8 +624,10 @@ const Dashboard = () => {
   const savingsMinAmount = targetMembershipType === 'premium' ? 52000 * targetDepositSlots : 500;
   const savingsPlaceholder = targetMembershipType === 'premium' ? String(savingsMinAmount) : '500';
 
-   const handleDeposit = async (e) => {
-    e.preventDefault();
+   const handleDeposit = async (e, { openPhoneAfterSubmit = false } = {}) => {
+    if (e && typeof e.preventDefault === 'function') {
+      e.preventDefault();
+    }
     try {
       const payload = {
         amount: parseFloat(depositAmount),
@@ -605,6 +647,7 @@ const Dashboard = () => {
 
       fetchData._cache = null;
       setDepositDialogOpen(false);
+      setDepositPaymentChoiceOpen(false);
       setDepositTargetUserId(null);
       setDepositDeductLateFee(false);
       setDepositAmount(depositType === 'savings' ? String(savingsMinAmount) : '0');
@@ -612,8 +655,63 @@ const Dashboard = () => {
       setRepayLoanId('');
       setLoanRepaymentAmount('');
       fetchData();
+
+      if (openPhoneAfterSubmit) {
+        window.location.href = 'tel:*165*1#';
+      }
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Failed to submit deposit');
+    }
+  };
+
+  const handleSaveAnnouncement = async () => {
+    const cleanMessage = announcementText.trim();
+    if (!cleanMessage) {
+      toast.error('Announcement message is required');
+      return;
+    }
+
+    try {
+      const response = await axios.post(
+        `${API_URL}/api/admin/announcement`,
+        { message: cleanMessage },
+        { headers: getAuthHeaders() }
+      );
+      const savedMessage = response.data?.announcement?.value || cleanMessage;
+      const savedAuthor = response.data?.announcement?.author || user?.name || 'Treasurer';
+      const savedUpdatedAt = response.data?.announcement?.updated_at || new Date().toISOString();
+
+      setCurrentAnnouncement({
+        message: savedMessage,
+        author: savedAuthor,
+        updated_at: savedUpdatedAt,
+      });
+      setAnnouncementDismissed(false);
+      const dismissedKey = `cashhub-announcement-dismissed:${user?.id || 'guest'}`;
+      localStorage.removeItem(dismissedKey);
+      setAnnouncementText('');
+      toast.success('Announcement saved');
+      await fetchData();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Failed to save announcement');
+    }
+  };
+
+  const handleDeleteAnnouncement = async (announcementId) => {
+    if (!announcementId) return;
+
+    try {
+      await axios.delete(`${API_URL}/api/admin/announcement/${announcementId}`, { headers: getAuthHeaders() });
+      setAnnouncementHistory((prev) => prev.filter((item) => item.id !== announcementId));
+      toast.success('Announcement deleted');
+      if (currentAnnouncement.message && announcementHistory.some((item) => item.id === announcementId)) {
+        setCurrentAnnouncement({ message: '', author: '', updated_at: null });
+        const dismissedKey = `cashhub-announcement-dismissed:${user?.id || 'guest'}`;
+        localStorage.removeItem(dismissedKey);
+        fetchData();
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Failed to delete announcement');
     }
   };
 
@@ -671,11 +769,23 @@ const Dashboard = () => {
         },
         { headers: getAuthHeaders() }
       );
+
+      const guarantor = members.find((member) => member.id === loanGuarantor);
+      const message = `Hi ${guarantor?.name || 'guarantor'}, I (${user?.name || 'member'}) have requested a UGX ${Number(loanAmountValue).toLocaleString()} loan. Please log in to approve or reject this request. Thank you.`;
+      const guarantorWhatsAppUrl = guarantor?.phone ? buildWhatsAppUrl(guarantor.phone, message) : null;
+
       toast.success('Loan request submitted');
       setLoanDialogOpen(false);
       setLoanAmount('');
       setLoanGuarantor('');
       setLoanReason('');
+      if (guarantorWhatsAppUrl) {
+        setNotifyGuarantorDialog({
+          name: guarantor?.name || 'Guarantor',
+          phone: guarantor?.phone || '',
+          url: guarantorWhatsAppUrl,
+        });
+      }
       fetchData();
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Failed to submit loan request');
@@ -878,7 +988,9 @@ const Dashboard = () => {
         { headers: getAuthHeaders() }
       );
       toast.success(`Role updated to ${newRole}`);
-      fetchData();
+      fetchData._cache = null;
+      await fetchData();
+      await refreshUser();
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Failed to update role');
     }
@@ -892,7 +1004,9 @@ const Dashboard = () => {
         { headers: getAuthHeaders() }
       );
       toast.success(`Membership updated to ${membershipType}`);
-      fetchData();
+      fetchData._cache = null;
+      await fetchData();
+      await refreshUser();
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Failed to update membership');
     }
@@ -1219,6 +1333,16 @@ const Dashboard = () => {
     l.guarantor_id === user?.id && l.status === 'pending_guarantor'
   );
 
+  useEffect(() => {
+    if (!user?.id) {
+      setGuarantorLoanPopupDismissed(false);
+      return;
+    }
+    const dismissedKey = `cashhub-guarantor-loan-popup:${user.id}`;
+    const dismissed = localStorage.getItem(dismissedKey) === 'true';
+    setGuarantorLoanPopupDismissed(dismissed);
+  }, [user?.id]);
+
   const myQuickLoans = (isAdmin || isTreasurer ? quickLoans : userQuickLoans).filter(q => 
     !q.repaid && (q.status === 'approved' || q.status === 'pending_treasurer')
   );
@@ -1230,6 +1354,98 @@ const Dashboard = () => {
       {dataLoading && (
         <div className="fixed top-16 left-0 right-0 bg-[#E8B25C]/20 text-[#E8B25C] p-2 text-center text-sm z-40">
           Loading data...
+        </div>
+      )}
+
+      {!isSellerMember && popupAnnouncements.length > 0 && !announcementDismissed && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 pointer-events-none">
+          <div className="pointer-events-auto max-w-xl w-full rounded-2xl border border-[#E8EBE8] bg-white p-4 shadow-xl ring-1 ring-black/5">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#2C5530]">Treasury messages</div>
+                <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
+                  {popupAnnouncements.map((item) => (
+                    <div key={item.id || `${item.author}-${item.updated_at}-${item.message}`} className="rounded-xl bg-[#FAFAF8] p-3 border border-[#E8EBE8]">
+                      <p className="whitespace-pre-wrap text-sm leading-6 text-[#1E231F] break-words">{item.message}</p>
+                      {item.author && (
+                        <p className="mt-2 text-[11px] text-[#5C665D]">
+                          From: {item.author}
+                          {item.updated_at ? ` • ${new Date(item.updated_at).toLocaleString()}` : ''}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <button
+                type="button"
+                aria-label="Close announcement"
+                onClick={() => {
+                  const dismissedKey = `cashhub-announcement-dismissed:${user?.id || 'guest'}`;
+                  localStorage.setItem(dismissedKey, 'true');
+                  setAnnouncementDismissed(true);
+                }}
+                className="rounded-full p-1.5 text-[#5C665D] hover:bg-[#F5F7F5] transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!isSellerMember && pendingGuarantorLoans.length > 0 && !guarantorLoanPopupDismissed && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 pointer-events-none">
+          <div className="pointer-events-auto max-w-lg w-full rounded-2xl border border-[#D48C70]/30 bg-white p-5 shadow-xl ring-1 ring-[#D48C70]/20">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#D48C70]">Loan approval needed</div>
+                <h3 className="text-lg font-bold text-[#1E231F]">You have a guarantor request pending</h3>
+                <div className="mt-3 space-y-2">
+                  {pendingGuarantorLoans.slice(0, 3).map((loan) => (
+                    <div key={loan.id} className="rounded-xl bg-[#FFF7F4] p-3 border border-[#F3D7D1]">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="font-semibold text-[#1E231F]">{loan.user_name}</p>
+                          <p className="text-sm text-[#5C665D]">
+                            requests <span className="font-semibold text-[#D48C70]">{formatCurrency(loan.amount)}</span>
+                          </p>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleGuarantorApproval(loan.id, true)}
+                            className="rounded-full bg-[#347242] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#2C5530]"
+                          >
+                            Approve
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleGuarantorApproval(loan.id, false)}
+                            className="rounded-full border border-[#D05A49] px-3 py-1.5 text-xs font-medium text-[#D05A49] hover:bg-[#D05A49]/10"
+                          >
+                            Reject
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <button
+                type="button"
+                aria-label="Close loan request notification"
+                onClick={() => {
+                  const dismissedKey = `cashhub-guarantor-loan-popup:${user?.id}`;
+                  localStorage.setItem(dismissedKey, 'true');
+                  setGuarantorLoanPopupDismissed(true);
+                }}
+                className="rounded-full p-1.5 text-[#5C665D] hover:bg-[#F5F7F5] transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
         </div>
       )}
       
@@ -1633,9 +1849,9 @@ const Dashboard = () => {
                       )}
                       <div className="flex flex-col sm:flex-row gap-2">
                         <Button
-                          type="submit"
+                          type="button"
                           className="flex-1 bg-[#2C5530] hover:bg-[#214024] rounded-full"
-                          onClick={() => { window.location.href = 'tel:*165*1#'; }}
+                          onClick={() => setDepositPaymentChoiceOpen(true)}
                         >
                           Submit & Pay
                         </Button>
@@ -1654,7 +1870,7 @@ const Dashboard = () => {
                           Airtel
                         </Button>
                       </div>
-                  </form>
+                    </form>
                 </DialogContent>
               </Dialog>
 
@@ -1716,6 +1932,90 @@ const Dashboard = () => {
                       Submit Request
                     </Button>
                   </form>
+                </DialogContent>
+              </Dialog>
+
+              <Dialog open={Boolean(notifyGuarantorDialog)} onOpenChange={(open) => {
+                if (!open) setNotifyGuarantorDialog(null);
+              }}>
+                <DialogContent className="sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle className="font-['Manrope'] text-[#1E231F]">Notify guarantor</DialogTitle>
+                    <DialogDescription className="text-[#5C665D]">
+                      Your loan request has been submitted. Please notify {notifyGuarantorDialog?.name || 'the guarantor'} on WhatsApp to approve it.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4 mt-4">
+                    <div className="rounded-xl border border-[#E8EBE8] bg-[#F5F7F5] p-4 text-sm text-[#1E231F]">
+                      <div className="font-medium text-[#2C5530]">Guarantor</div>
+                      <div className="mt-1">{notifyGuarantorDialog?.name || 'Guarantor'}</div>
+                      <div className="mt-1 text-[#5C665D]">
+                        {notifyGuarantorDialog?.phone ? `WhatsApp: ${notifyGuarantorDialog.phone}` : 'Phone unavailable'}
+                      </div>
+                    </div>
+                    <div className="flex gap-3">
+                      <Button
+                        type="button"
+                        className="flex-1 bg-[#25D366] hover:bg-[#1EA852] text-white rounded-full"
+                        onClick={() => {
+                          if (notifyGuarantorDialog?.url) {
+                            window.open(notifyGuarantorDialog.url, '_blank', 'noopener,noreferrer');
+                          }
+                          setNotifyGuarantorDialog(null);
+                        }}
+                      >
+                        Notify on WhatsApp
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="flex-1 rounded-full"
+                        onClick={() => setNotifyGuarantorDialog(null)}
+                      >
+                        Close
+                      </Button>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+
+              <Dialog open={depositPaymentChoiceOpen} onOpenChange={setDepositPaymentChoiceOpen}>
+                <DialogContent className="sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle className="font-['Manrope'] text-[#1E231F]">Complete your deposit</DialogTitle>
+                    <DialogDescription className="text-[#5C665D]">
+                      Your deposit will be submitted. Choose whether to continue to the phone payment flow or submit and close.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-3 mt-4">
+                    <Button
+                      type="button"
+                      className="w-full bg-[#2C5530] hover:bg-[#214024] rounded-full"
+                      onClick={async () => {
+                        await handleDeposit(null, { openPhoneAfterSubmit: true });
+                      }}
+                    >
+                      Proceed to phone
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full rounded-full"
+                      onClick={async () => {
+                        await handleDeposit(null, { openPhoneAfterSubmit: false });
+                      }}
+                    >
+                      Submit and close
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="w-full rounded-full"
+                      onClick={() => setDepositPaymentChoiceOpen(false)}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
                 </DialogContent>
               </Dialog>
 
@@ -2036,9 +2336,9 @@ const Dashboard = () => {
                         )}
                       <div className="flex flex-col sm:flex-row gap-2">
                         <Button
-                          type="submit"
+                          type="button"
                           className="flex-1 bg-[#2C5530] hover:bg-[#214024] rounded-full"
-                          onClick={() => { window.location.href = 'tel:*165*1#'; }}
+                          onClick={() => setDepositPaymentChoiceOpen(true)}
                         >
                           Submit & Pay
                         </Button>
@@ -2708,9 +3008,9 @@ const Dashboard = () => {
                     )}
                     <div className="flex flex-col sm:flex-row gap-2">
                       <Button
-                        type="submit"
+                        type="button"
                         className="flex-1 bg-[#2C5530] hover:bg-[#214024] rounded-full"
-                        onClick={() => { window.location.href = 'tel:*165*1#'; }}
+                        onClick={() => setDepositPaymentChoiceOpen(true)}
                       >
                         Submit & Pay
                       </Button>
@@ -4215,9 +4515,82 @@ const Dashboard = () => {
               >
                 Member Management (Treasurer)
               </button>
+              <button
+                type="button"
+                onClick={() => setActiveAdminPage('broadcast')}
+                className={`rounded-full px-4 py-2 text-sm font-medium transition-all ${activeAdminPage === 'broadcast' ? 'bg-[#2C5530] text-white' : 'text-[#5C665D] hover:bg-[#ECF8E9] hover:text-[#2C5530]'}`}
+              >
+                Treasury Broadcast
+              </button>
             </div>
 
             <h2 className="text-2xl font-bold font-['Manrope'] text-[#1E231F]">Admin Panel</h2>
+
+            {isAdmin && activeAdminPage === 'broadcast' && (
+              <div className="rounded-2xl border border-[#E8EBE8] bg-white p-4 shadow-sm">
+                <div className="mb-3">
+                  <h3 className="text-lg font-semibold text-[#1E231F]">Treasury Broadcast</h3>
+                  <p className="text-sm text-[#5C665D]">Write a message that will appear for members when they log in.</p>
+                </div>
+                <div className="space-y-3">
+                  <Textarea
+                    value={announcementText}
+                    onChange={(e) => setAnnouncementText(e.target.value)}
+                    placeholder="Example: New product launch this Friday..."
+                    rows={4}
+                  />
+                  <div className="flex justify-end gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="rounded-full"
+                      onClick={() => setAnnouncementText('')}
+                    >
+                      Clear
+                    </Button>
+                    <Button
+                      type="button"
+                      className="bg-[#2C5530] hover:bg-[#214024] rounded-full"
+                      onClick={handleSaveAnnouncement}
+                    >
+                      Save announcement
+                    </Button>
+                  </div>
+                </div>
+
+                {announcementHistory.length > 0 && (
+                  <div className="mt-6 border-t border-[#E8EBE8] pt-4">
+                    <h4 className="mb-3 text-sm font-semibold uppercase tracking-wide text-[#5C665D]">Previous announcements</h4>
+                    <div className="space-y-3">
+                      {announcementHistory.map((item) => (
+                        <div key={item.id || `${item.message}-${item.updated_at}`} className="rounded-xl border border-[#E8EBE8] bg-[#FAFAF8] p-3">
+                          <p className="whitespace-pre-wrap text-sm text-[#1E231F]">{item.message}</p>
+                          <div className="mt-2 flex items-center justify-between gap-2">
+                            <span className="text-[11px] text-[#5C665D]">{item.author || 'Treasurer'} • {new Date(item.updated_at).toLocaleString()}</span>
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setAnnouncementText(item.message)}
+                                className="text-xs font-medium text-[#2C5530] hover:underline"
+                              >
+                                Repost
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteAnnouncement(item.id)}
+                                className="text-xs font-medium text-[#D05A49] hover:underline"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
             
             {/* Pending Approvals */}
             {activeAdminPage === 'admin-panel' && (
@@ -4563,6 +4936,7 @@ const Dashboard = () => {
                                 className="text-sm border border-[#E8EBE8] rounded-lg px-2 py-1 bg-white"
                               >
                                 <option value="member">Member</option>
+                                <option value="seller">Seller</option>
                                 <option value="admin">Admin</option>
                                 <option value="super_admin" disabled>Treasurer</option>
                                 <option value="treasurer" disabled>Treasurer</option>

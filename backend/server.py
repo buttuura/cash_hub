@@ -143,10 +143,14 @@ class UserCreate(BaseModel):
     next_of_kin_name: Optional[str] = None
     next_of_kin_phone: Optional[str] = None
     national_id: Optional[str] = None
+    membership_type: str = "seller"
 
 class UserLogin(BaseModel):
     identifier: str  # phone or email
     password: str
+
+class AnnouncementMessage(BaseModel):
+    message: str
 
 class DepositRequest(BaseModel):
     amount: float
@@ -793,13 +797,17 @@ async def register(user_data: UserCreate):
         if existing_email:
             raise HTTPException(status_code=400, detail="Email already registered")
     
+    requested_membership = (user_data.membership_type or "seller").strip().lower()
+    if requested_membership not in ["seller", "ordinary", "premium"]:
+        requested_membership = "seller"
+
     user_doc = {
         "phone": phone,
         "normalized_phone": normalized_phone,
         "password_hash": hash_password(user_data.password),
         "name": user_data.name,
         "role": "seller",
-        "membership_type": "ordinary",
+        "membership_type": requested_membership,
         "total_savings": 0,
         "development_fund": 0,
         "total_late_fees": 0,
@@ -831,7 +839,7 @@ async def register(user_data: UserCreate):
         "next_of_kin_phone": next_of_kin_phone,
         "national_id": national_id,
         "role": "seller",
-        "membership_type": "ordinary",
+        "membership_type": requested_membership,
         "member_code": user_doc.get("member_code"),
         "access_token": access_token,
         "refresh_token": refresh_token
@@ -1715,10 +1723,16 @@ async def set_user_role(data: RoleUpdate, user: dict = Depends(require_treasurer
     
     if target_user.get("role") in ["super_admin", "treasurer"]:
         raise HTTPException(status_code=400, detail="Cannot change Treasurer role")
-    
+
+    update_fields = {"role": data.new_role}
+    if data.new_role == "seller":
+        update_fields["membership_type"] = "seller"
+    elif target_user.get("role") == "seller":
+        update_fields["membership_type"] = "ordinary"
+
     await db.users.update_one(
         {"_id": ObjectId(data.user_id)},
-        {"$set": {"role": data.new_role}}
+        {"$set": update_fields}
     )
     return {"message": f"User role updated to {data.new_role}"}
 
@@ -1730,10 +1744,16 @@ async def set_membership_type(data: MembershipUpdate, user: dict = Depends(requi
     target_user = await db.users.find_one({"_id": ObjectId(data.user_id)})
     if not target_user:
         raise HTTPException(status_code=404, detail="User not found")
-    
+
+    update_fields = {"membership_type": data.membership_type}
+    if data.membership_type == "seller":
+        update_fields["role"] = "seller"
+    elif target_user.get("role") == "seller":
+        update_fields["role"] = "member"
+
     await db.users.update_one(
         {"_id": ObjectId(data.user_id)},
-        {"$set": {"membership_type": data.membership_type}}
+        {"$set": update_fields}
     )
     return {"message": f"Membership updated to {data.membership_type}"}
 
@@ -1762,6 +1782,72 @@ async def update_group_balance(data: GroupBalanceUpdate, user: dict = Depends(re
         upsert=True
     )
     return {"message": f"Group balance updated to {data.new_balance}"}
+
+@api_router.post("/admin/announcement")
+async def save_announcement(data: AnnouncementMessage, user: dict = Depends(require_admin)):
+    message = (data.message or '').strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="Announcement message is required")
+
+    now = datetime.now(timezone.utc).isoformat()
+    payload = {
+        "key": "group_announcement",
+        "value": message,
+        "author": user.get("name") or "Treasurer",
+        "updated_at": now,
+    }
+    await db.settings.update_one({"key": "group_announcement"}, {"$set": payload}, upsert=True)
+
+    history_doc = await db.settings.find_one({"key": "group_announcement_history"}) or {}
+    history = history_doc.get("items", []) if isinstance(history_doc.get("items"), list) else []
+    record = {
+        "id": str(uuid4()),
+        "message": message,
+        "author": payload["author"],
+        "updated_at": now,
+    }
+    history = [record] + [item for item in history if not (
+        item.get("message") == message and item.get("author") == payload["author"] and item.get("updated_at") == now
+    )]
+    history = history[:200]
+    await db.settings.update_one(
+        {"key": "group_announcement_history"},
+        {"$set": {"items": history, "updated_at": now}},
+        upsert=True,
+    )
+    return {"message": "Announcement saved", "announcement": payload}
+
+@api_router.get("/admin/announcements/history")
+async def get_announcement_history(user: dict = Depends(require_admin)):
+    history_doc = await db.settings.find_one({"key": "group_announcement_history"}) or {}
+    items = history_doc.get("items", []) if isinstance(history_doc.get("items"), list) else []
+    return sorted(items, key=lambda item: item.get("updated_at") or "", reverse=True)
+
+@api_router.delete("/admin/announcement/{announcement_id}")
+async def delete_announcement(announcement_id: str, user: dict = Depends(require_admin)):
+    history_doc = await db.settings.find_one({"key": "group_announcement_history"}) or {}
+    items = history_doc.get("items", []) if isinstance(history_doc.get("items"), list) else []
+    filtered = [item for item in items if item.get("id") != announcement_id]
+    if len(filtered) == len(items):
+        filtered = [item for item in items if item.get("message") != announcement_id and item.get("updated_at") != announcement_id]
+    await db.settings.update_one(
+        {"key": "group_announcement_history"},
+        {"$set": {"items": filtered, "updated_at": datetime.now(timezone.utc).isoformat()}},
+        upsert=True,
+    )
+    return {"message": "Announcement deleted"}
+
+@api_router.get("/announcements/current")
+async def get_current_announcement(user: dict = Depends(get_current_user)):
+    announcement = await db.settings.find_one({"key": "group_announcement"})
+    if not announcement or not announcement.get("value"):
+        return {"message": "", "author": None, "updated_at": None}
+
+    return {
+        "message": announcement.get("value", ""),
+        "author": announcement.get("author"),
+        "updated_at": announcement.get("updated_at"),
+    }
 
 # ==================== DEPOSIT ENDPOINTS ====================
 

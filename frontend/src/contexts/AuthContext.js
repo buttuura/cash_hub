@@ -116,7 +116,14 @@ export const AuthProvider = ({ children }) => {
         setError(missingUrlError);
         throw new Error(missingUrlError);
       }
-      const payload = { name, phone, password, next_of_kin_name: nextOfKinName, next_of_kin_phone: nextOfKinPhone };
+      const payload = {
+        name,
+        phone,
+        password,
+        next_of_kin_name: nextOfKinName,
+        next_of_kin_phone: nextOfKinPhone,
+        membership_type: 'seller',
+      };
       if (email) payload.email = email;
       if (nationalId) payload.national_id = nationalId;
       const response = await axios.post(`${API_URL}/api/auth/register`, payload);
