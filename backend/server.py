@@ -1827,14 +1827,33 @@ async def get_announcement_history(user: dict = Depends(require_admin)):
 async def delete_announcement(announcement_id: str, user: dict = Depends(require_admin)):
     history_doc = await db.settings.find_one({"key": "group_announcement_history"}) or {}
     items = history_doc.get("items", []) if isinstance(history_doc.get("items"), list) else []
+    deleted_item = next((item for item in items if item.get("id") == announcement_id), None)
     filtered = [item for item in items if item.get("id") != announcement_id]
     if len(filtered) == len(items):
+        deleted_item = next(
+            (item for item in items if item.get("message") == announcement_id or item.get("updated_at") == announcement_id),
+            None,
+        )
         filtered = [item for item in items if item.get("message") != announcement_id and item.get("updated_at") != announcement_id]
     await db.settings.update_one(
         {"key": "group_announcement_history"},
         {"$set": {"items": filtered, "updated_at": datetime.now(timezone.utc).isoformat()}},
         upsert=True,
     )
+    current = await db.settings.find_one({"key": "group_announcement"})
+    if current and (
+        current.get("id") == announcement_id
+        or current.get("value") == announcement_id
+        or current.get("updated_at") == announcement_id
+        or (deleted_item and (
+            current.get("value") == deleted_item.get("message")
+            or current.get("updated_at") == deleted_item.get("updated_at")
+        ))
+    ):
+        await db.settings.update_one(
+            {"key": "group_announcement"},
+            {"$set": {"value": "", "author": None, "updated_at": None}},
+        )
     return {"message": "Announcement deleted"}
 
 @api_router.get("/announcements/current")

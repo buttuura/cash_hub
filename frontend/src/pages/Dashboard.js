@@ -248,7 +248,9 @@ const Dashboard = () => {
           updated_at: announcementRes.data?.updated_at || null,
         });
         setAnnouncementHistory(Array.isArray(historyRes.data) ? historyRes.data : []);
-        setAnnouncementDismissed(false);
+        const announcementKey = announcementRes.data?.updated_at || announcementRes.data?.message || '';
+        const dismissedKey = `cashhub-announcement-dismissed:${user?.id || 'guest'}:${announcementKey}`;
+        setAnnouncementDismissed(Boolean(announcementKey && localStorage.getItem(dismissedKey) === 'true'));
       } catch (announcementErr) {
         console.warn('Failed to load announcement:', announcementErr);
         setCurrentAnnouncement({ message: '', author: '', updated_at: null });
@@ -260,7 +262,7 @@ const Dashboard = () => {
     } finally {
       setDataLoading(false);
     }
-  }, [getAuthHeaders, isAdmin, isTreasurer]);
+  }, [getAuthHeaders, isAdmin, isTreasurer, user?.id]);
 
   const fetchMyProducts = useCallback(async () => {
     try {
@@ -1393,6 +1395,20 @@ const Dashboard = () => {
                 className="mr-3 mt-3 rounded-full p-1.5 text-[#7A4A42] hover:bg-[#FFF0EC] transition-colors"
               >
                 <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="flex justify-end border-t border-[#F3D7D1] bg-[#FFFDFC] px-5 py-3">
+              <button
+                type="button"
+                onClick={() => {
+                  const announcementKey = currentAnnouncement.updated_at || currentAnnouncement.message;
+                  const dismissedKey = `cashhub-announcement-dismissed:${user?.id || 'guest'}:${announcementKey}`;
+                  localStorage.setItem(dismissedKey, 'true');
+                  setAnnouncementDismissed(true);
+                }}
+                className="text-xs font-semibold text-[#7A4A42] underline underline-offset-2 hover:text-[#D05A49]"
+              >
+                Don't show this message again
               </button>
             </div>
           </div>
