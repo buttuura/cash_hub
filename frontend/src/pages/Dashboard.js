@@ -248,9 +248,7 @@ const Dashboard = () => {
           updated_at: announcementRes.data?.updated_at || null,
         });
         setAnnouncementHistory(Array.isArray(historyRes.data) ? historyRes.data : []);
-        const dismissedKey = `cashhub-announcement-dismissed:${user?.id || 'guest'}`;
-        const dismissed = localStorage.getItem(dismissedKey) === 'true';
-        setAnnouncementDismissed(Boolean(dismissed && announcementRes.data?.message));
+        setAnnouncementDismissed(false);
       } catch (announcementErr) {
         console.warn('Failed to load announcement:', announcementErr);
         setCurrentAnnouncement({ message: '', author: '', updated_at: null });
@@ -1358,17 +1356,26 @@ const Dashboard = () => {
       )}
 
       {!isSellerMember && popupAnnouncements.length > 0 && !announcementDismissed && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 pointer-events-none">
-          <div className="pointer-events-auto max-w-xl w-full rounded-2xl border border-[#E8EBE8] bg-white p-4 shadow-xl ring-1 ring-black/5">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#190b08]/55 px-4 pointer-events-none">
+          <div className="pointer-events-auto max-w-xl w-full overflow-hidden rounded-2xl border-2 border-[#D05A49] bg-white shadow-2xl shadow-[#D05A49]/30 ring-4 ring-[#E8B25C]/25 animate-in fade-in zoom-in-95 duration-300">
+            <div className="flex items-center gap-3 bg-[#D05A49] px-5 py-3 text-white">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/20 animate-pulse">
+                <AlertTriangle className="h-5 w-5" aria-hidden="true" />
+              </div>
+              <div>
+                <p className="text-sm font-extrabold uppercase tracking-[0.16em]">Group announcement</p>
+                <p className="text-xs font-medium text-white/85">Important message from Class one savings group</p>
+              </div>
+            </div>
             <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#2C5530]">Treasury messages</div>
+              <div className="min-w-0 flex-1 p-5">
+                <div className="mb-3 text-xs font-bold uppercase tracking-wide text-[#D05A49]">Read this before continuing</div>
                 <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
                   {popupAnnouncements.map((item) => (
-                    <div key={item.id || `${item.author}-${item.updated_at}-${item.message}`} className="rounded-xl bg-[#FAFAF8] p-3 border border-[#E8EBE8]">
+                    <div key={item.id || `${item.author}-${item.updated_at}-${item.message}`} className="rounded-xl border border-[#F3D7D1] bg-[#FFF7F4] p-3">
                       <p className="whitespace-pre-wrap text-sm leading-6 text-[#1E231F] break-words">{item.message}</p>
                       {item.author && (
-                        <p className="mt-2 text-[11px] text-[#5C665D]">
+                        <p className="mt-2 text-[11px] text-[#7A4A42]">
                           From: {item.author}
                           {item.updated_at ? ` • ${new Date(item.updated_at).toLocaleString()}` : ''}
                         </p>
@@ -1381,11 +1388,9 @@ const Dashboard = () => {
                 type="button"
                 aria-label="Close announcement"
                 onClick={() => {
-                  const dismissedKey = `cashhub-announcement-dismissed:${user?.id || 'guest'}`;
-                  localStorage.setItem(dismissedKey, 'true');
                   setAnnouncementDismissed(true);
                 }}
-                className="rounded-full p-1.5 text-[#5C665D] hover:bg-[#F5F7F5] transition-colors"
+                className="mr-3 mt-3 rounded-full p-1.5 text-[#7A4A42] hover:bg-[#FFF0EC] transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
