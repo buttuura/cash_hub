@@ -616,6 +616,14 @@ const Dashboard = () => {
       return total + Math.max(0, getLoanDisplayBalance(loan));
     }, 0);
 
+  const userActiveLoanPrincipal = loans
+    .filter(loan =>
+      loan.user_id === user?.id &&
+      ['pending_guarantor', 'pending_admin', 'approved'].includes(loan.status) &&
+      !loan.repaid
+    )
+    .reduce((total, loan) => total + Math.max(0, Number(loan.amount) || 0), 0);
+
   const targetDepositMember = depositTargetUserId
     ? members.find((m) => m.id === depositTargetUserId)
     : null;
@@ -743,8 +751,9 @@ const Dashboard = () => {
       return;
     }
     const loanAmountValue = parseFloat(loanAmount) || 0;
-    if (loanAmountValue > userMaxLoan) {
-      toast.error(`Maximum loan for your ${userSlotCount} slot(s) is UGX ${Number(userMaxLoan).toLocaleString()}`);
+    const remainingLoanLimit = Math.max(0, userMaxLoan - userActiveLoanPrincipal);
+    if (loanAmountValue > remainingLoanLimit) {
+      toast.error(`You can request up to UGX ${Number(remainingLoanLimit).toLocaleString()} more. Your total loan limit is UGX ${Number(userMaxLoan).toLocaleString()}.`);
       return;
     }
     const selectedGuarantor = members.find((m) => m.id === loanGuarantor);
@@ -1917,10 +1926,10 @@ const Dashboard = () => {
                         placeholder="600000"
                         required
                         min="1"
-                        max={userMaxLoan}
+                        max={Math.max(0, userMaxLoan - userActiveLoanPrincipal)}
                        />
                       <p className="text-xs text-[#5C665D]">
-                        Max: UGX {Number(userMaxLoan).toLocaleString()}
+                        Available: UGX {Number(Math.max(0, userMaxLoan - userActiveLoanPrincipal)).toLocaleString()}
                       </p>
                      </div>
                      <div className="space-y-2">
@@ -2496,10 +2505,10 @@ const Dashboard = () => {
                           placeholder="600000"
                           required
                           min="1"
-                          max={userMaxLoan}
+                          max={Math.max(0, userMaxLoan - userActiveLoanPrincipal)}
                         />
                         <p className="text-xs text-[#5C665D]">
-                          Max: UGX {Number(userMaxLoan).toLocaleString()}
+                          Available: UGX {Number(Math.max(0, userMaxLoan - userActiveLoanPrincipal)).toLocaleString()}
                         </p>
                       </div>
                       <div className="space-y-2">

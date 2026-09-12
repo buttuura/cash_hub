@@ -2193,17 +2193,18 @@ async def request_loan(loan: LoanRequest, user: dict = Depends(get_current_user)
     
     user_max_guarantees = user.get("max_guarantees", MAX_GUARANTEES_PER_MEMBER)
     user_max_loan = MAX_LOAN_AMOUNT * user_max_guarantees
-    if loan.amount > user_max_loan:
-        raise HTTPException(status_code=400, detail=f"Maximum loan for your {user_max_guarantees} slot(s) is UGX {user_max_loan:,}")
-    
-    # Check for existing active loan
-    existing_loan = await db.loans.find_one({
+    active_loans = await db.loans.find({
         "user_id": user["id"],
         "status": {"$in": ["pending_guarantor", "pending_admin", "approved"]},
         "repaid": False
-    })
-    if existing_loan:
-        raise HTTPException(status_code=400, detail="You already have an active or pending loan")
+    }).to_list(1000)
+    active_loan_amount = sum(float(active_loan.get("amount", 0) or 0) for active_loan in active_loans)
+    remaining_loan_limit = max(0, user_max_loan - active_loan_amount)
+    if loan.amount > remaining_loan_limit:
+        raise HTTPException(
+            status_code=400,
+            detail=f"You can request up to UGX {remaining_loan_limit:,.0f} more. Your total loan limit is UGX {user_max_loan:,}."
+        )
     
     # Validate guarantor
     if loan.guarantor_id == user["id"]:
