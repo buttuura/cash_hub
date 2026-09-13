@@ -140,6 +140,7 @@ const ServicesManagement = () => {
         status,
         notes: '',
       }, { headers: getAuthHeaders() });
+      window.dispatchEvent(new Event('stop-order-notification-sound'));
       setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, status } : o)));
       toast.success(`Order ${status} successfully.`);
     } catch (err) {

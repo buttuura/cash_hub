@@ -54,6 +54,9 @@ import {
   Settings,
   Image as ImageIcon,
   Search,
+  Sparkles,
+  Lightbulb,
+  Rocket,
 } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
 import {
@@ -87,6 +90,39 @@ const PRODUCT_CATEGORIES = [
   { value: 'graphic-material', label: 'Graphic Material' },
   { value: 'electronics', label: 'Electronics' },
 ];
+
+const PROJECT_CARD_STYLES = [
+  {
+    card: 'border-[#92B28A] bg-[#D5E6CE] shadow-[0_10px_30px_-18px_rgba(44,85,48,0.45)]',
+    header: 'from-[#E7F3DE] via-[#F4FAEE] to-[#DCEED5]',
+    accent: 'bg-[#2C5530] text-white',
+    eyebrow: 'text-[#347242]',
+    icon: Sparkles,
+    label: 'Fresh idea',
+  },
+  {
+    card: 'border-[#C88D76] bg-[#EBC9B8] shadow-[0_10px_30px_-18px_rgba(176,91,64,0.5)]',
+    header: 'from-[#F9E3D6] via-[#FFF5EE] to-[#F3D2C3]',
+    accent: 'bg-[#B05B40] text-white',
+    eyebrow: 'text-[#A34E36]',
+    icon: Lightbulb,
+    label: 'Member spotlight',
+  },
+  {
+    card: 'border-[#A99B78] bg-[#DCD4B9] shadow-[0_10px_30px_-18px_rgba(31,35,31,0.45)]',
+    header: 'from-[#E9E6D9] via-[#F8F5E9] to-[#DCD5BF]',
+    accent: 'bg-[#8B6B2E] text-white',
+    eyebrow: 'text-[#806126]',
+    icon: Rocket,
+    label: 'Big ambition',
+  },
+];
+
+const getProjectStyle = (project) => {
+  const identity = String(project.id || `${project.title}-${project.created_at || ''}`);
+  const styleIndex = Array.from(identity).reduce((total, character) => total + character.charCodeAt(0), 0) % PROJECT_CARD_STYLES.length;
+  return PROJECT_CARD_STYLES[styleIndex];
+};
 
 // Build a wa.me link that opens WhatsApp (Messenger or Business) with pre-typed text.
 // Uganda numbers: replace a leading 0 with +256 so the message can be delivered correctly.
@@ -387,6 +423,27 @@ const Dashboard = () => {
     }
   };
 
+  const handleDeleteProjectComment = async (projectId, commentId) => {
+    if (!window.confirm('Are you sure you want to delete this comment?')) return;
+    try {
+      await axios.delete(
+        `${API_URL}/api/projects/${projectId}/comments/${commentId}`,
+        { headers: getAuthHeaders() }
+      );
+      toast.success('Comment deleted');
+      setProjects((prev) =>
+        prev.map((project) =>
+          project.id === projectId
+            ? { ...project, comments: (project.comments || []).filter((comment) => comment.id !== commentId) }
+            : project
+        )
+      );
+    } catch (err) {
+      console.error('Failed to delete comment:', err);
+      toast.error(err.response?.data?.detail || 'Failed to delete comment');
+    }
+  };
+
   const handleRateProject = async (projectId, rating) => {
     if (projectRatingSubmitting[projectId]) return;
     try {
@@ -490,21 +547,21 @@ const Dashboard = () => {
     try {
       // When rejected, delete the order entirely per product requirement
       if (status === 'rejected') {
-        stopOrderNotificationSound();
         await axios.delete(`${API_URL}/api/orders/${orderId}`, {
           headers: getAuthHeaders(),
         });
+        stopOrderNotificationSound();
         setOrders((prev) => prev.filter((order) => order.id !== orderId));
         toast.success('Order rejected and removed.');
         return;
       }
-      stopOrderNotificationSound();
       await axios.patch(`${API_URL}/api/orders/${orderId}/status`, {
         status,
         notes: '',
       }, {
         headers: getAuthHeaders(),
       });
+      stopOrderNotificationSound();
       setOrders((prev) =>
         prev.map((order) =>
           order.id === orderId ? { ...order, status } : order
@@ -3193,9 +3250,31 @@ const Dashboard = () => {
               </Card>
             ) : (
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                {projects.map((project) => (
-                  <Card key={project.id} className="bg-white border border-[#E8EBE8] shadow-sm">
-                    <CardContent className="p-6 space-y-4">
+                {projects.map((project) => {
+                  const projectStyle = getProjectStyle(project);
+                  const ProjectIcon = projectStyle.icon;
+
+                  return (
+                  <Card key={project.id} className={`group relative overflow-hidden border shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg ${projectStyle.card}`}>
+                    <div className={`relative overflow-hidden bg-gradient-to-br px-4 py-3 ${projectStyle.header}`}>
+                      <div className="absolute -right-5 -top-8 h-24 w-24 rounded-full border-[10px] border-white/30" />
+                      <div className="absolute -bottom-10 right-20 h-20 w-20 rounded-full bg-white/25" />
+                      <div className="relative flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-3">
+                          <div className={`flex h-9 w-9 items-center justify-center rounded-xl shadow-sm ${projectStyle.accent}`}>
+                            <ProjectIcon className="h-4 w-4" aria-hidden="true" />
+                          </div>
+                          <div>
+                            <p className={`text-[11px] font-bold uppercase tracking-[0.18em] ${projectStyle.eyebrow}`}>{projectStyle.label}</p>
+                            <p className="mt-0.5 text-[11px] font-medium text-[#5C665D]">A member-submitted vision</p>
+                          </div>
+                        </div>
+                        <span className="rounded-full bg-white/70 px-3 py-1 text-xs font-semibold text-[#1E231F] shadow-sm">
+                          Idea #{String(project.id).slice(-4)}
+                        </span>
+                      </div>
+                    </div>
+                    <CardContent className="p-4 space-y-3">
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <h3 className="text-xl font-semibold text-[#1E231F]">{project.title}</h3>
@@ -3206,7 +3285,7 @@ const Dashboard = () => {
                         </div>
                         <div className="text-right">
                           <p className="text-sm text-[#5C665D]">Rating</p>
-                          <p className="text-lg font-bold text-[#2C5530]">
+                          <p className={`text-lg font-bold ${projectStyle.eyebrow}`}>
                             {project.average_rating?.toFixed(1) || '0.0'} / 5
                           </p>
                           <p className="text-xs text-[#5C665D]">{project.rating_count || 0} reviews</p>
@@ -3264,7 +3343,20 @@ const Dashboard = () => {
                             <div key={comment.id} className="rounded-2xl bg-[#FAFAF8] p-3 border border-[#E8EBE8]">
                               <div className="flex items-center justify-between gap-2">
                                 <p className="text-sm font-semibold text-[#1E231F]">{comment.user_name}</p>
-                                <p className="text-xs text-[#5C665D]">{new Date(comment.created_at).toLocaleDateString()}</p>
+                                <div className="flex items-center gap-2">
+                                  <p className="text-xs text-[#5C665D]">{new Date(comment.created_at).toLocaleDateString()}</p>
+                                  {isAdmin && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteProjectComment(project.id, comment.id)}
+                                      className="rounded-full p-1 text-[#D05A49] transition-colors hover:bg-[#D05A49]/10"
+                                      aria-label={`Delete comment by ${comment.user_name}`}
+                                      title="Delete comment"
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </button>
+                                  )}
+                                </div>
                               </div>
                               <p className="text-sm text-[#5C665D] mt-2">{comment.comment || 'No comment provided.'}</p>
                             </div>
@@ -3298,7 +3390,8 @@ const Dashboard = () => {
                       </div>
                     </CardContent>
                   </Card>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

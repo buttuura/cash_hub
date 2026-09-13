@@ -1569,8 +1569,8 @@ async def list_projects(user: dict = Depends(get_current_user)):
 
 @api_router.post("/projects/{project_id}/comments")
 async def add_project_comment(project_id: str, comment: ProjectCommentCreate, user: dict = Depends(get_current_user)):
-    if user.get("role") not in ["member", "seller"]:
-        raise HTTPException(status_code=403, detail="Members only")
+    if user.get("role") not in ["member", "seller", "admin", "super_admin", "treasurer"]:
+        raise HTTPException(status_code=403, detail="Members or staff only")
 
     project = await db.projects.find_one({"project_id": project_id})
     if not project:
@@ -1588,6 +1588,22 @@ async def add_project_comment(project_id: str, comment: ProjectCommentCreate, us
     comment_data["id"] = str(result.inserted_id)
     comment_data.pop("_id", None)
     return comment_data
+
+@api_router.delete("/projects/{project_id}/comments/{comment_id}")
+async def delete_project_comment(project_id: str, comment_id: str, user: dict = Depends(require_admin)):
+    try:
+        comment_object_id = ObjectId(comment_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid comment id")
+
+    result = await db.project_comments.delete_one({
+        "_id": comment_object_id,
+        "project_id": project_id,
+    })
+    if not result.deleted_count:
+        raise HTTPException(status_code=404, detail="Comment not found")
+
+    return {"message": "Comment deleted", "id": comment_id}
 
 @api_router.post("/projects/{project_id}/ratings")
 async def rate_project(project_id: str, rating: ProjectRatingCreate, user: dict = Depends(get_current_user)):

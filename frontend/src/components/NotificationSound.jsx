@@ -40,19 +40,12 @@ const NotificationSound = () => {
       ws.onmessage = (event) => {
         const data = JSON.parse(event.data);
         if (data.type === 'new_order') {
-          const currentSession = ++notificationSessionRef.current;
+          notificationSessionRef.current += 1;
           if (audioRef.current) {
             audioRef.current.currentTime = 0;
-            audioRef.current.pause();
-            audioRef.current.loop = false;
+            audioRef.current.loop = true;
             audioRef.current.play().catch(() => {});
           }
-          setTimeout(() => {
-            if (currentSession === notificationSessionRef.current && audioRef.current) {
-              audioRef.current.pause();
-              audioRef.current.currentTime = 0;
-            }
-          }, 2500);
           toast.info(`New order received from ${data.order.buyerName || 'a buyer'}`);
           window.dispatchEvent(new Event('new-order-received'));
         }
