@@ -15,7 +15,7 @@ import { Button } from '../components/ui/button';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '../components/ui/card';
 import { ShoppingCart } from 'lucide-react';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
+const API_URL = process.env.REACT_APP_BACKEND_URL || (process.env.NODE_ENV === 'production' ? '' : 'http://localhost:8000');
 
 const DEFAULT_CATEGORIES = [
   { id: 'food', name: 'Food', description: 'Fresh meals, groceries and snacks sold by group members.' },

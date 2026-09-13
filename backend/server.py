@@ -1495,8 +1495,8 @@ async def update_product(product_id: str, payload: dict = Body(...), user: dict 
 
 @api_router.post("/projects")
 async def create_project(project: ProjectCreate, user: dict = Depends(get_current_user)):
-    if user.get("role") not in ["member", "seller"]:
-        raise HTTPException(status_code=403, detail="Members only")
+    if user.get("role") not in ["member", "seller", "admin", "super_admin", "treasurer"]:
+        raise HTTPException(status_code=403, detail="Members or staff only")
 
     title = project.title.strip()
     if not title:

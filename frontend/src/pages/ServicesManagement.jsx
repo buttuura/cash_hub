@@ -28,7 +28,7 @@ import { exportLoanAgreementPDF, exportSellerReceiptPDF, exportOrderReceiptPDF }
 import { OFFICERS } from '../data/officers';
 import { resolveImageUrl } from '../lib/utils';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
+const API_URL = process.env.REACT_APP_BACKEND_URL || (process.env.NODE_ENV === 'production' ? '' : 'http://localhost:8000');
 
 const formatCurrency = (amount) => {
   return `UGX ${Number(amount || 0).toLocaleString()}`;

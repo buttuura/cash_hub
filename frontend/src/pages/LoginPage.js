@@ -61,7 +61,7 @@ const LoginPage = () => {
     setForgotError('');
     setForgotLoading(true);
     try {
-      const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
+      const API_URL = process.env.REACT_APP_BACKEND_URL || (process.env.NODE_ENV === 'production' ? '' : 'http://localhost:8000');
       const response = await axios.post(`${API_URL}/api/auth/forgot-password`, {
         phone: forgotPhone,
       });
@@ -98,7 +98,7 @@ const LoginPage = () => {
     }
     setResetLoading(true);
     try {
-      const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
+      const API_URL = process.env.REACT_APP_BACKEND_URL || (process.env.NODE_ENV === 'production' ? '' : 'http://localhost:8000');
       await axios.post(`${API_URL}/api/auth/reset-password`, {
         phone: resetPhone,
         temp_password: tempPassword,

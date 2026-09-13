@@ -31,7 +31,7 @@ const ICON_MAP = {
   'default': Sparkles,
 };
 
-const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
+const API_URL = process.env.REACT_APP_BACKEND_URL || (process.env.NODE_ENV === 'production' ? '' : 'http://localhost:8000');
 
 const DEFAULT_CATEGORIES = [
   {

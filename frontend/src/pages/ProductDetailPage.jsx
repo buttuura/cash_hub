@@ -12,7 +12,7 @@ import { Toaster, toast } from 'sonner';
 import { ShoppingCart, Heart, Share2, ChevronLeft, ChevronRight, MapPin, Shield, ArrowLeft, X, Phone, MessageCircle } from 'lucide-react';
 import { resolveImageUrl } from '../lib/utils';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
+const API_URL = process.env.REACT_APP_BACKEND_URL || (process.env.NODE_ENV === 'production' ? '' : 'http://localhost:8000');
 
 function getImageUrl(imageUrl) {
   return resolveImageUrl(imageUrl, process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000');
