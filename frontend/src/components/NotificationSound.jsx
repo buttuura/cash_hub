@@ -3,7 +3,14 @@ import { useAuth } from '../contexts/AuthContext';
 import { toast } from 'sonner';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL || (process.env.NODE_ENV === 'production' ? '' : 'http://localhost:8000');
-const WS_URL = API_URL.replace(/^http/, 'ws');
+
+const getWebSocketUrl = (sellerName) => {
+  const url = new URL(API_URL || window.location.origin);
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+  url.pathname = `/ws/orders/${encodeURIComponent((sellerName || '').trim())}`;
+  url.search = '';
+  return url.toString();
+};
 
 const urlBase64ToUint8Array = (value) => {
   const padding = '='.repeat((4 - (value.length % 4)) % 4);
@@ -18,6 +25,7 @@ const NotificationSound = () => {
   const wsRef = useRef(null);
   const reconnectTimerRef = useRef(null);
   const notificationSessionRef = useRef(0);
+  const audioUnlockedRef = useRef(false);
 
   useEffect(() => {
     if (!isAuthenticated || !user?.name) return;
@@ -59,6 +67,28 @@ const NotificationSound = () => {
 
     registerPushNotifications();
 
+    const unlockAudio = () => {
+      const audio = audioRef.current;
+      if (!audio || audioUnlockedRef.current) return;
+
+      audio.muted = true;
+      const unlockAttempt = audio.play();
+      if (unlockAttempt) {
+        unlockAttempt.then(() => {
+          audio.pause();
+          audio.currentTime = 0;
+          audio.muted = false;
+          audioUnlockedRef.current = true;
+        }).catch(() => {
+          audio.muted = false;
+        });
+      }
+    };
+
+    document.addEventListener('pointerdown', unlockAudio, { once: true, passive: true });
+    document.addEventListener('touchstart', unlockAudio, { once: true, passive: true });
+    document.addEventListener('keydown', unlockAudio, { once: true });
+
     const stopSound = () => {
       if (audioRef.current) {
         audioRef.current.pause();
@@ -73,7 +103,7 @@ const NotificationSound = () => {
     window.addEventListener('stop-order-notification-sound', handleStopSound);
 
     const connectWebSocket = () => {
-      const wsUrl = `${WS_URL}/ws/orders/${encodeURIComponent((user.name || '').trim())}`;
+      const wsUrl = getWebSocketUrl(user.name);
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
@@ -88,7 +118,9 @@ const NotificationSound = () => {
           if (audioRef.current) {
             audioRef.current.currentTime = 0;
             audioRef.current.loop = true;
-            audioRef.current.play().catch(() => {});
+            audioRef.current.play().catch((error) => {
+              console.warn('Order notification sound could not play:', error.name || error.message);
+            });
           }
           toast.info(`New order received from ${data.order.buyerName || 'a buyer'}`);
           if ('Notification' in window && Notification.permission === 'granted') {
@@ -115,6 +147,9 @@ const NotificationSound = () => {
 
     return () => {
       notificationSessionRef.current += 1;
+      document.removeEventListener('pointerdown', unlockAudio);
+      document.removeEventListener('touchstart', unlockAudio);
+      document.removeEventListener('keydown', unlockAudio);
       window.removeEventListener('stop-order-notification-sound', handleStopSound);
       if (reconnectTimerRef.current) {
         clearTimeout(reconnectTimerRef.current);

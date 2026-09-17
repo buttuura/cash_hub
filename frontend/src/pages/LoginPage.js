@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import axios from 'axios';
@@ -14,7 +14,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '../components/ui/dialog';
-import { AlertCircle, Users, ArrowRight, Eye, EyeOff, KeyRound, Loader2, CheckCircle, MessageCircle } from 'lucide-react';
+import { AlertCircle, Users, ArrowRight, Eye, EyeOff, KeyRound, Loader2, CheckCircle, MessageCircle, Fingerprint } from 'lucide-react';
 
 const LoginPage = () => {
   const [identifier, setIdentifier] = useState('');
@@ -38,8 +38,22 @@ const LoginPage = () => {
   const [forgotError, setForgotError] = useState('');
   const [resetError, setResetError] = useState('');
   const [resetSuccess, setResetSuccess] = useState('');
-  const { login } = useAuth();
+  const { login, getBiometricStatus, enableBiometric, loginWithBiometric } = useAuth();
+  const [biometricAvailable, setBiometricAvailable] = useState(false);
+  const [biometricConfigured, setBiometricConfigured] = useState(false);
+  const [biometricLoading, setBiometricLoading] = useState(false);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    let active = true;
+    getBiometricStatus().then((status) => {
+      if (active) {
+        setBiometricAvailable(status.available);
+        setBiometricConfigured(status.configured);
+      }
+    });
+    return () => { active = false; };
+  }, [getBiometricStatus]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -48,11 +62,32 @@ const LoginPage = () => {
 
     try {
       await login(identifier, password);
+      if (biometricAvailable && !biometricConfigured) {
+        try {
+          await enableBiometric(identifier, password);
+          setBiometricConfigured(true);
+        } catch {
+          // Password login has already succeeded; biometric enrollment is optional.
+        }
+      }
       navigate('/dashboard');
     } catch (err) {
       setError(err.message || 'Login failed');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleBiometricLogin = async () => {
+    setError('');
+    setBiometricLoading(true);
+    try {
+      await loginWithBiometric();
+      navigate('/dashboard');
+    } catch (err) {
+      setError(err.message || 'Biometric login failed');
+    } finally {
+      setBiometricLoading(false);
     }
   };
 
@@ -224,6 +259,19 @@ const LoginPage = () => {
                 {loading ? 'Signing in...' : 'Sign In'}
                 {!loading && <ArrowRight className="w-4 h-4" />}
               </Button>
+
+              {biometricAvailable && biometricConfigured && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={loading || biometricLoading}
+                  onClick={handleBiometricLogin}
+                  className="w-full h-11 border-[#2C5530] text-[#2C5530] hover:bg-[#ECF8E9] rounded-full font-semibold flex items-center justify-center gap-2"
+                >
+                  <Fingerprint className="w-4 h-4" />
+                  {biometricLoading ? 'Verifying...' : 'Use fingerprint or face unlock'}
+                </Button>
+              )}
             </form>
 
             <div className="mt-2 text-center">

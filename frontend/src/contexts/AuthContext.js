@@ -1,7 +1,10 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
+import { Capacitor } from '@capacitor/core';
+import { NativeBiometric } from '@capgo/capacitor-native-biometric';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL || (process.env.NODE_ENV === 'production' ? '' : 'http://localhost:8000');
+const BIOMETRIC_SERVER = 'cash-hub-auth';
 
 const AuthContext = createContext(null);
 
@@ -25,13 +28,13 @@ const getBackendErrorMessage = (error, defaultMsg) => {
   return defaultMsg;
 };
 
-export const useAuth = () => {
+export function useAuth() {
   const context = useContext(AuthContext);
   if (!context) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
-};
+}
 
 export const AuthProvider = ({ children }) => {
   const hasToken = typeof window !== 'undefined' && localStorage.getItem('access_token');
@@ -106,6 +109,57 @@ export const AuthProvider = ({ children }) => {
       setError(errorMsg);
       throw new Error(errorMsg);
     }
+  };
+
+  const getBiometricStatus = useCallback(async () => {
+    if (!Capacitor.isNativePlatform()) return { available: false, configured: false };
+
+    try {
+      const availability = await NativeBiometric.isAvailable();
+      if (!availability.isAvailable) return { available: false, configured: false };
+
+      try {
+        await NativeBiometric.getCredentials({ server: BIOMETRIC_SERVER });
+        return { available: true, configured: true };
+      } catch {
+        return { available: true, configured: false };
+      }
+    } catch {
+      return { available: false, configured: false };
+    }
+  }, []);
+
+  const enableBiometric = async (identifier, password) => {
+    if (!Capacitor.isNativePlatform()) return;
+
+    await NativeBiometric.verifyIdentity({
+      reason: 'Enable biometric login for your Class One Savings account',
+      title: 'Enable biometric login',
+      subtitle: 'Confirm your identity to continue',
+      description: 'Use your fingerprint or face unlock next time',
+    });
+
+    await NativeBiometric.setCredentials({
+      server: BIOMETRIC_SERVER,
+      username: identifier,
+      password,
+    });
+  };
+
+  const loginWithBiometric = async () => {
+    if (!Capacitor.isNativePlatform()) {
+      throw new Error('Biometric login is available only in the Android app');
+    }
+
+    await NativeBiometric.verifyIdentity({
+      reason: 'Unlock your Class One Savings account',
+      title: 'Biometric login',
+      subtitle: 'Confirm your identity to continue',
+      description: 'Use your fingerprint or face unlock',
+    });
+
+    const credentials = await NativeBiometric.getCredentials({ server: BIOMETRIC_SERVER });
+    return login(credentials.username, credentials.password);
   };
 
   const register = async (name, phone, password, email, nextOfKinName, nextOfKinPhone, nationalId) => {
@@ -194,6 +248,9 @@ export const AuthProvider = ({ children }) => {
     initializing,
     error,
     login,
+    getBiometricStatus,
+    enableBiometric,
+    loginWithBiometric,
     register,
     logout,
     refreshUser,
