@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cashhub-cache-v1';
+const CACHE_NAME = 'cashhub-cache-v2';
 const PRECACHE_URLS = [
   '/',
   '/index.html',
@@ -23,6 +23,38 @@ self.addEventListener('activate', (event) => {
     ))
   );
   self.clients.claim();
+});
+
+self.addEventListener('push', (event) => {
+  if (!event.data) return;
+  const data = event.data.json();
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+      if (clients.some((client) => client.visibilityState === 'visible')) return;
+      return self.registration.showNotification(data.title || 'Cash Hub', {
+        body: data.body || 'You have a new notification',
+        icon: '/icons/icon-192.png',
+        badge: '/icons/icon-192.png',
+        tag: data.type || 'cash-hub-notification',
+        data: { url: data.url || '/' },
+      });
+    })
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const targetUrl = new URL(event.notification.data?.url || '/', self.location.origin).href;
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+      const existingClient = clients.find((client) => 'focus' in client);
+      if (existingClient) {
+        existingClient.navigate(targetUrl);
+        return existingClient.focus();
+      }
+      return self.clients.openWindow(targetUrl);
+    })
+  );
 });
 
 self.addEventListener('fetch', (event) => {

@@ -29,6 +29,7 @@ requests
 
 # WebSocket
 websockets
+pywebpush
 
 # Scheduled tasks
 apscheduler

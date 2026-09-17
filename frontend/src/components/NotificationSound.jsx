@@ -5,6 +5,13 @@ import { toast } from 'sonner';
 const API_URL = process.env.REACT_APP_BACKEND_URL || (process.env.NODE_ENV === 'production' ? '' : 'http://localhost:8000');
 const WS_URL = API_URL.replace(/^http/, 'ws');
 
+const urlBase64ToUint8Array = (value) => {
+  const padding = '='.repeat((4 - (value.length % 4)) % 4);
+  const base64 = (value + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  return Uint8Array.from([...rawData].map((character) => character.charCodeAt(0)));
+};
+
 const NotificationSound = () => {
   const { user, isAuthenticated } = useAuth();
   const audioRef = useRef(null);
@@ -14,6 +21,43 @@ const NotificationSound = () => {
 
   useEffect(() => {
     if (!isAuthenticated || !user?.name) return;
+
+    const registerPushNotifications = async () => {
+      if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return;
+      if (Notification.permission === 'denied') return;
+
+      try {
+        const permission = Notification.permission === 'granted'
+          ? 'granted'
+          : await Notification.requestPermission();
+        if (permission !== 'granted') return;
+
+        const registration = await navigator.serviceWorker.ready;
+        const keyResponse = await fetch(`${API_URL}/api/push/vapid-public-key`);
+        if (!keyResponse.ok) return;
+        const { publicKey } = await keyResponse.json();
+        let subscription = await registration.pushManager.getSubscription();
+        if (!subscription) {
+          subscription = await registration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlBase64ToUint8Array(publicKey),
+          });
+        }
+
+        await fetch(`${API_URL}/api/push/subscribe`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${localStorage.getItem('access_token')}`,
+          },
+          body: JSON.stringify(subscription.toJSON()),
+        });
+      } catch (error) {
+        console.warn('Push notification registration failed:', error);
+      }
+    };
+
+    registerPushNotifications();
 
     const stopSound = () => {
       if (audioRef.current) {
@@ -47,6 +91,12 @@ const NotificationSound = () => {
             audioRef.current.play().catch(() => {});
           }
           toast.info(`New order received from ${data.order.buyerName || 'a buyer'}`);
+          if ('Notification' in window && Notification.permission === 'granted') {
+            new Notification('New order received', {
+              body: `New order from ${data.order.buyerName || 'a buyer'}`,
+              tag: `order-${data.order.id}`,
+            });
+          }
           window.dispatchEvent(new Event('new-order-received'));
         }
       };

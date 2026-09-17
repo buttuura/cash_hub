@@ -16,6 +16,7 @@ import logging
 import shutil
 import secrets
 import string
+import json
 from urllib.parse import quote
 import smtplib
 from email.mime.text import MIMEText
@@ -29,6 +30,7 @@ from datetime import datetime, timezone, timedelta
 import anyio
 import cloudinary
 import cloudinary.uploader
+from pywebpush import webpush, WebPushException
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 # Configure logging
@@ -62,6 +64,10 @@ if CLOUDINARY_URL:
     cloudinary.config(cloudinary_url=CLOUDINARY_URL)
 else:
     logger.warning("CLOUDINARY_URL not set, uploads to Cloudinary are disabled.")
+
+VAPID_PUBLIC_KEY = os.environ.get('VAPID_PUBLIC_KEY')
+VAPID_PRIVATE_KEY = os.environ.get('VAPID_PRIVATE_KEY')
+VAPID_CLAIMS_EMAIL = os.environ.get('VAPID_CLAIMS_EMAIL', 'mailto:admin@c1group.site')
 
 # Group Rules Constants
 MONTHLY_SAVINGS = 52000  # UGX
@@ -226,6 +232,10 @@ class ResetPasswordRequest(BaseModel):
     temp_password: str
     new_password: str
 
+class PushSubscription(BaseModel):
+    endpoint: str
+    keys: dict
+
 class ProductCreate(BaseModel):
     title: str
     description: Optional[str] = None
@@ -328,6 +338,60 @@ async def get_current_user_optional(request: Request) -> Optional[dict]:
         if exc.status_code == 401:
             return None
         raise
+
+async def send_push_to_seller(seller_name: str, payload: dict):
+    if not VAPID_PUBLIC_KEY or not VAPID_PRIVATE_KEY:
+        return
+
+    seller = await db.users.find_one({
+        "name": {"$regex": f"^{re.escape((seller_name or '').strip())}$", "$options": "i"}
+    })
+    if not seller:
+        return
+
+    subscriptions = await db.push_subscriptions.find({
+        "user_id": str(seller["_id"])
+    }).to_list(100)
+    for subscription in subscriptions:
+        try:
+            await anyio.to_thread.run_sync(lambda: webpush(
+                subscription_info=subscription["subscription"],
+                data=json.dumps(payload),
+                vapid_private_key=VAPID_PRIVATE_KEY,
+                vapid_claims={"sub": VAPID_CLAIMS_EMAIL},
+            ))
+        except WebPushException as exc:
+            status_code = getattr(exc.response, "status_code", None)
+            if status_code in (404, 410):
+                await db.push_subscriptions.delete_one({"_id": subscription["_id"]})
+            else:
+                logger.warning("Web Push delivery failed: %s", exc)
+        except Exception as exc:
+            logger.warning("Web Push delivery failed: %s", exc)
+
+@api_router.get("/push/vapid-public-key")
+async def get_vapid_public_key():
+    if not VAPID_PUBLIC_KEY:
+        raise HTTPException(status_code=503, detail="Push notifications are not configured")
+    return {"publicKey": VAPID_PUBLIC_KEY}
+
+@api_router.post("/push/subscribe")
+async def subscribe_to_push(subscription: PushSubscription, user: dict = Depends(get_current_user)):
+    subscription_data = subscription.model_dump()
+    await db.push_subscriptions.update_one(
+        {"endpoint": subscription.endpoint},
+        {"$set": {"user_id": user["id"], "subscription": subscription_data}},
+        upsert=True,
+    )
+    return {"subscribed": True}
+
+@api_router.delete("/push/subscribe")
+async def unsubscribe_from_push(subscription: PushSubscription, user: dict = Depends(get_current_user)):
+    await db.push_subscriptions.delete_one({
+        "user_id": user["id"],
+        "endpoint": subscription.endpoint,
+    })
+    return {"subscribed": False}
 
 async def require_admin(request: Request) -> dict:
     user = await get_current_user(request)
@@ -1147,6 +1211,13 @@ async def create_order(order: OrderCreate, user: Optional[dict] = Depends(get_cu
     await manager.broadcast_to_seller(order_doc["sellerName"], {
         "type": "new_order",
         "order": order_doc
+    })
+    await send_push_to_seller(order_doc["sellerName"], {
+        "type": "new_order",
+        "title": "New order received",
+        "body": f"New order from {order_doc.get('buyerName') or 'a buyer'}",
+        "url": "/dashboard",
+        "order": order_doc,
     })
     
     return order_doc

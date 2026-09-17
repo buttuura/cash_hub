@@ -22,3 +22,7 @@ CLOUDINARY_URL=cloudinary://<API_KEY>:<API_SECRET>@<CLOUD_NAME>
 ## Local configuration
 
 Copy `backend/.env.example` to `backend/.env` and fill in your values.
+
+## Android/browser notifications
+
+The app uses Web Push for notifications when Android Chrome is in the background. Generate a VAPID key pair with `vapid --gen`, then configure `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `VAPID_CLAIMS_EMAIL` in the backend environment. The user must allow notifications once after signing in over HTTPS; `localhost` is also valid for local testing.
