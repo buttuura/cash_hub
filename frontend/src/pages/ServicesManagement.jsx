@@ -24,7 +24,7 @@ import {
   Home,
 } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
-import { exportLoanAgreementPDF, exportSellerReceiptPDF, exportOrderReceiptPDF } from '../utils/pdfExport';
+import { exportLoanAgreementPDF, exportSellerReceiptPDF, exportOrderReceiptPDF, savePdf } from '../utils/pdfExport';
 import { OFFICERS } from '../data/officers';
 import { resolveImageUrl } from '../lib/utils';
 
@@ -401,7 +401,7 @@ const ServicesManagement = () => {
     return resolveImageUrl(imageUrl, API_URL);
   };
 
-  const exportOrdersPDF = () => {
+  const exportOrdersPDF = async () => {
     const doc = new jsPDF();
     doc.setFontSize(16);
     doc.setTextColor(44, 85, 48);
@@ -435,10 +435,10 @@ const ServicesManagement = () => {
       headStyles: { fillColor: [44, 85, 48] },
     });
 
-    doc.save(`orders-report-${new Date().toISOString().split('T')[0]}.pdf`);
+    await savePdf(doc, `orders-report-${new Date().toISOString().split('T')[0]}.pdf`);
   };
 
-  const exportQuickLoansPDF = () => {
+  const exportQuickLoansPDF = async () => {
     const doc = new jsPDF();
     doc.setFontSize(16);
     doc.setTextColor(44, 85, 48);
@@ -467,10 +467,10 @@ const ServicesManagement = () => {
       headStyles: { fillColor: [212, 140, 112] },
     });
 
-    doc.save(`quick-loans-report-${new Date().toISOString().split('T')[0]}.pdf`);
+    await savePdf(doc, `quick-loans-report-${new Date().toISOString().split('T')[0]}.pdf`);
   };
 
-  const exportDeletedOrdersPDF = () => {
+  const exportDeletedOrdersPDF = async () => {
     const doc = new jsPDF();
     doc.setFontSize(16);
     doc.setTextColor(44, 85, 48);
@@ -499,7 +499,7 @@ const ServicesManagement = () => {
       headStyles: { fillColor: [208, 90, 73] },
     });
 
-    doc.save(`deleted-orders-report-${new Date().toISOString().split('T')[0]}.pdf`);
+    await savePdf(doc, `deleted-orders-report-${new Date().toISOString().split('T')[0]}.pdf`);
   };
 
   const uniqueSellers = React.useMemo(() => {

@@ -85,7 +85,7 @@ const LoginPage = () => {
       await loginWithBiometric();
       navigate('/dashboard');
     } catch (err) {
-      setError(err.message || 'Biometric login failed');
+      setError(err.message || 'Biometric login failed. Check that fingerprint or face unlock is enrolled on this device.');
     } finally {
       setBiometricLoading(false);
     }

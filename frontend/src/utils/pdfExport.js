@@ -1,5 +1,23 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { Capacitor } from '@capacitor/core';
+import { Directory, Filesystem } from '@capacitor/filesystem';
+
+export const savePdf = async (doc, filename) => {
+  if (!Capacitor.isNativePlatform()) {
+    doc.save(filename);
+    return;
+  }
+
+  const dataUri = doc.output('datauristring');
+  const base64Data = dataUri.split(',')[1];
+  await Filesystem.writeFile({
+    path: filename,
+    data: base64Data,
+    directory: Directory.Documents,
+    recursive: true,
+  });
+};
 
 const fmtUGX = (n) => `UGX ${Number(n || 0).toLocaleString()}`;
 const fmtDate = (iso) => iso ? new Date(iso).toLocaleDateString() : '-';
@@ -76,7 +94,7 @@ const addHeader = (doc, title, subtitle) => {
   return y; // ADD THIS - return the new y position
 };
 
-export const exportDepositsPDF = (deposits, filenamePrefix = 'deposits') => {
+export const exportDepositsPDF = async (deposits, filenamePrefix = 'deposits') => {
   const doc = new jsPDF();
  const startY = addHeader(doc, 'Deposits Report', `Total records: ${deposits.length}`);
 autoTable(doc, {
@@ -93,10 +111,10 @@ autoTable(doc, {
     styles: { fontSize: 9 },
     headStyles: { fillColor: [44, 85, 48] },
   });
-  doc.save(`${filenamePrefix}-${new Date().toISOString().split('T')[0]}.pdf`);
+  await savePdf(doc, `${filenamePrefix}-${new Date().toISOString().split('T')[0]}.pdf`);
 };
 
-export const exportLoansPDF = (loans, filenamePrefix = 'loans') => {
+export const exportLoansPDF = async (loans, filenamePrefix = 'loans') => {
   const doc = new jsPDF();
   const startY = addHeader(doc, 'Loans Report', `Total records: ${loans.length}`);
 autoTable(doc, {
@@ -114,7 +132,7 @@ autoTable(doc, {
     styles: { fontSize: 9 },
     headStyles: { fillColor: [212, 140, 112] },
   });
-  doc.save(`${filenamePrefix}-${new Date().toISOString().split('T')[0]}.pdf`);
+  await savePdf(doc, `${filenamePrefix}-${new Date().toISOString().split('T')[0]}.pdf`);
 };
 const dataUrlFromBlob = (blob) =>
   new Promise((resolve, reject) => {
@@ -281,7 +299,7 @@ export const exportLoanAgreementPDF = async (loanData, officer, options = { down
       const loanName = loanData?.loanName || loanData?.loan_name || 'Agreement';
       const safeFileName = loanName.toString().replace(/\s/g, '_').replace(/[^\w-]/g, '');
       const date = new Date().toISOString().split('T')[0];
-      doc.save(`Sell_Agreement_${safeFileName}-${date}.pdf`);
+      await savePdf(doc, `Sell_Agreement_${safeFileName}-${date}.pdf`);
     }
     return doc;
   }
@@ -501,13 +519,13 @@ export const exportLoanAgreementPDF = async (loanData, officer, options = { down
     const loanName = data.loanName || data.loan_name || borrowerName || 'Agreement';
     const safeFileName = loanName.toString().replace(/\s/g, '_').replace(/[^\w-]/g, '');
     const date = new Date().toISOString().split('T')[0];
-    doc.save(`Loan_Agreement_${safeFileName}-${date}.pdf`);
+    await savePdf(doc, `Loan_Agreement_${safeFileName}-${date}.pdf`);
   }
 
   return doc;
 };
 
-export const exportWithdrawalsPDF = (withdrawals, filenamePrefix = 'withdrawals') => {
+export const exportWithdrawalsPDF = async (withdrawals, filenamePrefix = 'withdrawals') => {
   const doc = new jsPDF();
   addHeader(doc, 'Withdrawals Report', `Total records: ${withdrawals.length}`);
   autoTable(doc, {
@@ -524,10 +542,10 @@ export const exportWithdrawalsPDF = (withdrawals, filenamePrefix = 'withdrawals'
     styles: { fontSize: 9 },
     headStyles: { fillColor: [208, 90, 73] },
   });
-  doc.save(`${filenamePrefix}-${new Date().toISOString().split('T')[0]}.pdf`);
+  await savePdf(doc, `${filenamePrefix}-${new Date().toISOString().split('T')[0]}.pdf`);
 };
 
-export const exportPettyCashPDF = (items, filenamePrefix = 'petty-cash') => {
+export const exportPettyCashPDF = async (items, filenamePrefix = 'petty-cash') => {
   const doc = new jsPDF();
   addHeader(doc, 'Petty Cash Report', `Total records: ${items.length}`);
   autoTable(doc, {
@@ -543,7 +561,7 @@ export const exportPettyCashPDF = (items, filenamePrefix = 'petty-cash') => {
     styles: { fontSize: 9 },
     headStyles: { fillColor: [232, 178, 92] },
   });
-  doc.save(`${filenamePrefix}-${new Date().toISOString().split('T')[0]}.pdf`);
+  await savePdf(doc, `${filenamePrefix}-${new Date().toISOString().split('T')[0]}.pdf`);
 };
 
 const drawReceiptLine = (doc, y, text, x = 14, align = 'left', bold = false) => {
@@ -571,7 +589,7 @@ const drawItemRow = (doc, y, item, qty, lineTotal) => {
   return y + 5;
 };
 
-export const exportOrderReceiptPDF = (order, buyerName, buyerPhone, buyerEmail) => {
+export const exportOrderReceiptPDF = async (order, buyerName, buyerPhone, buyerEmail) => {
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.width;
   let y = 20;
@@ -648,10 +666,10 @@ export const exportOrderReceiptPDF = (order, buyerName, buyerPhone, buyerEmail) 
   y += 5;
   doc.text('For inquiries, contact the seller directly.', pageWidth / 2, y, { align: 'center' });
 
-  doc.save(`receipt-${order.id || 'order'}-${new Date().toISOString().split('T')[0]}.pdf`);
+  await savePdf(doc, `receipt-${order.id || 'order'}-${new Date().toISOString().split('T')[0]}.pdf`);
 };
 
-export const exportCustomerReceiptPDF = (customers, options = {}) => {
+export const exportCustomerReceiptPDF = async (customers, options = {}) => {
   const { singleSeller, dateRange } = options;
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.width;
@@ -755,10 +773,10 @@ export const exportCustomerReceiptPDF = (customers, options = {}) => {
     doc.text(`${sortedOrders.length} order(s)`, 14, y);
   });
 
-  doc.save(`customer-receipt-${new Date().toISOString().split('T')[0]}.pdf`);
+  await savePdf(doc, `customer-receipt-${new Date().toISOString().split('T')[0]}.pdf`);
 };
 
-export const exportSellerReceiptPDF = (sellers, options = {}) => {
+export const exportSellerReceiptPDF = async (sellers, options = {}) => {
   const { dateRange } = options;
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.width;
@@ -861,10 +879,10 @@ export const exportSellerReceiptPDF = (sellers, options = {}) => {
   doc.setTextColor(92, 102, 93);
   doc.text(`${sellers.length} seller(s), ${sellers.reduce((sum, s) => sum + s.orders.length, 0)} order(s)`, 14, y);
 
-  doc.save(`seller-receipt-${new Date().toISOString().split('T')[0]}.pdf`);
+  await savePdf(doc, `seller-receipt-${new Date().toISOString().split('T')[0]}.pdf`);
 };
 
-export const exportFullGroupReportPDF = ({ financials, deposits, loans, withdrawals, pettyCash, members }) => {
+export const exportFullGroupReportPDF = async ({ financials, deposits, loans, withdrawals, pettyCash, members }) => {
   const doc = new jsPDF();
   addHeader(doc, 'Full Group Report', `Comprehensive record for admin`);
   
@@ -962,5 +980,5 @@ export const exportFullGroupReportPDF = ({ financials, deposits, loans, withdraw
     });
   }
   
-  doc.save(`group-report-${new Date().toISOString().split('T')[0]}.pdf`);
+  await savePdf(doc, `group-report-${new Date().toISOString().split('T')[0]}.pdf`);
 };
