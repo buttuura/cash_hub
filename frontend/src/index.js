@@ -14,7 +14,18 @@ root.render(
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('/sw.js')
-      .then((reg) => console.log('Service worker registered.', reg))
+      .then((reg) => {
+        console.log('Service worker registered.', reg);
+        if (navigator.onLine && reg.active) {
+          reg.active.postMessage({ type: 'REPLAY_OFFLINE_WRITES' });
+        }
+      })
       .catch((err) => console.warn('Service worker registration failed:', err));
+  });
+
+  window.addEventListener('online', () => {
+    navigator.serviceWorker.ready.then((reg) => {
+      reg.active?.postMessage({ type: 'REPLAY_OFFLINE_WRITES' });
+    });
   });
 }
