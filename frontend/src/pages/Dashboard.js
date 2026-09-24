@@ -132,6 +132,9 @@ const buildWhatsAppUrl = (phone, message) => {
 };
 
 const CONTACT_ADMIN_PHONE = '+256776944322';
+const DASHBOARD_CACHE_PREFIX = 'cashhub-dashboard-cache:';
+
+const getDashboardCacheKey = (userId) => `${DASHBOARD_CACHE_PREFIX}${userId}`;
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -254,10 +257,13 @@ const Dashboard = () => {
       setMembers(membersRes.data);
       setOrders(ordersRes.data);
 
+      let cachedQuickLoans = [];
+      let cachedUserQuickLoans = [];
       if (isAdmin || isTreasurer) {
         try {
           const quickLoansRes = await axios.get(`${API_URL}/api/quick-loans`, { headers });
           setQuickLoans(quickLoansRes.data);
+          cachedQuickLoans = quickLoansRes.data;
         } catch (loanErr) {
           console.warn('Failed to load quick loan requests:', loanErr);
           setQuickLoans([]);
@@ -265,10 +271,30 @@ const Dashboard = () => {
       } else {
         try {
           const userQuickLoansRes = await axios.get(`${API_URL}/api/quick-loans/my`, { headers });
-          setUserQuickLoans(Array.isArray(userQuickLoansRes.data) ? userQuickLoansRes.data : []);
+          cachedUserQuickLoans = Array.isArray(userQuickLoansRes.data) ? userQuickLoansRes.data : [];
+          setUserQuickLoans(cachedUserQuickLoans);
         } catch (userQuickErr) {
           console.warn('Failed to load user quick loans:', userQuickErr);
           setUserQuickLoans([]);
+        }
+      }
+      if (user?.id) {
+        try {
+          localStorage.setItem(getDashboardCacheKey(user.id), JSON.stringify({
+            savedAt: new Date().toISOString(),
+            stats: statsRes.data,
+            rules: rulesRes.data,
+            financials: financialsRes.data,
+            deposits: depositsRes.data,
+            loans: loansRes.data,
+            withdrawals: withdrawalsRes.data,
+            members: membersRes.data,
+            orders: ordersRes.data,
+            quickLoans: cachedQuickLoans,
+            userQuickLoans: cachedUserQuickLoans,
+          }));
+        } catch (cacheError) {
+          console.warn('Unable to save dashboard data locally:', cacheError);
         }
       }
       fetchData._cache = { ts: now };
@@ -299,6 +325,28 @@ const Dashboard = () => {
       setDataLoading(false);
     }
   }, [getAuthHeaders, isAdmin, isTreasurer, user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+
+    try {
+      const cached = JSON.parse(localStorage.getItem(getDashboardCacheKey(user.id)) || 'null');
+      if (!cached || typeof cached !== 'object') return;
+
+      if (cached.stats) setStats(cached.stats);
+      if (cached.rules) setRules(cached.rules);
+      if (cached.financials) setFinancials(cached.financials);
+      if (Array.isArray(cached.deposits)) setDeposits(cached.deposits);
+      if (Array.isArray(cached.loans)) setLoans(cached.loans);
+      if (Array.isArray(cached.withdrawals)) setWithdrawals(cached.withdrawals);
+      if (Array.isArray(cached.members)) setMembers(cached.members);
+      if (Array.isArray(cached.orders)) setOrders(cached.orders);
+      if (Array.isArray(cached.quickLoans)) setQuickLoans(cached.quickLoans);
+      if (Array.isArray(cached.userQuickLoans)) setUserQuickLoans(cached.userQuickLoans);
+    } catch (cacheError) {
+      console.warn('Unable to load cached dashboard data:', cacheError);
+    }
+  }, [user?.id]);
 
   const fetchMyProducts = useCallback(async () => {
     try {
