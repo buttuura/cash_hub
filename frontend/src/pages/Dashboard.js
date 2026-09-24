@@ -1423,7 +1423,7 @@ const Dashboard = () => {
         </div>
       )}
 
-      {!isSellerMember && popupAnnouncements.length > 0 && !announcementDismissed && (
+      {popupAnnouncements.length > 0 && !announcementDismissed && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#190b08]/55 px-4 pointer-events-none">
           <div className="pointer-events-auto max-w-xl w-full overflow-hidden rounded-2xl border-2 border-[#D05A49] bg-white shadow-2xl shadow-[#D05A49]/30 ring-4 ring-[#E8B25C]/25 animate-in fade-in zoom-in-95 duration-300">
             <div className="flex items-center gap-3 bg-[#D05A49] px-5 py-3 text-white">

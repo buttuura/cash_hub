@@ -82,6 +82,16 @@ const LoginPage = () => {
     setError('');
     setBiometricLoading(true);
     try {
+      if (!biometricConfigured) {
+        if (!identifier || !password) {
+          throw new Error('Enter your phone/email and password first to set up fingerprint login.');
+        }
+        await enableBiometric(identifier, password);
+        setBiometricConfigured(true);
+        await login(identifier, password);
+        navigate('/dashboard');
+        return;
+      }
       await loginWithBiometric();
       navigate('/dashboard');
     } catch (err) {
@@ -260,7 +270,7 @@ const LoginPage = () => {
                 {!loading && <ArrowRight className="w-4 h-4" />}
               </Button>
 
-              {biometricAvailable && biometricConfigured && (
+              {biometricAvailable && (
                 <Button
                   type="button"
                   variant="outline"
@@ -269,7 +279,11 @@ const LoginPage = () => {
                   className="w-full h-11 border-[#2C5530] text-[#2C5530] hover:bg-[#ECF8E9] rounded-full font-semibold flex items-center justify-center gap-2"
                 >
                   <Fingerprint className="w-4 h-4" />
-                  {biometricLoading ? 'Verifying...' : 'Use fingerprint or face unlock'}
+                  {biometricLoading
+                    ? 'Verifying...'
+                    : biometricConfigured
+                      ? 'Use fingerprint or face unlock'
+                      : 'Set up fingerprint login'}
                 </Button>
               )}
             </form>
