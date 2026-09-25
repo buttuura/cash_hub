@@ -92,17 +92,18 @@ OFFICERS: list[dict] = [
 
 # Create the main app
 app = FastAPI(title="Class One Savings API")
+CORS_ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv(
+        "CORS_ORIGINS",
+        "http://localhost:3000,http://localhost,https://localhost,https://c1group.site,https://cash-hub.onrender.com,https://cash-hub-api.onrender.com",
+    ).split(",")
+    if origin.strip()
+]
 # Add CORS middleware - FIX for "blocked by CORS policy"
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://localhost",
-        "https://localhost",
-        "https://c1group.site",
-        "https://cash-hub.onrender.com",
-        "https://cash-hub-api.onrender.com",
-    ],
+    allow_origins=CORS_ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -3760,12 +3761,7 @@ async def startup_event():
 async def global_exception_handler(request: Request, exc: Exception):
     logger.exception(f"Unhandled exception: {exc}")
     origin = request.headers.get("origin", "")
-    allow_origin = origin if origin in [
-        "http://localhost:3000",
-        "https://c1group.site",
-        "https://cash-hub.onrender.com",
-        "https://cash-hub-api.onrender.com",
-    ] else "*"
+    allow_origin = origin if origin in CORS_ALLOWED_ORIGINS else "*"
     return JSONResponse(
         status_code=500,
         content={"detail": str(exc)},

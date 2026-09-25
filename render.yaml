@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: class-one-savings
+    name: class-one-api
     runtime: python
     buildCommand: |
       cd frontend && yarn install && yarn build &&
@@ -32,7 +32,7 @@ services:
       - key: GOOGLE_CLIENT_ID
         value: "107913506020948964345"
       - key: CORS_ORIGINS
-        value: "http://localhost:3000,https://cash-hub.onrender.com,https://cash-hub-api.onrender.com,https://c1group.site"
+        value: "http://localhost:3000,http://localhost,https://localhost,https://cash-hub.onrender.com,https://cash-hub-api.onrender.com,https://c1group.site"
       - key: CLOUDINARY_URL
         sync: false
       - key: VAPID_PUBLIC_KEY
