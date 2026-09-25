@@ -97,6 +97,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
+        "http://localhost",
+        "https://localhost",
         "https://c1group.site",
         "https://cash-hub.onrender.com",
         "https://cash-hub-api.onrender.com",
