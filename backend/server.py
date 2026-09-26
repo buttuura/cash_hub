@@ -92,19 +92,15 @@ OFFICERS: list[dict] = [
 
 # Create the main app
 app = FastAPI(title="Class One Savings API")
-CORS_ALLOWED_ORIGINS = [
-    origin.strip()
-    for origin in os.getenv(
-        "CORS_ORIGINS",
-        "http://localhost:3000,http://localhost,https://localhost,https://c1group.site,https://cash-hub.onrender.com,https://cash-hub-api.onrender.com",
-    ).split(",")
-    if origin.strip()
-]
+
+# FIX for Android APK - allow all origins including capacitor://
+CORS_ALLOWED_ORIGINS = ["*"]
+
 # Add CORS middleware - FIX for "blocked by CORS policy"
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=CORS_ALLOWED_ORIGINS,
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
