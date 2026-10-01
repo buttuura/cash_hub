@@ -1,6 +1,7 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Capacitor } from '@capacitor/core';
+import { Share } from '@capacitor/share';
 import { Directory, Filesystem } from '@capacitor/filesystem';
 
 export const savePdf = async (doc, filename) => {
@@ -11,11 +12,17 @@ export const savePdf = async (doc, filename) => {
 
   const dataUri = doc.output('datauristring');
   const base64Data = dataUri.split(',')[1];
-  await Filesystem.writeFile({
+  const { uri } = await Filesystem.writeFile({
     path: filename,
     data: base64Data,
     directory: Directory.Documents,
     recursive: true,
+  });
+  await Share.share({
+    title: filename,
+    text: 'Choose an app or location to save this PDF.',
+    files: [uri],
+    dialogTitle: 'Save or share PDF',
   });
 };
 

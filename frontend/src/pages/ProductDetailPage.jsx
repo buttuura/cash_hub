@@ -10,9 +10,12 @@ import { Label } from '../components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../components/ui/dialog';
 import { Toaster, toast } from 'sonner';
 import { ShoppingCart, Heart, Share2, ChevronLeft, ChevronRight, MapPin, Shield, ArrowLeft, X, Phone, MessageCircle } from 'lucide-react';
+import { Capacitor } from '@capacitor/core';
+import { Share } from '@capacitor/share';
 import { resolveImageUrl } from '../lib/utils';
 
 const API_URL = process.env.REACT_APP_BACKEND_URL || (process.env.NODE_ENV === 'production' ? '' : 'http://localhost:8000');
+const PUBLIC_APP_URL = process.env.REACT_APP_PUBLIC_APP_URL || 'https://c1group.site';
 
 function getImageUrl(imageUrl) {
   return resolveImageUrl(imageUrl, process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000');
@@ -393,12 +396,26 @@ function ProductDetailPage() {
   };
 
   const handleShare = async () => {
-    const previewUrl = `${window.location.origin}/product/${product?.id || productId}`;
+    const previewUrl = `${PUBLIC_APP_URL}/product/${encodeURIComponent(product?.id || productId)}`;
     const shareData = {
       title: product.title,
       text: `Check out this amazing ${product.title} on Class One Savings Group — a great deal you won't want to miss!`,
       url: previewUrl,
     };
+
+    if (Capacitor.isNativePlatform()) {
+      try {
+        await Share.share({
+          title: shareData.title,
+          text: shareData.text,
+          url: shareData.url,
+          dialogTitle: 'Share product',
+        });
+        return;
+      } catch (err) {
+        if (err.name === 'AbortError') return;
+      }
+    }
 
     const shareImageUrl = productImageUrl || `${window.location.origin}/classOne-logo.png`;
 
@@ -432,7 +449,7 @@ function ProductDetailPage() {
 
   const fallbackShare = async () => {
     try {
-      await navigator.clipboard.writeText(window.location.href);
+      await navigator.clipboard.writeText(`${PUBLIC_APP_URL}/product/${encodeURIComponent(product?.id || productId)}`);
       toast.success('Product link copied to clipboard');
     } catch {
       toast.error('Unable to share this product');
