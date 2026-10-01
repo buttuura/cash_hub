@@ -15,6 +15,7 @@ import {
   DialogTrigger,
 } from '../components/ui/dialog';
 import { AlertCircle, Users, ArrowRight, Eye, EyeOff, KeyRound, Loader2, CheckCircle, MessageCircle, Fingerprint } from 'lucide-react';
+import { API_URL } from '../lib/api';
 
 const LoginPage = () => {
   const [identifier, setIdentifier] = useState('');
@@ -106,7 +107,6 @@ const LoginPage = () => {
     setForgotError('');
     setForgotLoading(true);
     try {
-      const API_URL = process.env.REACT_APP_BACKEND_URL || (window.location.protocol === 'capacitor:' ? 'https://class-one-api.onrender.com' : 'http://localhost:8000');
       const response = await axios.post(`${API_URL}/api/auth/forgot-password`, {
         phone: forgotPhone,
       });
@@ -143,7 +143,6 @@ const LoginPage = () => {
     }
     setResetLoading(true);
     try {
-     const API_URL = process.env.REACT_APP_BACKEND_URL || (window.location.protocol === 'capacitor:' ? 'https://class-one-api.onrender.com' : 'http://localhost:8000');
       await axios.post(`${API_URL}/api/auth/reset-password`, {
         phone: resetPhone,
         temp_password: tempPassword,

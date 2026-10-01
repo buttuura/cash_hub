@@ -15,6 +15,7 @@ import { SellProductsCard } from '../components/AddProductDialog';
 import { exportLoanAgreementPDF } from '../utils/pdfExport';
 import { OFFICERS } from '../data/officers';
 import { resolveImageUrl } from '../lib/utils';
+import { API_URL } from '../lib/api';
 
 const ICON_MAP = {
   'food': ShoppingBag,
@@ -30,8 +31,6 @@ const ICON_MAP = {
   'services': Briefcase,
   'default': Sparkles,
 };
-
-const API_URL = process.env.REACT_APP_BACKEND_URL || (process.env.NODE_ENV === 'production' ? '' : 'http://localhost:8000');
 
 const DEFAULT_CATEGORIES = [
   {

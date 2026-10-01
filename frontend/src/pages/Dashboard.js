@@ -71,8 +71,7 @@ import { resolveImageUrl } from '../lib/utils';
 import { getLoanDisplayBalance } from '../utils/loanDisplay';
 import { buildWhatsAppUrl as buildNormalizedWhatsAppUrl } from '../utils/whatsapp';
 import { SellProductsCard } from '../components/AddProductDialog';
-
-const API_URL = process.env.REACT_APP_BACKEND_URL || (process.env.NODE_ENV === 'production' ? '' : 'http://localhost:8000');
+import { API_URL } from '../lib/api';
 
 const formatCurrency = (amount) => {
   return `UGX ${Number(amount || 0).toLocaleString()}`;

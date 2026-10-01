@@ -15,6 +15,7 @@ import ProductCard from '../components/ProductCard';
 import { exportLoanAgreementPDF } from '../utils/pdfExport';
 import { OFFICERS } from '../data/officers';
 import { resolveImageUrl } from '../lib/utils';
+import { API_URL } from '../lib/api';
 
 const ICON_MAP = {
   'food': Sparkles,
@@ -30,7 +31,6 @@ const ICON_MAP = {
   'services': Sparkles,
 };
 
-const API_URL = process.env.REACT_APP_BACKEND_URL || (process.env.NODE_ENV === 'production' ? '' : 'http://localhost:8000');
 const PRODUCTS_PER_PAGE = 100;
 
 const DEFAULT_CATEGORIES = [

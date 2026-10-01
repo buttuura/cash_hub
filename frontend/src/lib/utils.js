@@ -1,11 +1,12 @@
 import { clsx } from "clsx";
 import { twMerge } from "tailwind-merge"
+import { API_URL } from './api';
 
 export function cn(...inputs) {
   return twMerge(clsx(inputs));
 }
 
-export function resolveImageUrl(imageUrl, baseUrl = process.env.REACT_APP_BACKEND_URL) {
+export function resolveImageUrl(imageUrl, baseUrl = API_URL) {
   if (!imageUrl) return null;
 
   const value = String(imageUrl).trim();

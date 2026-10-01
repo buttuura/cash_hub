@@ -2,8 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import axios from 'axios';
 import { Capacitor } from '@capacitor/core';
 import { NativeBiometric } from '@capgo/capacitor-native-biometric';
-
-const API_URL = process.env.REACT_APP_BACKEND_URL || (process.env.NODE_ENV === 'production' ? '' : 'http://localhost:8000');
+import { API_URL } from '../lib/api';
 const BIOMETRIC_SERVER = 'cash-hub-auth';
 
 const AuthContext = createContext(null);

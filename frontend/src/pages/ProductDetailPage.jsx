@@ -13,12 +13,11 @@ import { ShoppingCart, Heart, Share2, ChevronLeft, ChevronRight, MapPin, Shield,
 import { Capacitor } from '@capacitor/core';
 import { Share } from '@capacitor/share';
 import { resolveImageUrl } from '../lib/utils';
-
-const API_URL = process.env.REACT_APP_BACKEND_URL || (process.env.NODE_ENV === 'production' ? '' : 'http://localhost:8000');
+import { API_URL } from '../lib/api';
 const PUBLIC_APP_URL = process.env.REACT_APP_PUBLIC_APP_URL || 'https://c1group.site';
 
 function getImageUrl(imageUrl) {
-  return resolveImageUrl(imageUrl, process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000');
+  return resolveImageUrl(imageUrl, API_URL);
 }
 
 function ProductDetailPage() {

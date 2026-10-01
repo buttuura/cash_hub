@@ -1,8 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { toast } from 'sonner';
-
-const API_URL = process.env.REACT_APP_BACKEND_URL || (process.env.NODE_ENV === 'production' ? '' : 'http://localhost:8000');
+import { API_URL } from '../lib/api';
 
 const getWebSocketUrl = (sellerName) => {
   const url = new URL(API_URL || window.location.origin);
