@@ -53,6 +53,7 @@ import {
   Check,
   Settings,
   Image as ImageIcon,
+  ImagePlus,
   Search,
   Sparkles,
   Lightbulb,
@@ -72,6 +73,7 @@ import { getLoanDisplayBalance } from '../utils/loanDisplay';
 import { buildWhatsAppUrl as buildNormalizedWhatsAppUrl } from '../utils/whatsapp';
 import { SellProductsCard } from '../components/AddProductDialog';
 import { API_URL } from '../lib/api';
+import { registerRefreshHandler } from '../lib/refreshBus';
 
 const formatCurrency = (amount) => {
   return `UGX ${Number(amount || 0).toLocaleString()}`;
@@ -212,7 +214,23 @@ const Dashboard = () => {
   const [announcementHistory, setAnnouncementHistory] = useState([]);
   const [currentAnnouncement, setCurrentAnnouncement] = useState({ message: '', author: '', updated_at: null });
   const [announcementDismissed, setAnnouncementDismissed] = useState(false);
+  const [shopHeroPosterUrl, setShopHeroPosterUrl] = useState('/hero_bg_img.jpeg');
+  const [shopHeroPosterUploading, setShopHeroPosterUploading] = useState(false);
+  const shopHeroPosterInputRef = useRef(null);
   const [guarantorLoanPopupDismissed, setGuarantorLoanPopupDismissed] = useState(false);
+
+  useEffect(() => {
+    if (!API_URL) return undefined;
+    let cancelled = false;
+    axios.get(`${API_URL}/api/shop/hero-poster`)
+      .then((response) => {
+        if (!cancelled && response.data?.image_url) {
+          setShopHeroPosterUrl(response.data.image_url);
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   const popupAnnouncements = [
     ...(currentAnnouncement.message ? [{
@@ -237,6 +255,7 @@ const Dashboard = () => {
     setDataLoading(true);
     try {
       const headers = getAuthHeaders();
+      fetchData._cache = null;
       const [statsRes, rulesRes, financialsRes, depositsRes, loansRes, withdrawalsRes, membersRes, ordersRes] = await Promise.all([
         axios.get(`${API_URL}/api/stats/group`, { headers }),
         axios.get(`${API_URL}/api/stats/rules`, { headers }),
@@ -319,7 +338,14 @@ const Dashboard = () => {
       }
     } catch (err) {
       console.error('Failed to fetch data:', err);
-      toast.error('Failed to load data');
+      const status = err?.response?.status;
+      if (status === 401 || status === 403) {
+        toast.error('Your session expired. Please sign in again.');
+      } else if (!err?.response) {
+        toast.error('Could not reach the server. Check your internet connection and pull down to retry.');
+      } else {
+        toast.error(`Could not load data (server error ${status}).`);
+      }
     } finally {
       setDataLoading(false);
     }
@@ -364,6 +390,12 @@ const Dashboard = () => {
     } catch (err) {
       console.warn('Unable to load user products:', err);
       setMyProducts([]);
+      const status = err?.response?.status;
+      if (status === 401 || status === 403) {
+        toast.error('Your session expired. Please sign in again.');
+      } else if (!err?.response) {
+        toast.error('Could not reach the server. Pull down to retry.');
+      }
     }
   }, [getAuthHeaders]);
 
@@ -544,11 +576,23 @@ const Dashboard = () => {
     toast.error('Seller accounts can only use Overview and Orders. Please contact the admin on WhatsApp for other access.');
   }, []);
 
-   useEffect(() => {
-     fetchData();
+useEffect(() => {
+    fetchData();
    }, [fetchData]);
 
     useEffect(() => {
+      return registerRefreshHandler(async () => {
+        fetchData._cache = null;
+        await Promise.all([
+          fetchData(),
+          fetchMyProducts(),
+          fetchProjects(),
+          refreshUser(),
+        ]);
+      });
+    }, [fetchData, fetchMyProducts, fetchProjects, refreshUser]);
+
+     useEffect(() => {
       const handler = () => {
         fetchData._cache = null;
         fetchData();
@@ -806,6 +850,40 @@ const Dashboard = () => {
       await fetchData();
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Failed to save announcement');
+    }
+  };
+
+  const handleShopHeroPosterUpload = async (event) => {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      toast.error('Choose an image file for the hero poster');
+      input.value = '';
+      return;
+    }
+
+    setShopHeroPosterUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const headers = getAuthHeaders();
+      const uploadResponse = await axios.post(`${API_URL}/api/uploads`, formData, { headers });
+      const imageUrl = uploadResponse.data?.url;
+      if (!imageUrl) throw new Error('Image upload did not return a URL');
+
+      const response = await axios.put(
+        `${API_URL}/api/shop/hero-poster`,
+        { image_url: imageUrl },
+        { headers }
+      );
+      setShopHeroPosterUrl(response.data.image_url || imageUrl);
+      toast.success('Shop hero poster updated');
+    } catch (error) {
+      toast.error(error.response?.data?.detail || error.message || 'Failed to update hero poster');
+    } finally {
+      setShopHeroPosterUploading(false);
+      input.value = '';
     }
   };
 
@@ -1471,16 +1549,26 @@ const Dashboard = () => {
       )}
 
       {popupAnnouncements.length > 0 && !announcementDismissed && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#190b08]/55 px-4 pointer-events-none">
+        <div className="fixed inset-0 z-[10050] flex items-center justify-center bg-[#190b08]/55 px-4 pointer-events-none">
           <div className="pointer-events-auto max-w-xl w-full overflow-hidden rounded-2xl border-2 border-[#D05A49] bg-white shadow-2xl shadow-[#D05A49]/30 ring-4 ring-[#E8B25C]/25 animate-in fade-in zoom-in-95 duration-300">
             <div className="flex items-center gap-3 bg-[#D05A49] px-5 py-3 text-white">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/20 animate-pulse">
                 <AlertTriangle className="h-5 w-5" aria-hidden="true" />
               </div>
-              <div>
+              <div className="min-w-0 flex-1">
                 <p className="text-sm font-extrabold uppercase tracking-[0.16em]">Group announcement</p>
                 <p className="text-xs font-medium text-white/85">Important message from Class one savings group</p>
               </div>
+              <button
+                type="button"
+                aria-label="Close announcement"
+                onClick={() => {
+                  setAnnouncementDismissed(true);
+                }}
+                className="shrink-0 rounded-full p-1.5 text-white transition-colors hover:bg-white/20"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0 flex-1 p-5">
@@ -1499,16 +1587,6 @@ const Dashboard = () => {
                   ))}
                 </div>
               </div>
-              <button
-                type="button"
-                aria-label="Close announcement"
-                onClick={() => {
-                  setAnnouncementDismissed(true);
-                }}
-                className="mr-3 mt-3 rounded-full p-1.5 text-[#7A4A42] hover:bg-[#FFF0EC] transition-colors"
-              >
-                <X className="w-4 h-4" />
-              </button>
             </div>
             <div className="flex justify-end border-t border-[#F3D7D1] bg-[#FFFDFC] px-5 py-3">
               <button
@@ -1529,7 +1607,7 @@ const Dashboard = () => {
       )}
 
       {!isSellerMember && pendingGuarantorLoans.length > 0 && !guarantorLoanPopupDismissed && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 pointer-events-none">
+        <div className="fixed inset-0 z-[10050] flex items-center justify-center px-4 pointer-events-none">
           <div className="pointer-events-auto max-w-lg w-full rounded-2xl border border-[#D48C70]/30 bg-white p-5 shadow-xl ring-1 ring-[#D48C70]/20">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
@@ -1716,7 +1794,7 @@ const Dashboard = () => {
       </nav>
 
 {/* Main Content */}
-       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+  <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-16 pb-8">
          {/* Overview Tab */}
          {activeTab === 'overview' && (
            <div className="space-y-6 animate-fade-in">
@@ -2284,7 +2362,7 @@ const Dashboard = () => {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => exportDepositsPDF(deposits, 'my-activity')}
+                    onClick={() => exportDepositsPDF(deposits, 'my-activity').catch(() => {})}
                     data-testid="export-activity-pdf"
                     className="border-[#E8EBE8] rounded-full text-xs"
                   >
@@ -2361,7 +2439,7 @@ const Dashboard = () => {
                 {deposits.length > 0 && (
                   <Button
                     variant="outline"
-                    onClick={() => exportDepositsPDF(deposits)}
+                    onClick={() => exportDepositsPDF(deposits).catch(() => {})}
                     data-testid="export-deposits-pdf"
                     className="border-[#E8EBE8] rounded-full"
                   >
@@ -2578,7 +2656,7 @@ const Dashboard = () => {
                 {loans.length > 0 && (
                   <Button
                     variant="outline"
-                    onClick={() => exportLoansPDF(loans)}
+                    onClick={() => exportLoansPDF(loans).catch(() => {})}
                     data-testid="export-loans-pdf"
                     className="border-[#E8EBE8] rounded-full"
                   >
@@ -2841,7 +2919,7 @@ const Dashboard = () => {
                 {withdrawals.length > 0 && (
                   <Button
                     variant="outline"
-                    onClick={() => exportWithdrawalsPDF(withdrawals)}
+                    onClick={() => exportWithdrawalsPDF(withdrawals).catch(() => {})}
                     data-testid="export-withdrawals-pdf"
                     className="border-[#E8EBE8] rounded-full"
                   >
@@ -3794,7 +3872,7 @@ const Dashboard = () => {
                 {isAdmin && activeFinancialTab === 'overview' && (
                   <Button
                     variant="outline"
-                    onClick={() => exportFullGroupReportPDF({ financials, deposits, loans, withdrawals, pettyCash: financials?.petty_cash_items || [], members })}
+                    onClick={() => exportFullGroupReportPDF({ financials, deposits, loans, withdrawals, pettyCash: financials?.petty_cash_items || [], members }).catch(() => {})}
                     data-testid="export-full-report-pdf"
                     className="border-[#2C5530] text-[#2C5530] rounded-full"
                   >
@@ -3805,7 +3883,7 @@ const Dashboard = () => {
                 {activeFinancialTab === 'overview' && (financials?.petty_cash_items?.length > 0) && (
                   <Button
                     variant="outline"
-                    onClick={() => exportPettyCashPDF(financials.petty_cash_items)}
+                    onClick={() => exportPettyCashPDF(financials.petty_cash_items).catch(() => {})}
                     data-testid="export-petty-cash-pdf"
                     className="border-[#E8EBE8] rounded-full"
                   >
@@ -4727,6 +4805,39 @@ const Dashboard = () => {
                     </Button>
                   </div>
                 </div>
+
+                {isTreasurer && (
+                  <div className="mt-6 flex flex-col gap-4 border-t border-[#E8EBE8] pt-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <h4 className="text-sm font-semibold text-[#1E231F]">Shop hero poster</h4>
+                      <p className="text-sm text-[#5C665D]">Upload a seasonal or advertising image for the shop hero.</p>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <img
+                        src={shopHeroPosterUrl}
+                        alt="Current shop hero poster"
+                        className="h-16 w-28 rounded-md object-cover"
+                      />
+                      <input
+                        ref={shopHeroPosterInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={handleShopHeroPosterUpload}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={shopHeroPosterUploading}
+                        onClick={() => shopHeroPosterInputRef.current?.click()}
+                        className="shrink-0"
+                      >
+                        <ImagePlus className="mr-2 h-4 w-4" />
+                        {shopHeroPosterUploading ? 'Uploading...' : 'Upload poster'}
+                      </Button>
+                    </div>
+                  </div>
+                )}
 
                 {announcementHistory.length > 0 && (
                   <div className="mt-6 border-t border-[#E8EBE8] pt-4">

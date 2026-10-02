@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cashhub-cache-v3';
+const CACHE_NAME = 'cashhub-cache-v4';
 const WRITE_QUEUE_DB = 'cashhub-offline-writes';
 const WRITE_QUEUE_STORE = 'requests';
 const WRITE_QUEUE_TAG = 'cashhub-write-queue';
@@ -41,6 +41,17 @@ const isQueueableWrite = (request) => {
   if (!request.url.includes('/api/')) return false;
   if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method)) return false;
   return !/\/api\/auth\/(login|register|forgot-password|reset-password)/.test(request.url);
+};
+
+// The native app runs from https://localhost and talks to the API on another
+// origin. Offline caching is a browser-PWA concern, so leave cross-origin API
+// traffic alone and let the real network error reach the app.
+const isSameOrigin = (request) => {
+  try {
+    return new URL(request.url).origin === self.location.origin;
+  } catch (error) {
+    return false;
+  }
 };
 
 const queueWrite = async (request) => {
@@ -151,6 +162,12 @@ self.addEventListener('notificationclick', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
+  const apiRequest = event.request.url.includes('/api/');
+
+  if (apiRequest && !isSameOrigin(event.request)) {
+    return;
+  }
+
   if (event.request.method !== 'GET') {
     if (isQueueableWrite(event.request)) {
       event.respondWith(fetch(event.request.clone()).catch(() => queueWrite(event.request)));

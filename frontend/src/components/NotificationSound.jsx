@@ -1,12 +1,14 @@
 import React, { useEffect, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { toast } from 'sonner';
+import { Capacitor } from '@capacitor/core';
 import { API_URL } from '../lib/api';
+import { describeNotificationEvent, requestNotificationPermission, showNativeNotification } from '../lib/notifications';
 
-const getWebSocketUrl = (sellerName) => {
+const getWebSocketUrl = (channel) => {
   const url = new URL(API_URL || window.location.origin);
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-  url.pathname = `/ws/orders/${encodeURIComponent((sellerName || '').trim())}`;
+  url.pathname = `/ws/orders/${encodeURIComponent((channel || '').trim())}`;
   url.search = '';
   return url.toString();
 };
@@ -23,13 +25,28 @@ const NotificationSound = () => {
   const audioRef = useRef(null);
   const wsRef = useRef(null);
   const reconnectTimerRef = useRef(null);
-  const notificationSessionRef = useRef(0);
   const audioUnlockedRef = useRef(false);
 
+  const isNative = Capacitor.isNativePlatform() && Capacitor.getPlatform() !== 'web';
+
+  // Treasurers and admins care about group-wide money movement, so they listen
+  // to the shared channel as well as their own name.
+  const isPrivileged = user?.role === 'treasurer' || user?.role === 'admin' || user?.role === 'super_admin';
+  const channels = isPrivileged
+    ? [user.name, '__group__']
+    : [user?.name].filter(Boolean);
+  const channelKey = channels.join('|');
+
   useEffect(() => {
-    if (!isAuthenticated || !user?.name) return;
+    if (!isAuthenticated || !channels.length) return;
+
+    // Ask once the OS-level permission (required on Android 13+).
+    if (isNative) {
+      requestNotificationPermission();
+    }
 
     const registerPushNotifications = async () => {
+      if (isNative) return;
       if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return;
       if (Notification.permission === 'denied') return;
 
@@ -101,51 +118,69 @@ const NotificationSound = () => {
 
     window.addEventListener('stop-order-notification-sound', handleStopSound);
 
-    const connectWebSocket = () => {
-      const wsUrl = getWebSocketUrl(user.name);
-      const ws = new WebSocket(wsUrl);
-      wsRef.current = ws;
+    const openSockets = [];
+
+    const handleMessage = (data) => {
+      const described = describeNotificationEvent(data);
+      if (!described) return;
+
+      const isOrder = data.type === 'new_order';
+
+      if (isOrder) {
+        if (audioRef.current) {
+          audioRef.current.currentTime = 0;
+          audioRef.current.loop = true;
+          audioRef.current.play().catch((error) => {
+            console.warn('Order notification sound could not play:', error.name || error.message);
+          });
+        }
+        window.dispatchEvent(new Event('new-order-received'));
+      }
+
+      toast.info(described.body);
+
+      if (isNative) {
+        // Real entry in the Android notification bar.
+        showNativeNotification(described);
+      } else if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification(described.title, {
+          body: described.body,
+          tag: described.id,
+        });
+      }
+    };
+
+    const connectChannel = (channel) => {
+      const ws = new WebSocket(getWebSocketUrl(channel));
+      openSockets.push(ws);
 
       ws.onopen = () => {
-        console.log('Global WebSocket connected for order notifications');
+        console.log('WebSocket connected for channel', channel);
       };
 
       ws.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        if (data.type === 'new_order') {
-          notificationSessionRef.current += 1;
-          if (audioRef.current) {
-            audioRef.current.currentTime = 0;
-            audioRef.current.loop = true;
-            audioRef.current.play().catch((error) => {
-              console.warn('Order notification sound could not play:', error.name || error.message);
-            });
-          }
-          toast.info(`New order received from ${data.order.buyerName || 'a buyer'}`);
-          if ('Notification' in window && Notification.permission === 'granted') {
-            new Notification('New order received', {
-              body: `New order from ${data.order.buyerName || 'a buyer'}`,
-              tag: `order-${data.order.id}`,
-            });
-          }
-          window.dispatchEvent(new Event('new-order-received'));
+        let data;
+        try {
+          data = JSON.parse(event.data);
+        } catch (error) {
+          return;
         }
+        handleMessage(data);
       };
 
       ws.onclose = () => {
-        reconnectTimerRef.current = setTimeout(connectWebSocket, 3000);
+        reconnectTimerRef.current = setTimeout(() => connectChannel(channel), 3000);
       };
 
       ws.onerror = (error) => {
-        console.error('Global WebSocket error:', error);
+        console.error('WebSocket error:', error);
         ws.close();
       };
     };
 
-    connectWebSocket();
+    channels.forEach(connectChannel);
 
     return () => {
-      notificationSessionRef.current += 1;
       document.removeEventListener('pointerdown', unlockAudio);
       document.removeEventListener('touchstart', unlockAudio);
       document.removeEventListener('keydown', unlockAudio);
@@ -153,15 +188,14 @@ const NotificationSound = () => {
       if (reconnectTimerRef.current) {
         clearTimeout(reconnectTimerRef.current);
       }
-      if (wsRef.current) {
-        wsRef.current.close();
-      }
+      openSockets.forEach((ws) => ws.close());
+      openSockets.length = 0;
       if (audioRef.current) {
         audioRef.current.pause();
         audioRef.current.currentTime = 0;
       }
     };
-  }, [user?.name, isAuthenticated]);
+  }, [channelKey, isAuthenticated]);
 
   if (!isAuthenticated) return null;
 

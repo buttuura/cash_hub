@@ -28,6 +28,7 @@ import { exportLoanAgreementPDF, exportSellerReceiptPDF, exportOrderReceiptPDF, 
 import { OFFICERS } from '../data/officers';
 import { resolveImageUrl } from '../lib/utils';
 import { API_URL } from '../lib/api';
+import { registerRefreshHandler } from '../lib/refreshBus';
 
 const formatCurrency = (amount) => {
   return `UGX ${Number(amount || 0).toLocaleString()}`;
@@ -118,12 +119,25 @@ const ServicesManagement = () => {
     }
   }, [getAuthHeaders]);
 
-   useEffect(() => {
-     if (activeTab === 'orders') fetchOrders();
-     if (activeTab === 'deleted') fetchDeletedOrders();
-     if (activeTab === 'quick-loans') fetchQuickLoans();
-     if (activeTab === 'sellers') fetchAllProducts();
+useEffect(() => {
+      if (activeTab === 'orders') fetchOrders();
+      if (activeTab === 'deleted') fetchDeletedOrders();
+      if (activeTab === 'quick-loans') fetchQuickLoans();
+      if (activeTab === 'sellers') fetchAllProducts();
    }, [activeTab, fetchOrders, fetchDeletedOrders, fetchQuickLoans, fetchAllProducts]);
+
+  useEffect(() => {
+    const refreshers = {
+      orders: fetchOrders,
+      deleted: fetchDeletedOrders,
+      'quick-loans': fetchQuickLoans,
+      sellers: fetchAllProducts,
+    };
+    return registerRefreshHandler(async () => {
+      const refetch = refreshers[activeTab];
+      if (refetch) await refetch();
+    });
+  }, [activeTab, fetchOrders, fetchDeletedOrders, fetchQuickLoans, fetchAllProducts]);
 
    useEffect(() => {
      const handler = () => {
@@ -149,7 +163,7 @@ const ServicesManagement = () => {
   };
 
   const handleDownloadOrderReceipt = (order) => {
-    exportOrderReceiptPDF(order, order.buyerName, order.buyerPhone, order.buyerEmail);
+    exportOrderReceiptPDF(order, order.buyerName, order.buyerPhone, order.buyerEmail).catch(() => {});
   };
 
   const handleApproveQuickLoan = async (id, approved) => {
@@ -185,7 +199,7 @@ const ServicesManagement = () => {
     await exportLoanAgreementPDF(loan, officer, {
       download: true,
       collateralImage: loan.collateral_image,
-    });
+    }).catch(() => {});
   };
 
   const handlePermanentDeleteOrder = async (orderId) => {
@@ -839,7 +853,7 @@ const ServicesManagement = () => {
                     {uniqueSellers.length > 0 && (
                       <Button
                         variant="outline"
-                        onClick={() => exportSellerReceiptPDF(uniqueSellers)}
+                        onClick={() => exportSellerReceiptPDF(uniqueSellers).catch(() => {})}
                         className="border-[#2C5530] text-[#2C5530] rounded-full text-xs"
                       >
                         <FileDown className="w-4 h-4 mr-1" />

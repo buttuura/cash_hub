@@ -3,6 +3,20 @@ import autoTable from 'jspdf-autotable';
 import { Capacitor } from '@capacitor/core';
 import { Share } from '@capacitor/share';
 import { Directory, Filesystem } from '@capacitor/filesystem';
+import { toast } from 'sonner';
+
+// Base64 in small chunks. Building the whole payload with btoa() on a joined
+// string, or spreading a huge array into String.fromCharCode, overflows the
+// WebView stack on large PDFs and gets the app killed by Android.
+const arrayBufferToBase64 = (buffer) => {
+  const bytes = new Uint8Array(buffer);
+  const CHUNK = 0x8000;
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(binary);
+};
 
 export const savePdf = async (doc, filename) => {
   if (!Capacitor.isNativePlatform()) {
@@ -10,20 +24,41 @@ export const savePdf = async (doc, filename) => {
     return;
   }
 
-  const dataUri = doc.output('datauristring');
-  const base64Data = dataUri.split(',')[1];
-  const { uri } = await Filesystem.writeFile({
-    path: filename,
-    data: base64Data,
-    directory: Directory.Documents,
-    recursive: true,
-  });
-  await Share.share({
-    title: filename,
-    text: 'Choose an app or location to save this PDF.',
-    files: [uri],
-    dialogTitle: 'Save or share PDF',
-  });
+  try {
+    // Compress and use an ArrayBuffer rather than a data URI: it avoids
+    // materialising a base64 copy of the whole document in memory.
+    const compressed = doc.compress ? doc.compress(true) : doc;
+    const buffer = compressed.output('arraybuffer');
+    const base64Data = arrayBufferToBase64(buffer);
+
+    // Android: Directory.Documents maps to the public Documents folder, which
+    // scoped storage blocks without MANAGE_EXTERNAL_STORAGE. The app cache dir
+    // is always writable, has no permission requirement, and is already
+    // exposed to the FileProvider via <cache-path> in file_paths.xml.
+    const directory = Capacitor.getPlatform() === 'android'
+      ? Directory.Cache
+      : Directory.Documents;
+
+    const { uri } = await Filesystem.writeFile({
+      path: filename,
+      data: base64Data,
+      directory,
+      recursive: true,
+    });
+
+    await Share.share({
+      title: filename,
+      text: 'Choose an app or location to save this PDF.',
+      files: [uri],
+      dialogTitle: 'Save or share PDF',
+    });
+  } catch (error) {
+    console.error('Failed to save PDF', error);
+    toast.error('Could not create the PDF. Please try again.');
+    throw new Error(
+      `Could not create the PDF. ${error?.message || ''}`.trim()
+    );
+  }
 };
 
 const fmtUGX = (n) => `UGX ${Number(n || 0).toLocaleString()}`;
@@ -155,27 +190,73 @@ const getImageFormat = (imageData) => {
   return match[1].toUpperCase().replace('JPG', 'JPEG');
 };
 
+// Downscales an image data URL so the PDF stays small. National ID photos come
+// from the camera at full sensor resolution, and embedding them raw is what
+// exhausts WebView memory on Android. Web is left untouched.
+const MAX_IMAGE_EDGE = 1000;
+const JPEG_QUALITY = 0.8;
+
+const shrinkImage = async (dataUrl) => {
+  if (!Capacitor.isNativePlatform()) return dataUrl;
+  if (typeof document === 'undefined' || typeof Image === 'undefined') return dataUrl;
+
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const maxEdge = Math.max(img.naturalWidth || 0, img.naturalHeight || 0);
+      if (!maxEdge || maxEdge <= MAX_IMAGE_EDGE) {
+        resolve(dataUrl);
+        return;
+      }
+      try {
+        const scale = MAX_IMAGE_EDGE / maxEdge;
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round((img.naturalWidth || 0) * scale);
+        canvas.height = Math.round((img.naturalHeight || 0) * scale);
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(dataUrl);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL('image/jpeg', JPEG_QUALITY));
+      } catch (error) {
+        console.warn('Could not downscale image for PDF', error);
+        resolve(dataUrl);
+      }
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+};
+
 const getImageDataUrl = async (imageSource) => {
   if (!imageSource) return null;
 
-  if (typeof imageSource === 'string') {
-    if (imageSource.startsWith('data:image/')) return imageSource;
+  let dataUrl = null;
 
-    try {
-      const response = await fetch(imageSource);
-      if (!response.ok) throw new Error(`Image load failed (${response.status})`);
-      return await dataUrlFromBlob(await response.blob());
-    } catch (error) {
-      console.warn('Failed to load collateral image for PDF', error);
-      return null;
+  if (typeof imageSource === 'string') {
+    if (imageSource.startsWith('data:image/')) {
+      dataUrl = imageSource;
+    } else {
+      try {
+        const response = await fetch(imageSource);
+        if (!response.ok) throw new Error(`Image load failed (${response.status})`);
+        dataUrl = await dataUrlFromBlob(await response.blob());
+      } catch (error) {
+        console.warn('Failed to load image for PDF', error);
+        return null;
+      }
     }
   }
 
-  if (typeof Blob !== 'undefined' && imageSource instanceof Blob) {
-    return await dataUrlFromBlob(imageSource);
+  if (!dataUrl && typeof Blob !== 'undefined' && imageSource instanceof Blob) {
+    dataUrl = await dataUrlFromBlob(imageSource);
   }
 
-  return null;
+  if (!dataUrl) return null;
+
+  return await shrinkImage(dataUrl);
 };
 
 // Reads the natural pixel dimensions of a (data URL) image so it can be drawn

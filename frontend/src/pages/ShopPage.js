@@ -11,11 +11,11 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Toaster, toast } from 'sonner';
 import { ShoppingCart, FastForward, Cpu, Sparkles, ShoppingBag, HardHat, PenTool, Shirt, HeartPulse, Home, BookOpen, Dumbbell, Gamepad2, Briefcase, Menu, X, Search, Phone, MessageCircle } from 'lucide-react';
 import ProductCard from '../components/ProductCard';
-import { SellProductsCard } from '../components/AddProductDialog';
 import { exportLoanAgreementPDF } from '../utils/pdfExport';
 import { OFFICERS } from '../data/officers';
 import { resolveImageUrl } from '../lib/utils';
 import { API_URL } from '../lib/api';
+import { registerRefreshHandler } from '../lib/refreshBus';
 
 const ICON_MAP = {
   'food': ShoppingBag,
@@ -180,6 +180,7 @@ const ShopPage = () => {
   const [repaymentPeriod, setRepaymentPeriod] = useState('2_weeks');
   const [validOfficerCodes, setValidOfficerCodes] = useState([]);
   const [loanRequestSubmitted, setLoanRequestSubmitted] = useState(false);
+  const [heroPosterUrl, setHeroPosterUrl] = useState('/hero_bg_img.jpeg');
   useEffect(() => {
     setLoanIsGuaranteed(loanType === 'guaranteed');
   }, [loanType]);
@@ -198,6 +199,18 @@ const ShopPage = () => {
     })();
     return () => { cancelled = true; };
   }, [quickLoanOpen]);
+  useEffect(() => {
+    if (!API_URL) return undefined;
+    let cancelled = false;
+    axios.get(`${API_URL}/api/shop/hero-poster`)
+      .then((response) => {
+        if (!cancelled && response.data?.image_url) {
+          setHeroPosterUrl(response.data.image_url);
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
   const [loanRequestData, setLoanRequestData] = useState(null);
   const [purchaseProduct, setPurchaseProduct] = useState(null);
   const [cart, setCart] = useState(() => {
@@ -218,6 +231,51 @@ const ShopPage = () => {
   const [cartBuyerNote, setCartBuyerNote] = useState('');
   const [orderSubmitting, setOrderSubmitting] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const categoryMenuRef = useRef(null);
+  const mobileMenuButtonRef = useRef(null);
+  const mobileCategoryMenuRef = useRef(null);
+  const popularCategoryRowsRef = useRef({});
+  const [overflowingPopularCategories, setOverflowingPopularCategories] = useState({});
+
+  useEffect(() => {
+    if (!mobileMenuOpen) return;
+
+    const closeOnOutsidePointer = (event) => {
+      const clickedInsideMenu = categoryMenuRef.current?.contains(event.target) ||
+        mobileMenuButtonRef.current?.contains(event.target) ||
+        mobileCategoryMenuRef.current?.contains(event.target);
+      if (!clickedInsideMenu) setMobileMenuOpen(false);
+    };
+
+    document.addEventListener('pointerdown', closeOnOutsidePointer);
+    return () => document.removeEventListener('pointerdown', closeOnOutsidePointer);
+  }, [mobileMenuOpen]);
+
+  useEffect(() => {
+    const updateOverflow = () => {
+      const next = {};
+      Object.entries(popularCategoryRowsRef.current).forEach(([categoryId, row]) => {
+        next[categoryId] = row.scrollWidth > row.clientWidth;
+      });
+
+      setOverflowingPopularCategories((current) => {
+        const categoryIds = Object.keys(next);
+        const isUnchanged = categoryIds.length === Object.keys(current).length &&
+          categoryIds.every((categoryId) => current[categoryId] === next[categoryId]);
+        return isUnchanged ? current : next;
+      });
+    };
+
+    updateOverflow();
+    const resizeObserver = new ResizeObserver(updateOverflow);
+    Object.values(popularCategoryRowsRef.current).forEach((row) => resizeObserver.observe(row));
+    window.addEventListener('resize', updateOverflow);
+
+    return () => {
+      resizeObserver.disconnect();
+      window.removeEventListener('resize', updateOverflow);
+    };
+  }, [categories, products]);
 
   const saveCart = (items) => {
     window.localStorage.setItem('cash_hub_cart', JSON.stringify(items));
@@ -369,7 +427,7 @@ const ShopPage = () => {
       guarantorAddress: loanGuarantorAddress,
       jurisdiction: loanJurisdiction,
       witnessName: loanWitnessName,
-    });
+    }).catch(() => {});
   };
 
   const resetQuickLoanDialogState = () => {
@@ -483,11 +541,17 @@ const ShopPage = () => {
     const fetchBackendProducts = async () => {
       try {
         const response = await axios.get(`${API_URL}/api/products`);
-        if (Array.isArray(response.data) && response.data.length > 0) {
-          setProducts(response.data);
+        if (Array.isArray(response.data)) {
+          setProducts(response.data.length > 0 ? response.data : []);
         }
       } catch (error) {
         console.warn('Failed to load backend shop products', error);
+        const status = error?.response?.status;
+        toast.error(
+          status
+            ? `Could not load products (server error ${status}). Please try again.`
+            : 'Could not reach the server. Check your internet connection and pull down to retry.'
+        );
       }
     };
 
@@ -497,6 +561,21 @@ const ShopPage = () => {
   useEffect(() => {
     window.localStorage.setItem('shopProducts', JSON.stringify(products));
   }, [products]);
+
+  useEffect(() => {
+    return registerRefreshHandler(async () => {
+      try {
+        const response = await axios.get(`${API_URL}/api/products`);
+        if (Array.isArray(response.data)) {
+          setProducts(response.data.length > 0 ? response.data : []);
+        }
+      } catch (error) {
+        console.warn('Failed to load backend shop products', error);
+        toast.error('Could not refresh products. Pull down to try again.');
+      }
+      await fetchOrders();
+    });
+  }, [user?.name]);
 
   useEffect(() => {
     if (user?.name && String(user?.membership_type || '').toLowerCase() === 'seller') {
@@ -678,16 +757,17 @@ const handleOpenPurchase = (product) => {
   };
 
   return (
-    <div className="min-h-screen bg-[#F7FAF3] px-4 py-8 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-[#F7FAF3]">
       <Toaster position="top-right" />
       
 {/* Top Navigation Bar */}
         <nav className="sticky top-0 z-40 backdrop-blur border-b border-slate-200 mb-6">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             {/* Mobile top bar - search + cart on right, hamburger on left */}
-            <div className="flex md:hidden items-center gap-2 py-2">
+            <div className="flex lg:hidden items-center gap-2 py-2">
               <button
                 type="button"
+                ref={mobileMenuButtonRef}
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
                 className="p-2 text-[#172B12]"
               >
@@ -716,17 +796,16 @@ const handleOpenPurchase = (product) => {
             </div>
            
            {/* Desktop/Tablet: Navigation */}
-           <div className="hidden md:flex items-center justify-between h-16">
+           <div className="hidden lg:flex items-center justify-between h-16">
              {/* Left section - All Categories with side nav */}
              <div className="flex flex-col">
                <div className="flex items-center gap-2">
-                 <div className="relative">
+                 <div className="relative" ref={categoryMenuRef}>
                    <button
                      type="button"
                      onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
                      className={`flex items-center gap-1 px-3 py-1.5 rounded-full text-sm font-medium transition ${selectedCategory === 'all' ? 'bg-[#172B12] text-white' : 'bg-white text-[#172B12] border border-slate-200 hover:bg-[#ECF8E9]'}`}
                    >
-                     <Menu className="h-4 w-4" />
                      All Categories
                    </button>
                    
@@ -802,7 +881,7 @@ const handleOpenPurchase = (product) => {
            
             {/* Mobile: Category dropdown - scrollable */}
              {mobileMenuOpen && (
-               <div className="md:hidden pb-4 space-y-4 overflow-y-auto max-h-96 w-full">
+               <div ref={mobileCategoryMenuRef} className="lg:hidden pb-4 space-y-4 overflow-y-auto max-h-96 w-full">
                  <div className="flex flex-col gap-2 max-h-64 overflow-y-auto">
                               <button
                                 type="button"
@@ -831,10 +910,9 @@ const handleOpenPurchase = (product) => {
          </div>
        </nav>
 
-      <div className="mx-auto max-w-7xl space-y-10">
-        <div className="relative z-10 overflow-hidden rounded-[32px] border border-[#D8E4D3] p-10 shadow-sm" style={{ backgroundImage: "url('/hero_bg_img.jpeg')", backgroundSize: "cover", backgroundPosition: "center", backgroundColor: "#F5FBF2" }}>
-          <div className="absolute inset-0 bg-black/20 rounded-[32px]" />
-          <div className="relative space-y-8">
+      <div className="relative z-10 mb-10 flex min-h-[calc(100svh-10rem)] w-full items-center overflow-hidden" style={{ backgroundImage: `url("${heroPosterUrl}")`, backgroundSize: "cover", backgroundPosition: "center", backgroundColor: "#F5FBF2" }}>
+          <div className="absolute inset-0 bg-black/20" />
+          <div className="relative mx-auto w-full max-w-7xl space-y-8 px-4 py-16 sm:px-6 lg:px-8">
             <div className="max-w-3xl space-y-6">
               <p className="text-sm uppercase tracking-[0.3em] text-[#D8E4D3] font-semibold">Group marketplace</p>
               <h1 className="text-5xl font-semibold tracking-tight text-white drop-shadow-lg">Buy, sell and access fast member loans in one place.</h1>
@@ -860,33 +938,15 @@ const handleOpenPurchase = (product) => {
             </div>
           </div>
           <div className="pointer-events-none absolute right-6 top-6 hidden h-32 w-32 rounded-full bg-[#D8E4D3]/60 blur-2xl md:block" />
-        </div>
+      </div>
 
-        <Card className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-xl">
-              <Sparkles className="h-5 w-5 text-[#2B6F38]" /> Quick loan service
-            </CardTitle>
-            <CardDescription>
-              Fast funding for urgent buyer needs, even before registration.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-[#4B5A45]">
-              Request a quick loan to cover urgent purchases or keep your business moving while you wait for buyer payments.
-            </p>
-          </CardContent>
-          <CardFooter>
-            <Button onClick={() => setQuickLoanOpen(true)} className="bg-[#172B12] text-white hover:bg-[#0f2409] rounded-full">Request quick loan</Button>
-          </CardFooter>
-        </Card>
-        
-<Card className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
-          <CardHeader>
+      <div className="mx-auto max-w-7xl space-y-10 px-4 pb-8 sm:px-6 lg:px-8">
+<Card className="rounded-none border-0 bg-transparent p-0 shadow-none">
+          <CardHeader className="p-0 pb-4">
             <CardTitle className="text-lg">Popular categories</CardTitle>
             <CardDescription>Categories with newest uploads. Scroll horizontally to see more.</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-0">
             <div className="space-y-5">
               {categories
                 .map((category) => {
@@ -896,7 +956,6 @@ const handleOpenPurchase = (product) => {
                 .sort((a, b) => b.categoryProducts.length - a.categoryProducts.length)
 .slice(0, 5)
 .map(({ category, categoryProducts }) => {
-                    const visibleProducts = categoryProducts.slice(0, 6);
                     const Icon = ICON_MAP[category.id] || Sparkles;
 
                     return (
@@ -917,14 +976,15 @@ const handleOpenPurchase = (product) => {
                           </div>
                         ) : (
                           <div className="relative">
-                            <>
+                            {overflowingPopularCategories[category.id] && (
+                              <>
                               <button
                                 type="button"
                                 onClick={() => {
                                   const row = document.querySelector(`[data-popular-row="${category.id}"]`);
                                   row?.scrollBy({ left: -360, behavior: 'smooth' });
                                 }}
-                                className="inline-flex md:hidden absolute left-0 top-1/2 -translate-y-1/2 z-10 h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-300 bg-white text-lg font-semibold text-[#172B12] hover:bg-[#ECF8E9] shadow-md"
+                                className="inline-flex absolute left-0 top-1/2 -translate-y-1/2 z-10 h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-300 bg-white text-lg font-semibold text-[#172B12] hover:bg-[#ECF8E9] shadow-md"
                                 aria-label={`Scroll ${category.name} products left`}
                               >
                                 ‹
@@ -935,17 +995,25 @@ const handleOpenPurchase = (product) => {
                                   const row = document.querySelector(`[data-popular-row="${category.id}"]`);
                                   row?.scrollBy({ left: 360, behavior: 'smooth' });
                                 }}
-                                className="inline-flex md:hidden absolute right-0 top-1/2 -translate-y-1/2 z-10 h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-300 bg-white text-lg font-semibold text-[#172B12] hover:bg-[#ECF8E9] shadow-md"
+                                className="inline-flex absolute right-0 top-1/2 -translate-y-1/2 z-10 h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-300 bg-white text-lg font-semibold text-[#172B12] hover:bg-[#ECF8E9] shadow-md"
                                 aria-label={`Scroll ${category.name} products right`}
                               >
                                 ›
                               </button>
-                            </>
+                              </>
+                            )}
                             <div
+                              ref={(row) => {
+                                if (row) {
+                                  popularCategoryRowsRef.current[category.id] = row;
+                                } else {
+                                  delete popularCategoryRowsRef.current[category.id];
+                                }
+                              }}
                               data-popular-row={category.id}
                                className="flex gap-4 overflow-x-auto pb-2 px-10 hide-scrollbar touch-pan-x overscroll-x-contain"
                             >
-{visibleProducts.map((product) => {
+{categoryProducts.map((product) => {
                                 const displayImage = product.image_urls?.[0] || product.image_url;
                                 return (
                                   <button
@@ -1045,12 +1113,24 @@ const handleOpenPurchase = (product) => {
             </CardContent>
             </Card>
 
-            {isAuthenticated && (
-              <SellProductsCard
-                user={user}
-                onProductAdded={(newProduct) => setProducts([newProduct, ...products])}
-              />
-            )}
+            <Card className="rounded-[32px] border border-slate-200 bg-white p-6 shadow-sm">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-xl">
+                  <Sparkles className="h-5 w-5 text-[#2B6F38]" /> Quick loan service
+                </CardTitle>
+                <CardDescription>
+                  Fast funding for urgent buyer needs, even before registration.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-[#4B5A45]">
+                  Request a quick loan to cover urgent purchases or keep your business moving while you wait for buyer payments.
+                </p>
+              </CardContent>
+              <CardFooter>
+                <Button onClick={() => setQuickLoanOpen(true)} className="bg-[#172B12] text-white hover:bg-[#0f2409] rounded-full">Request quick loan</Button>
+              </CardFooter>
+            </Card>
 
             <section className="space-y-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">

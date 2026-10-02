@@ -157,6 +157,9 @@ class UserLogin(BaseModel):
 class AnnouncementMessage(BaseModel):
     message: str
 
+class HeroPosterUpdate(BaseModel):
+    image_url: str = Field(..., min_length=1, max_length=2048)
+
 class DepositRequest(BaseModel):
     amount: float
     deposit_type: str = "savings"  # savings, development_fee
@@ -1409,6 +1412,91 @@ async def upload_media(
     upload_metadata.pop("_id", None)
     return upload_metadata
 
+def get_shop_hero_poster_urls(poster: Optional[dict]) -> list[str]:
+    if not poster:
+        return []
+    if isinstance(poster.get("image_urls"), list):
+        return [url for url in poster["image_urls"] if isinstance(url, str) and url.strip()]
+    legacy_url = poster.get("image_url")
+    return [legacy_url] if isinstance(legacy_url, str) and legacy_url.strip() else []
+
+
+@api_router.get("/shop/hero-poster")
+async def get_shop_hero_poster():
+    poster = await db.app_settings.find_one({"_id": "shop_hero_poster"})
+    image_urls = get_shop_hero_poster_urls(poster)
+    return {
+        "image_url": image_urls[0] if image_urls else "/hero_bg_img.jpeg",
+        "image_urls": image_urls,
+    }
+
+@api_router.put("/shop/hero-poster")
+async def update_shop_hero_poster(data: HeroPosterUpdate, user: dict = Depends(require_treasurer)):
+    image_url = data.image_url.strip()
+    if not image_url.startswith("https://"):
+        raise HTTPException(status_code=400, detail="Poster image URL must use HTTPS")
+
+    await db.app_settings.update_one(
+        {"_id": "shop_hero_poster"},
+        {"$set": {
+            "image_url": image_url,
+            "image_urls": [image_url],
+            "updated_by": user["id"],
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }},
+        upsert=True,
+    )
+    return {"image_url": image_url}
+
+
+@api_router.post("/shop/hero-poster")
+async def add_shop_hero_poster(data: HeroPosterUpdate, user: dict = Depends(require_treasurer)):
+    image_url = data.image_url.strip()
+    if not image_url.startswith("https://"):
+        raise HTTPException(status_code=400, detail="Poster image URL must use HTTPS")
+
+    poster = await db.app_settings.find_one({"_id": "shop_hero_poster"})
+    image_urls = get_shop_hero_poster_urls(poster)
+    if image_url not in image_urls:
+        image_urls.append(image_url)
+
+    await db.app_settings.update_one(
+        {"_id": "shop_hero_poster"},
+        {"$set": {
+            "image_url": image_urls[0] if image_urls else image_url,
+            "image_urls": image_urls,
+            "updated_by": user["id"],
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }},
+        upsert=True,
+    )
+    return {"image_url": image_urls[0], "image_urls": image_urls}
+
+
+@api_router.delete("/shop/hero-poster")
+async def delete_shop_hero_poster(data: HeroPosterUpdate, user: dict = Depends(require_treasurer)):
+    image_url = data.image_url.strip()
+    poster = await db.app_settings.find_one({"_id": "shop_hero_poster"})
+    image_urls = get_shop_hero_poster_urls(poster)
+    if image_url not in image_urls:
+        raise HTTPException(status_code=404, detail="Poster not found")
+
+    image_urls = [saved_url for saved_url in image_urls if saved_url != image_url]
+    await db.app_settings.update_one(
+        {"_id": "shop_hero_poster"},
+        {"$set": {
+            "image_url": image_urls[0] if image_urls else "/hero_bg_img.jpeg",
+            "image_urls": image_urls,
+            "updated_by": user["id"],
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }},
+        upsert=True,
+    )
+    return {
+        "image_url": image_urls[0] if image_urls else "/hero_bg_img.jpeg",
+        "image_urls": image_urls,
+    }
+
 @api_router.get("/debug/cloudinary-status")
 async def cloudinary_status(user: dict = Depends(require_treasurer)):
     is_configured = bool(CLOUDINARY_URL)
@@ -2043,7 +2131,13 @@ async def request_deposit(deposit: DepositRequest, user: dict = Depends(get_curr
     result = await db.deposits.insert_one(deposit_doc)
     deposit_doc["id"] = str(result.inserted_id)
     deposit_doc.pop("_id", None)
-    
+
+    # Notify treasurers/admins so they see the deposit on their phone.
+    await manager.broadcast_to_seller("__group__", {
+        "type": "new_deposit",
+        "deposit": deposit_doc,
+    })
+
     return deposit_doc
 
 @api_router.get("/deposits")
@@ -2347,6 +2441,11 @@ async def request_loan(loan: LoanRequest, user: dict = Depends(get_current_user)
     result = await db.loans.insert_one(loan_doc)
     loan_doc["id"] = str(result.inserted_id)
     loan_doc.pop("_id", None)
+
+    await manager.broadcast_to_seller("__group__", {
+        "type": "new_loan",
+        "loan": loan_doc,
+    })
 
     return loan_doc
 
@@ -3121,7 +3220,12 @@ async def request_withdrawal(withdrawal: WithdrawalRequest, user: dict = Depends
     result = await db.withdrawals.insert_one(withdrawal_doc)
     withdrawal_doc["id"] = str(result.inserted_id)
     withdrawal_doc.pop("_id", None)
-    
+
+    await manager.broadcast_to_seller("__group__", {
+        "type": "new_withdrawal",
+        "withdrawal": withdrawal_doc,
+    })
+
     return withdrawal_doc
 
 @api_router.get("/withdrawals")

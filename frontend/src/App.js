@@ -1,9 +1,8 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { Capacitor } from '@capacitor/core';
-import { RefreshCw } from 'lucide-react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { Toaster } from 'sonner';
+import PullToRefresh from './components/PullToRefresh';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import Dashboard from './pages/Dashboard';
@@ -102,33 +101,9 @@ function App() {
     <BrowserRouter>
       <AuthProvider>
         <NotificationSound />
-        <AppRoutes />
-        {Capacitor.getPlatform() === 'android' && (
-          <button
-            type="button"
-            onClick={() => window.location.reload()}
-            aria-label="Refresh app"
-            title="Refresh app"
-            style={{
-              position: 'fixed',
-              right: 'calc(env(safe-area-inset-right, 0px) + 16px)',
-              bottom: 'calc(env(safe-area-inset-bottom, 0px) + 16px)',
-              zIndex: 10000,
-              display: 'flex',
-              width: 48,
-              height: 48,
-              alignItems: 'center',
-              justifyContent: 'center',
-              border: '1px solid #E8EBE8',
-              borderRadius: '50%',
-              background: '#FFFFFF',
-              color: '#2C5530',
-              boxShadow: '0 2px 8px rgba(30, 35, 31, 0.18)',
-            }}
-          >
-            <RefreshCw size={20} aria-hidden="true" />
-          </button>
-        )}
+        <PullToRefresh>
+          <AppRoutes />
+        </PullToRefresh>
       </AuthProvider>
     </BrowserRouter>
   );

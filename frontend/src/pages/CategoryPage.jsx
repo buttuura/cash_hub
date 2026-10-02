@@ -16,6 +16,7 @@ import { exportLoanAgreementPDF } from '../utils/pdfExport';
 import { OFFICERS } from '../data/officers';
 import { resolveImageUrl } from '../lib/utils';
 import { API_URL } from '../lib/api';
+import { registerRefreshHandler } from '../lib/refreshBus';
 
 const ICON_MAP = {
   'food': Sparkles,
@@ -118,7 +119,12 @@ const CategoryPage = () => {
       }
     };
     fetchProducts();
-  }, []);
+
+    return registerRefreshHandler(async () => {
+      await fetchProducts();
+      if (isSeller) await fetchOrders();
+    });
+  }, [isSeller]);
 
   useEffect(() => {
     const urlSearch = searchParams.get('search') || '';
@@ -260,7 +266,7 @@ const CategoryPage = () => {
   const handleDownloadLoanAgreement = async () => {
     if (!loanRequestData) return;
     const officer = OFFICERS.find((o) => o.code === loanRequestData.officerCode) || (loanRequestData.officer_name ? { name: loanRequestData.officer_name, code: loanRequestData.officerCode } : null);
-    await exportLoanAgreementPDF(loanRequestData, officer, { download: true, collateralImage: collateralImagePreview, nationalIdImages: nationalIdPreviews });
+    await exportLoanAgreementPDF(loanRequestData, officer, { download: true, collateralImage: collateralImagePreview, nationalIdImages: nationalIdPreviews }).catch(() => {});
   };
 
   const resetQuickLoanDialogState = () => {

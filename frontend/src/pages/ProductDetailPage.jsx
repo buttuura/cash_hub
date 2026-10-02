@@ -14,6 +14,7 @@ import { Capacitor } from '@capacitor/core';
 import { Share } from '@capacitor/share';
 import { resolveImageUrl } from '../lib/utils';
 import { API_URL } from '../lib/api';
+import { registerRefreshHandler } from '../lib/refreshBus';
 const PUBLIC_APP_URL = process.env.REACT_APP_PUBLIC_APP_URL || 'https://c1group.site';
 
 function getImageUrl(imageUrl) {
@@ -118,6 +119,8 @@ function ProductDetailPage() {
       setLoading(false);
       setProduct(null);
     }
+
+    return registerRefreshHandler(() => (productId ? fetchProduct() : Promise.resolve()));
   }, [productId]);
 
   const allImages = [];
