@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Card, CardContent, CardFooter } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ShoppingCart } from 'lucide-react';
 import { ChevronLeft, ChevronRight, Phone, MessageCircle } from 'lucide-react';
+import ProductShareButton from './ProductShareButton';
 
 function ProductCard({ product, onAddToCart, onBuyNow, getImageUrl }) {
   const [currentImgIndex, setCurrentImgIndex] = useState(0);
@@ -33,8 +34,8 @@ function ProductCard({ product, onAddToCart, onBuyNow, getImageUrl }) {
   };
 
   return (
-    <Link to={`/product/${product.id}`} className="block">
-      <Card className="group border border-slate-200 bg-white shadow-sm hover:shadow-md transition-shadow duration-300 overflow-hidden">
+      <Card className="group relative overflow-hidden border border-slate-200 bg-white shadow-sm transition-shadow duration-300 hover:shadow-md">
+        <Link to={`/product/${product.id}`} className="block">
         {allImages.length > 0 ? (
           <div className="relative overflow-hidden rounded-t-xl bg-slate-50">
             <img
@@ -88,16 +89,20 @@ function ProductCard({ product, onAddToCart, onBuyNow, getImageUrl }) {
             </div>
           </div>
         )}
+        </Link>
+        <ProductShareButton product={product} className="absolute right-2 top-2 z-10" />
         <div className="p-3">
-          <p className="line-clamp-2 text-xs font-semibold leading-4 text-[#172B12] mb-1">{product.title}</p>
-          {product.description && (
-            <p className="line-clamp-2 text-xs text-[#4B5A45] mb-2">{product.description}</p>
-          )}
-          {product.price !== null && product.price !== undefined && Number(product.price) > 0 ? (
-            <p className="text-xs font-bold text-[#2B6F38] mb-2">UGX {Number(product.price).toLocaleString()}</p>
-          ) : (
-            <p className="text-xs font-bold text-[#D48C70] mb-2">Contact seller</p>
-          )}
+          <Link to={`/product/${product.id}`} className="block">
+            <p className="line-clamp-2 text-xs font-semibold leading-4 text-[#172B12] mb-1">{product.title}</p>
+            {product.description && (
+              <p className="line-clamp-2 text-xs text-[#4B5A45] mb-2">{product.description}</p>
+            )}
+            {product.price !== null && product.price !== undefined && Number(product.price) > 0 ? (
+              <p className="text-xs font-bold text-[#2B6F38] mb-2">UGX {Number(product.price).toLocaleString()}</p>
+            ) : (
+              <p className="text-xs font-bold text-[#D48C70] mb-2">Contact seller</p>
+            )}
+          </Link>
           {!Number(product.price) > 0 && product.contact_phone && (
             <div className="flex items-center gap-2 mb-2">
               <a
@@ -141,7 +146,6 @@ function ProductCard({ product, onAddToCart, onBuyNow, getImageUrl }) {
           )}
         </div>
       </Card>
-    </Link>
   );
 }
 

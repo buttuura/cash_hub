@@ -214,8 +214,9 @@ const Dashboard = () => {
   const [announcementHistory, setAnnouncementHistory] = useState([]);
   const [currentAnnouncement, setCurrentAnnouncement] = useState({ message: '', author: '', updated_at: null });
   const [announcementDismissed, setAnnouncementDismissed] = useState(false);
-  const [shopHeroPosterUrl, setShopHeroPosterUrl] = useState('/hero_bg_img.jpeg');
+  const [shopHeroPosterUrls, setShopHeroPosterUrls] = useState(['/hero_bg_img.jpeg']);
   const [shopHeroPosterUploading, setShopHeroPosterUploading] = useState(false);
+  const [shopHeroPosterDeletingUrl, setShopHeroPosterDeletingUrl] = useState(null);
   const shopHeroPosterInputRef = useRef(null);
   const [guarantorLoanPopupDismissed, setGuarantorLoanPopupDismissed] = useState(false);
 
@@ -224,8 +225,11 @@ const Dashboard = () => {
     let cancelled = false;
     axios.get(`${API_URL}/api/shop/hero-poster`)
       .then((response) => {
-        if (!cancelled && response.data?.image_url) {
-          setShopHeroPosterUrl(response.data.image_url);
+        if (!cancelled) {
+          const imageUrls = Array.isArray(response.data?.image_urls)
+            ? response.data.image_urls.filter((url) => typeof url === 'string' && url.trim())
+            : [];
+          setShopHeroPosterUrls(imageUrls.length ? imageUrls : [response.data?.image_url || '/hero_bg_img.jpeg']);
         }
       })
       .catch(() => {});
@@ -855,9 +859,9 @@ useEffect(() => {
 
   const handleShopHeroPosterUpload = async (event) => {
     const input = event.currentTarget;
-    const file = input.files?.[0];
-    if (!file) return;
-    if (!file.type.startsWith('image/')) {
+    const files = Array.from(input.files || []);
+    if (!files.length) return;
+    if (files.some((file) => !file.type.startsWith('image/'))) {
       toast.error('Choose an image file for the hero poster');
       input.value = '';
       return;
@@ -865,25 +869,49 @@ useEffect(() => {
 
     setShopHeroPosterUploading(true);
     try {
-      const formData = new FormData();
-      formData.append('file', file);
       const headers = getAuthHeaders();
-      const uploadResponse = await axios.post(`${API_URL}/api/uploads`, formData, { headers });
-      const imageUrl = uploadResponse.data?.url;
-      if (!imageUrl) throw new Error('Image upload did not return a URL');
+      for (const file of files) {
+        const formData = new FormData();
+        formData.append('file', file);
+        const uploadResponse = await axios.post(`${API_URL}/api/uploads`, formData, { headers });
+        const imageUrl = uploadResponse.data?.url;
+        if (!imageUrl) throw new Error('Image upload did not return a URL');
 
-      const response = await axios.put(
-        `${API_URL}/api/shop/hero-poster`,
-        { image_url: imageUrl },
-        { headers }
-      );
-      setShopHeroPosterUrl(response.data.image_url || imageUrl);
-      toast.success('Shop hero poster updated');
+        const response = await axios.post(
+          `${API_URL}/api/shop/hero-poster`,
+          { image_url: imageUrl },
+          { headers }
+        );
+        const imageUrls = Array.isArray(response.data?.image_urls)
+          ? response.data.image_urls
+          : [...shopHeroPosterUrls.filter((url) => url !== '/hero_bg_img.jpeg'), imageUrl];
+        setShopHeroPosterUrls(imageUrls.length ? imageUrls : [imageUrl]);
+      }
+      toast.success(files.length === 1 ? 'Shop hero poster updated' : 'Shop hero posters updated');
     } catch (error) {
       toast.error(error.response?.data?.detail || error.message || 'Failed to update hero poster');
     } finally {
       setShopHeroPosterUploading(false);
       input.value = '';
+    }
+  };
+
+  const handleShopHeroPosterDelete = async (imageUrl) => {
+    setShopHeroPosterDeletingUrl(imageUrl);
+    try {
+      const response = await axios.delete(`${API_URL}/api/shop/hero-poster`, {
+        headers: getAuthHeaders(),
+        data: { image_url: imageUrl },
+      });
+      const imageUrls = Array.isArray(response.data?.image_urls)
+        ? response.data.image_urls
+        : shopHeroPosterUrls.filter((url) => url !== imageUrl);
+      setShopHeroPosterUrls(imageUrls.length ? imageUrls : ['/hero_bg_img.jpeg']);
+      toast.success('Shop hero poster removed');
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to remove hero poster');
+    } finally {
+      setShopHeroPosterDeletingUrl(null);
     }
   };
 
@@ -4810,30 +4838,48 @@ useEffect(() => {
                   <div className="mt-6 flex flex-col gap-4 border-t border-[#E8EBE8] pt-4 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <h4 className="text-sm font-semibold text-[#1E231F]">Shop hero poster</h4>
-                      <p className="text-sm text-[#5C665D]">Upload a seasonal or advertising image for the shop hero.</p>
+                      <p className="text-sm text-[#5C665D]">Upload multiple hero images; the shop cycles through them every 5 seconds.</p>
                     </div>
-                    <div className="flex items-center gap-3">
-                      <img
-                        src={shopHeroPosterUrl}
-                        alt="Current shop hero poster"
-                        className="h-16 w-28 rounded-md object-cover"
-                      />
+                    <div className="flex flex-wrap items-center gap-3">
+                      {shopHeroPosterUrls.map((imageUrl) => (
+                        <div key={imageUrl} className="relative">
+                          <img
+                            src={imageUrl}
+                            alt="Shop hero poster"
+                            className="h-16 w-28 rounded-md object-cover"
+                          />
+                          {imageUrl !== '/hero_bg_img.jpeg' && (
+                            <Button
+                              type="button"
+                              variant="destructive"
+                              size="icon"
+                              disabled={shopHeroPosterDeletingUrl === imageUrl || shopHeroPosterUploading}
+                              onClick={() => handleShopHeroPosterDelete(imageUrl)}
+                              className="absolute -right-2 -top-2 h-7 w-7 rounded-full"
+                              aria-label="Remove shop hero poster"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
+                        </div>
+                      ))}
                       <input
                         ref={shopHeroPosterInputRef}
                         type="file"
                         accept="image/*"
+                        multiple
                         className="hidden"
                         onChange={handleShopHeroPosterUpload}
                       />
                       <Button
                         type="button"
                         variant="outline"
-                        disabled={shopHeroPosterUploading}
+                        disabled={shopHeroPosterUploading || Boolean(shopHeroPosterDeletingUrl)}
                         onClick={() => shopHeroPosterInputRef.current?.click()}
                         className="shrink-0"
                       >
                         <ImagePlus className="mr-2 h-4 w-4" />
-                        {shopHeroPosterUploading ? 'Uploading...' : 'Upload poster'}
+                        {shopHeroPosterUploading ? 'Uploading...' : 'Upload posters'}
                       </Button>
                     </div>
                   </div>

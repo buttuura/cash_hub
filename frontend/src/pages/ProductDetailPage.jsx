@@ -74,6 +74,11 @@ function ProductDetailPage() {
     }
   };
 
+  const handleBackToShop = () => {
+    const historyIndex = window.history.state?.idx;
+    navigate(Number.isInteger(historyIndex) && historyIndex > 0 ? -1 : '/shop');
+  };
+
   useEffect(() => {
     const fetchProduct = async () => {
       setLoading(true);
@@ -496,7 +501,7 @@ function ProductDetailPage() {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6">
         <button
           type="button"
-          onClick={() => navigate(-1)}
+          onClick={handleBackToShop}
           className="flex items-center gap-2 text-sm text-[#4B5A45] hover:text-[#2B6F38] mb-6 transition-colors"
         >
           <ArrowLeft className="h-4 w-4" />
@@ -520,7 +525,7 @@ function ProductDetailPage() {
                       <img
                         src={getImageUrl(img)}
                         alt={`${product.title} ${idx + 1}`}
-                        className="w-full h-96 object-cover"
+                        className="w-full h-96 object-contain"
                       />
                     </div>
                   ))}

@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Toaster, toast } from 'sonner';
 import { ShoppingCart, FastForward, Cpu, Sparkles, ShoppingBag, HardHat, PenTool, Shirt, HeartPulse, Home, BookOpen, Dumbbell, Gamepad2, Briefcase, Menu, X, Search, Phone, MessageCircle } from 'lucide-react';
 import ProductCard from '../components/ProductCard';
+import ProductShareButton from '../components/ProductShareButton';
 import { exportLoanAgreementPDF } from '../utils/pdfExport';
 import { OFFICERS } from '../data/officers';
 import { resolveImageUrl } from '../lib/utils';
@@ -180,7 +181,8 @@ const ShopPage = () => {
   const [repaymentPeriod, setRepaymentPeriod] = useState('2_weeks');
   const [validOfficerCodes, setValidOfficerCodes] = useState([]);
   const [loanRequestSubmitted, setLoanRequestSubmitted] = useState(false);
-  const [heroPosterUrl, setHeroPosterUrl] = useState('/hero_bg_img.jpeg');
+  const [heroPosterUrls, setHeroPosterUrls] = useState(['/hero_bg_img.jpeg']);
+  const [heroPosterIndex, setHeroPosterIndex] = useState(0);
   useEffect(() => {
     setLoanIsGuaranteed(loanType === 'guaranteed');
   }, [loanType]);
@@ -204,13 +206,24 @@ const ShopPage = () => {
     let cancelled = false;
     axios.get(`${API_URL}/api/shop/hero-poster`)
       .then((response) => {
-        if (!cancelled && response.data?.image_url) {
-          setHeroPosterUrl(response.data.image_url);
+        if (!cancelled) {
+          const imageUrls = Array.isArray(response.data?.image_urls)
+            ? response.data.image_urls.filter((url) => typeof url === 'string' && url.trim())
+            : [];
+          setHeroPosterUrls(imageUrls.length ? imageUrls : [response.data?.image_url || '/hero_bg_img.jpeg']);
+          setHeroPosterIndex(0);
         }
       })
       .catch(() => {});
     return () => { cancelled = true; };
   }, []);
+  useEffect(() => {
+    if (heroPosterUrls.length < 2) return undefined;
+    const intervalId = window.setInterval(() => {
+      setHeroPosterIndex((currentIndex) => (currentIndex + 1) % heroPosterUrls.length);
+    }, 5000);
+    return () => window.clearInterval(intervalId);
+  }, [heroPosterUrls]);
   const [loanRequestData, setLoanRequestData] = useState(null);
   const [purchaseProduct, setPurchaseProduct] = useState(null);
   const [cart, setCart] = useState(() => {
@@ -757,11 +770,11 @@ const handleOpenPurchase = (product) => {
   };
 
   return (
-    <div className="min-h-screen bg-[#F7FAF3]">
+    <div className="min-h-screen bg-transparent">
       <Toaster position="top-right" />
       
 {/* Top Navigation Bar */}
-        <nav className="sticky top-0 z-40 backdrop-blur border-b border-slate-200 mb-6">
+        <nav className="sticky top-0 z-40 backdrop-blur border-b border-slate-200">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             {/* Mobile top bar - search + cart on right, hamburger on left */}
             <div className="flex lg:hidden items-center gap-2 py-2">
@@ -910,8 +923,17 @@ const handleOpenPurchase = (product) => {
          </div>
        </nav>
 
-      <div className="relative z-10 mb-10 flex min-h-[calc(100svh-10rem)] w-full items-center overflow-hidden" style={{ backgroundImage: `url("${heroPosterUrl}")`, backgroundSize: "cover", backgroundPosition: "center", backgroundColor: "#F5FBF2" }}>
-          <div className="absolute inset-0 bg-black/20" />
+      <div className="relative z-10 flex min-h-[calc(100svh-10rem)] w-full items-center overflow-visible bg-[#F5FBF2]">
+          {heroPosterUrls.map((imageUrl, index) => (
+            <img
+              key={imageUrl}
+              src={imageUrl}
+              alt=""
+              aria-hidden="true"
+              className={`absolute inset-x-0 top-0 h-[calc(100%+9.5rem)] w-full object-cover transition-opacity duration-1000 ${index === heroPosterIndex ? 'opacity-100' : 'opacity-0'}`}
+            />
+          ))}
+          <div className="absolute inset-x-0 top-0 h-[calc(100%+9.5rem)] bg-black/20" />
           <div className="relative mx-auto w-full max-w-7xl space-y-8 px-4 py-16 sm:px-6 lg:px-8">
             <div className="max-w-3xl space-y-6">
               <p className="text-sm uppercase tracking-[0.3em] text-[#D8E4D3] font-semibold">Group marketplace</p>
@@ -940,12 +962,8 @@ const handleOpenPurchase = (product) => {
           <div className="pointer-events-none absolute right-6 top-6 hidden h-32 w-32 rounded-full bg-[#D8E4D3]/60 blur-2xl md:block" />
       </div>
 
-      <div className="mx-auto max-w-7xl space-y-10 px-4 pb-8 sm:px-6 lg:px-8">
+      <div className="relative z-20 mx-auto -mt-[3px] max-w-7xl space-y-10 bg-transparent px-4 pb-8 sm:px-6 lg:px-8">
 <Card className="rounded-none border-0 bg-transparent p-0 shadow-none">
-          <CardHeader className="p-0 pb-4">
-            <CardTitle className="text-lg">Popular categories</CardTitle>
-            <CardDescription>Categories with newest uploads. Scroll horizontally to see more.</CardDescription>
-          </CardHeader>
           <CardContent className="p-0">
             <div className="space-y-5">
               {categories
@@ -955,20 +973,23 @@ const handleOpenPurchase = (product) => {
                 })
                 .sort((a, b) => b.categoryProducts.length - a.categoryProducts.length)
 .slice(0, 5)
-.map(({ category, categoryProducts }) => {
+.map(({ category, categoryProducts }, index) => {
                     const Icon = ICON_MAP[category.id] || Sparkles;
+                    const categoryHeading = (
+                      <div className="flex w-fit items-center justify-between gap-3">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <Icon className="h-5 w-5 shrink-0 text-[#2B6F38]" />
+                          <p className="truncate text-base font-semibold text-[#1B3A16]">{category.name}</p>
+                        </div>
+                      </div>
+                    );
 
                     return (
-                      <div key={category.id} className="space-y-3">
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="flex min-w-0 items-center gap-2">
-                            <Icon className="h-5 w-5 shrink-0 text-[#2B6F38]" />
-                            <p className="truncate text-base font-semibold text-[#1B3A16]">{category.name}</p>
-                          </div>
-                        </div>
+                      <div key={category.id} className={`space-y-3 ${index === 0 ? 'bg-transparent' : ''}`}>
+                        {index !== 0 && categoryHeading}
 
                         {categoryProducts.length === 0 ? (
-                          <div className="flex items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-gradient-to-br from-[#F7FAF3] to-[#EBF5E8] px-6 py-8 text-center">
+                          <div className={`flex items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 ${index === 0 ? 'bg-transparent' : 'bg-gradient-to-br from-[#F7FAF3] to-[#EBF5E8]'} px-6 py-8 text-center`}>
                             <div>
                               <svg className="w-10 h-10 mx-auto text-[#4B5A45] mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0h-2m-2 0h-6m-2 0H6m16 10H4a2 2 0 01-2-2v-5a2 2 0 012-2h2m8-4v4m4-4v4m4-4v4M8 7h.01M12 7h.01M16 7h.01" /></svg>
                               <p className="text-sm text-[#4B5A45]">No products in this category yet.</p>
@@ -1011,19 +1032,19 @@ const handleOpenPurchase = (product) => {
                                 }
                               }}
                               data-popular-row={category.id}
-                               className="flex gap-4 overflow-x-auto pb-2 px-10 hide-scrollbar touch-pan-x overscroll-x-contain"
+                               className="flex gap-4 overflow-x-auto pb-2 px-10 hide-scrollbar overscroll-x-contain"
                             >
 {categoryProducts.map((product) => {
                                 const displayImage = product.image_urls?.[0] || product.image_url;
                                 return (
-                                  <button
-                                    key={product.id}
-                                    type="button"
-                                    onClick={() => navigate(`/product/${product.id}`)}
-                                    className="shrink-0 rounded-2xl border border-slate-200 bg-white text-left shadow-sm transition-all duration-200 hover:shadow-md hover:border-[#2B6F38]/50 w-44 group"
-                                  >
+                                  <div key={product.id} className="relative w-44 shrink-0">
+                                    <button
+                                      type="button"
+                                      onClick={() => navigate(`/product/${product.id}`)}
+                                      className={`w-full rounded-2xl border border-slate-200 ${index === 0 ? 'bg-transparent' : 'bg-white'} text-left shadow-sm transition-all duration-200 hover:shadow-md hover:border-[#2B6F38]/50 group`}
+                                    >
                                     {displayImage ? (
-                                      <div className="overflow-hidden rounded-t-2xl bg-[#F4F8EF] relative">
+                                      <div className={`overflow-hidden rounded-t-2xl ${index === 0 ? 'bg-transparent' : 'bg-[#F4F8EF]'} relative`}>
                                         <img
                                           src={getImageUrl(displayImage)}
                                           alt={product.title}
@@ -1031,11 +1052,11 @@ const handleOpenPurchase = (product) => {
                                         />
                                       </div>
                                     ) : (
-                                      <div className="flex h-28 items-center justify-center rounded-t-2xl bg-gradient-to-br from-[#F4F8EF] to-[#E8F0E3] border-b border-slate-200">
+                                      <div className={`flex h-28 items-center justify-center rounded-t-2xl ${index === 0 ? 'bg-white/80 backdrop-blur-sm' : 'bg-gradient-to-br from-[#F4F8EF] to-[#E8F0E3]'} border-b border-slate-200`}>
                                         <span className="text-xs text-[#4B5A45]">No image</span>
                                       </div>
                                     )}
-                                    <div className="p-3">
+                                    <div className={`rounded-b-2xl p-3 ${index === 0 ? 'bg-white/90 backdrop-blur-sm' : ''}`}>
                                       <p className="line-clamp-2 text-xs font-semibold leading-4 text-[#172B12] mb-1">{product.title}</p>
                                       {product.price !== null && product.price !== undefined && Number(product.price) > 0 ? (
                                         <p className="text-xs font-bold text-[#2B6F38] mb-2">UGX {Number(product.price).toLocaleString()}</p>
@@ -1087,7 +1108,9 @@ const handleOpenPurchase = (product) => {
                                         <p className="text-[10px] text-slate-500">No contact info</p>
                                       )}
                                     </div>
-                                  </button>
+                                    </button>
+                                    <ProductShareButton product={product} className="absolute right-2 top-2 z-10" />
+                                  </div>
                                 );
                               })}
 
