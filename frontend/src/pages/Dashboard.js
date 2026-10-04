@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import axios from 'axios';
@@ -11,7 +11,7 @@ import { Textarea } from '../components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import {
   Dialog,
-  DialogContent,
+  DialogContent as BaseDialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
@@ -74,6 +74,8 @@ import { buildWhatsAppUrl as buildNormalizedWhatsAppUrl } from '../utils/whatsap
 import { SellProductsCard } from '../components/AddProductDialog';
 import { API_URL } from '../lib/api';
 import { registerRefreshHandler } from '../lib/refreshBus';
+
+const DialogContent = (props) => <BaseDialogContent belowStickyNav {...props} />;
 
 const formatCurrency = (amount) => {
   return `UGX ${Number(amount || 0).toLocaleString()}`;
@@ -218,7 +220,33 @@ const Dashboard = () => {
   const [shopHeroPosterUploading, setShopHeroPosterUploading] = useState(false);
   const [shopHeroPosterDeletingUrl, setShopHeroPosterDeletingUrl] = useState(null);
   const shopHeroPosterInputRef = useRef(null);
+  const dashboardNavRef = useRef(null);
   const [guarantorLoanPopupDismissed, setGuarantorLoanPopupDismissed] = useState(false);
+
+  useLayoutEffect(() => {
+    const nav = dashboardNavRef.current;
+    if (!nav) return undefined;
+
+    const updateNavBottom = () => {
+      document.documentElement.style.setProperty(
+        '--dashboard-nav-bottom',
+        `${Math.max(0, nav.getBoundingClientRect().bottom)}px`
+      );
+    };
+
+    updateNavBottom();
+    window.addEventListener('resize', updateNavBottom);
+    const observer = typeof ResizeObserver === 'undefined'
+      ? null
+      : new ResizeObserver(updateNavBottom);
+    observer?.observe(nav);
+
+    return () => {
+      window.removeEventListener('resize', updateNavBottom);
+      observer?.disconnect();
+      document.documentElement.style.removeProperty('--dashboard-nav-bottom');
+    };
+  }, []);
 
   useEffect(() => {
     if (!API_URL) return undefined;
@@ -1571,7 +1599,11 @@ useEffect(() => {
       <Toaster position="top-right" richColors />
       
       {dataLoading && (
-        <div className="fixed top-16 left-0 right-0 bg-[#E8B25C]/20 text-[#E8B25C] p-2 text-center text-sm z-40">
+        <div
+          role="status"
+          className="fixed left-0 right-0 z-40 border-b border-[#E8B25C] bg-[#FFF3D6] p-2 text-center text-sm font-medium text-[#704A00]"
+          style={{ top: 'calc(max(env(safe-area-inset-top), 12px) + 4rem + 12px)' }}
+        >
           Loading data...
         </div>
       )}
@@ -1690,7 +1722,7 @@ useEffect(() => {
       )}
       
       {/* Navigation */}
-      <nav className="sticky top-0 z-50 backdrop-blur-xl bg-white/90 border-b border-[#E8EBE8]">
+      <nav ref={dashboardNavRef} className="sticky top-0 z-50 backdrop-blur-xl bg-white/90 border-b border-[#E8EBE8]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-3">

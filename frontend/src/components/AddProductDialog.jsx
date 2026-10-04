@@ -15,6 +15,7 @@ import { Button } from '../components/ui/button';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '../components/ui/card';
 import { ShoppingCart } from 'lucide-react';
 import { API_URL } from '../lib/api';
+import { optimizeProductImage } from '../utils/productImage';
 
 const DEFAULT_CATEGORIES = [
   { id: 'food', name: 'Food', description: 'Fresh meals, groceries and snacks sold by group members.' },
@@ -44,6 +45,7 @@ const AddProductDialog = ({
   const [newProductPrice, setNewProductPrice] = useState('');
   const [newProductContactPhone, setNewProductContactPhone] = useState('');
   const [uploadingProduct, setUploadingProduct] = useState(false);
+  const [uploadStage, setUploadStage] = useState('');
 
   const categoryMap = categories.reduce((acc, category) => {
     acc[category.id] = category;
@@ -124,6 +126,9 @@ const AddProductDialog = ({
 
     setUploadingProduct(true);
     try {
+      setUploadStage(newProductImages.length ? 'Preparing images...' : 'Publishing product...');
+      const optimizedImages = await Promise.all(newProductImages.map(optimizeProductImage));
+
       const formData = new FormData();
       formData.append('title', newProductTitle.trim());
       formData.append('description', newProductDescription.trim());
@@ -135,10 +140,11 @@ const AddProductDialog = ({
         formData.append('contact_phone', contactPhone);
       }
 
-      newProductImages.forEach((img) => {
+      optimizedImages.forEach((img) => {
         formData.append('images', img);
       });
 
+      setUploadStage('Uploading product...');
       const authToken = localStorage.getItem('access_token');
       const headers = {};
       if (authToken) {
@@ -147,7 +153,6 @@ const AddProductDialog = ({
 
       const response = await axios.post(`${API_URL}/api/products`, formData, {
         headers,
-        withCredentials: true,
       });
 
       const responseData = response.data || {};
@@ -176,12 +181,13 @@ const AddProductDialog = ({
       toast.error(errorMessage);
     } finally {
       setUploadingProduct(false);
+      setUploadStage('');
     }
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto flex flex-col">
+      <DialogContent belowStickyNav className="sm:max-w-lg max-h-[80vh] overflow-y-auto flex flex-col">
         <DialogHeader>
           <DialogTitle>List a new product</DialogTitle>
           <DialogDescription>Members can publish items for sale by selecting a category and entering product details.</DialogDescription>
@@ -291,7 +297,7 @@ const AddProductDialog = ({
             className="bg-[#172B12] text-white hover:bg-[#0f2409] disabled:opacity-50"
             disabled={uploadingProduct}
           >
-            {uploadingProduct ? 'Publishing...' : 'Publish product'}
+            {uploadingProduct ? uploadStage : 'Publish product'}
           </Button>
         </form>
       </DialogContent>

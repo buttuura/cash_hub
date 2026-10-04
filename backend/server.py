@@ -1,5 +1,6 @@
 from dotenv import load_dotenv
 from pathlib import Path
+import asyncio
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -1115,14 +1116,18 @@ async def create_product(
     if parsed_price is not None and parsed_price < 0:
         raise HTTPException(status_code=400, detail="Price cannot be negative")
 
-    image_urls = []
-    if images:
-        for img in images:
-            if img and img.filename:
-                upload_result = await upload_to_cloudinary(img)
-                url = upload_result.get("secure_url") or upload_result.get("url")
-                if url:
-                    image_urls.append(url)
+    valid_images = [img for img in images if img and img.filename]
+    upload_semaphore = asyncio.Semaphore(3)
+
+    async def upload_product_image(img: UploadFile) -> str:
+        async with upload_semaphore:
+            upload_result = await upload_to_cloudinary(img)
+        url = upload_result.get("secure_url") or upload_result.get("url")
+        if not url:
+            raise HTTPException(status_code=500, detail="Cloudinary upload failed: no URL returned")
+        return url
+
+    image_urls = await asyncio.gather(*(upload_product_image(img) for img in valid_images))
 
     product_data = {
         "title": title,

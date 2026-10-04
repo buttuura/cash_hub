@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import axios from 'axios';
 import { renderMatches, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -183,6 +183,31 @@ const ShopPage = () => {
   const [loanRequestSubmitted, setLoanRequestSubmitted] = useState(false);
   const [heroPosterUrls, setHeroPosterUrls] = useState(['/hero_bg_img.jpeg']);
   const [heroPosterIndex, setHeroPosterIndex] = useState(0);
+  const shopNavRef = useRef(null);
+  useLayoutEffect(() => {
+    const nav = shopNavRef.current;
+    if (!nav) return undefined;
+
+    const updateNavBottom = () => {
+      document.documentElement.style.setProperty(
+        '--shop-nav-bottom',
+        `${Math.max(0, nav.getBoundingClientRect().bottom)}px`
+      );
+    };
+
+    updateNavBottom();
+    window.addEventListener('resize', updateNavBottom);
+    const observer = typeof ResizeObserver === 'undefined'
+      ? null
+      : new ResizeObserver(updateNavBottom);
+    observer?.observe(nav);
+
+    return () => {
+      window.removeEventListener('resize', updateNavBottom);
+      observer?.disconnect();
+      document.documentElement.style.removeProperty('--shop-nav-bottom');
+    };
+  }, []);
   useEffect(() => {
     setLoanIsGuaranteed(loanType === 'guaranteed');
   }, [loanType]);
@@ -774,7 +799,7 @@ const handleOpenPurchase = (product) => {
       <Toaster position="top-right" />
       
 {/* Top Navigation Bar */}
-        <nav className="sticky top-0 z-40 backdrop-blur border-b border-slate-200">
+        <nav ref={shopNavRef} className="sticky top-0 z-40 backdrop-blur border-b border-slate-200">
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             {/* Mobile top bar - search + cart on right, hamburger on left */}
             <div className="flex lg:hidden items-center gap-2 py-2">
@@ -943,18 +968,18 @@ const handleOpenPurchase = (product) => {
               </p>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="flex flex-wrap items-center justify-center gap-5">
               <Button
                 onClick={() => navigate(isAuthenticated ? '/dashboard' : '/login')}
-                className="min-w-[160px] bg-[#172B12] text-white hover:bg-[#0f2409]"
+                className="h-auto w-fit rounded-full bg-[#172B12] px-5 py-3 text-lg font-semibold text-white hover:bg-[#0f2409]"
               >
                 Go to dashboard
               </Button>
               <Button
                 onClick={() => setQuickLoanOpen(true)}
-                className="min-w-[160px] bg-white text-[#172B12] border border-[#172B12] hover:bg-[#ECF8E9] relative"
+                className="hero-rgb-button hero-quick-loan h-auto w-fit rounded-full px-5 py-3 text-lg font-semibold text-[#172B12]"
               >
-                <FastForward className="h-4 w-4 mr-2" />
+                <FastForward className="mr-2 h-5 w-5" />
                 Quick Loan
               </Button>
             </div>
@@ -1192,7 +1217,7 @@ const handleOpenPurchase = (product) => {
           }
           setQuickLoanOpen(open);
         }}>
-        <DialogContent className="sm:max-w-lg max-h-[80vh] flex flex-col overflow-hidden">
+        <DialogContent belowStickyNav className="sm:max-w-lg max-h-[80vh] flex flex-col overflow-hidden">
           <DialogHeader>
             <DialogTitle>Request a quick loan</DialogTitle>
             <DialogDescription>Fill in your contact details and we will follow up with loan terms.</DialogDescription>

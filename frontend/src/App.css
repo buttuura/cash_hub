@@ -16,6 +16,71 @@ html {
   to { transform: rotate(360deg); }
 }
 
+@keyframes hero-rgb-rotate {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes hero-quick-loan-nudge {
+  0%, 70%, 100% { transform: translate(0, 0) rotate(0); }
+  74% { transform: translate(-3px, -4px) rotate(-3deg); }
+  78% { transform: translate(3px, 0) rotate(3deg); }
+  82% { transform: translate(-3px, -2px) rotate(-2deg); }
+  86% { transform: translate(3px, 0) rotate(2deg); }
+  90% { transform: translate(-1px, 0) rotate(-1deg); }
+  94% { transform: translate(1px, 0) rotate(1deg); }
+}
+
+.hero-rgb-button {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border: 0;
+  background: transparent;
+}
+
+.hero-quick-loan {
+  animation: hero-quick-loan-nudge 3.8s ease-in-out infinite;
+}
+
+.hero-rgb-button::before,
+.hero-rgb-button::after {
+  position: absolute;
+  content: "";
+  border-radius: inherit;
+}
+
+.hero-rgb-button::before {
+  z-index: -2;
+  inset: -150%;
+  background: conic-gradient(#ff1744, #ff9100, #ffea00, #00e676, #00b0ff, #651fff, #f500ff, #ff1744);
+  animation: hero-rgb-rotate 3s linear infinite;
+}
+
+.hero-rgb-button::after {
+  z-index: -1;
+  inset: 2px;
+  background: #fff;
+  transition: background-color 150ms ease;
+}
+
+.hero-rgb-button:hover::after {
+  background: #ecf8e9;
+}
+
+.hero-rgb-button:focus-visible {
+  outline-offset: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-rgb-button::before {
+    animation: none;
+  }
+
+  .hero-quick-loan {
+    animation: none;
+  }
+}
+
 body {
   min-height: 100%;
   background: transparent;
@@ -45,6 +110,17 @@ nav {
   padding-bottom: 12px;
   padding-left: max(env(safe-area-inset-left), 16px);
   padding-right: max(env(safe-area-inset-right), 16px);
+}
+
+@media (max-width: 1023px), (max-height: 700px) {
+  .dialog-below-sticky-nav {
+    top: calc(var(--shop-nav-bottom, var(--dashboard-nav-bottom, max(env(safe-area-inset-top), 12px) + 145px)) + 8px) !important;
+    max-height: calc(100dvh - var(--shop-nav-bottom, var(--dashboard-nav-bottom, max(env(safe-area-inset-top), 12px) + 145px)) - 16px) !important;
+    width: calc(100% - 2rem);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    transform: translate(-50%, 0) !important;
+  }
 }
 
 /* Extra space for hero to show fully */
