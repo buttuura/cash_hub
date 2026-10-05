@@ -134,12 +134,17 @@ self.addEventListener('push', (event) => {
   const data = event.data.json();
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
-      if (clients.some((client) => client.visibilityState === 'visible')) return;
+      clients.forEach((client) => {
+        client.postMessage({ type: 'CASHHUB_PUSH', payload: data });
+      });
       return self.registration.showNotification(data.title || 'Cash Hub', {
         body: data.body || 'You have a new notification',
         icon: '/icons/icon-192.png',
         badge: '/icons/icon-192.png',
-        tag: data.type || 'cash-hub-notification',
+        tag: data.id || `${data.type || 'cash-hub-notification'}-${Date.now()}`,
+        renotify: false,
+        silent: false,
+        vibrate: [200, 100, 200],
         data: { url: data.url || '/' },
       });
     })

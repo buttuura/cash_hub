@@ -22,6 +22,13 @@ class FakeCursor:
 
 
 class FakeDatabase:
+    def __init__(self):
+        self.notification_documents = []
+
+    async def insert_many(self, documents):
+        self.notification_documents.extend(documents)
+        return Mock(inserted_ids=[])
+
     def __getitem__(self, key):
         return self
 
@@ -39,7 +46,30 @@ def server_module():
     sys.modules.pop("backend.server", None)
     with patch("motor.motor_asyncio.AsyncIOMotorClient", return_value=FakeMongoClient()):
         module = importlib.import_module("backend.server")
+        module.db.notifications = module.db
+        module.firebase_app = None
         yield module
+
+
+def test_push_events_are_persisted_for_each_recipient(server_module):
+    server_module.VAPID_PUBLIC_KEY = None
+    server_module.VAPID_PRIVATE_KEY = None
+    server_module.firebase_app = None
+
+    asyncio.run(server_module.send_push_to_users(
+        ["member-1", "member-2"],
+        {
+            "id": "order-123",
+            "type": "new_order",
+            "title": "New order received",
+            "body": "New order from a buyer",
+        },
+    ))
+
+    stored = server_module.db.notification_documents
+    assert [notification["user_id"] for notification in stored] == ["member-1", "member-2"]
+    assert all(notification["event_id"] == "order-123" for notification in stored)
+    assert all(notification["type"] == "new_order" for notification in stored)
 
 
 def test_approving_savings_deposit_applies_late_fee_then_development_fee(server_module):

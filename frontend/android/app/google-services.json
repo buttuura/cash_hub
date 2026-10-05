@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "710957116356",
+    "project_id": "class-one-savings-group",
+    "storage_bucket": "class-one-savings-group.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:710957116356:android:1d5b0610fcdf83bc7a5291",
+        "android_client_info": {
+          "package_name": "com.classone.cashhub"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDcXTqueE3W2ITyBb-7JINz1gFLG1LQG8A"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

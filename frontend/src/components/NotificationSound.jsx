@@ -23,9 +23,11 @@ const urlBase64ToUint8Array = (value) => {
 const NotificationSound = () => {
   const { user, isAuthenticated } = useAuth();
   const audioRef = useRef(null);
-  const wsRef = useRef(null);
   const reconnectTimerRef = useRef(null);
   const audioUnlockedRef = useRef(false);
+  const seenNotificationsRef = useRef(new Map());
+  const pollCursorRef = useRef(null);
+  const pollingRef = useRef(false);
 
   const isNative = Capacitor.isNativePlatform() && Capacitor.getPlatform() !== 'web';
 
@@ -58,7 +60,10 @@ const NotificationSound = () => {
 
         const registration = await navigator.serviceWorker.ready;
         const keyResponse = await fetch(`${API_URL}/api/push/vapid-public-key`);
-        if (!keyResponse.ok) return;
+        if (!keyResponse.ok) {
+          console.warn(`Push notification setup unavailable (HTTP ${keyResponse.status}).`);
+          return;
+        }
         const { publicKey } = await keyResponse.json();
         let subscription = await registration.pushManager.getSubscription();
         if (!subscription) {
@@ -68,7 +73,7 @@ const NotificationSound = () => {
           });
         }
 
-        await fetch(`${API_URL}/api/push/subscribe`, {
+        const subscribeResponse = await fetch(`${API_URL}/api/push/subscribe`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -76,6 +81,9 @@ const NotificationSound = () => {
           },
           body: JSON.stringify(subscription.toJSON()),
         });
+        if (!subscribeResponse.ok) {
+          console.warn(`Push notification subscription failed (HTTP ${subscribeResponse.status}).`);
+        }
       } catch (error) {
         console.warn('Push notification registration failed:', error);
       }
@@ -120,35 +128,80 @@ const NotificationSound = () => {
 
     const openSockets = [];
 
-    const handleMessage = (data) => {
+    const handleMessage = (data, { fromServiceWorker = false } = {}) => {
       const described = describeNotificationEvent(data);
       if (!described) return;
 
-      const isOrder = data.type === 'new_order';
+      const now = Date.now();
+      const seenNotifications = seenNotificationsRef.current;
+      for (const [id, timestamp] of seenNotifications) {
+        if (now - timestamp > 60000) seenNotifications.delete(id);
+      }
+      if (seenNotifications.has(described.id)) return;
+      seenNotifications.set(described.id, now);
 
-      if (isOrder) {
+      const isOrder = data.type === 'new_order';
+      const shouldPlaySound = ['new_order', 'new_deposit', 'new_loan', 'new_withdrawal', 'transaction_update'].includes(data.type);
+
+      if (shouldPlaySound) {
         if (audioRef.current) {
           audioRef.current.currentTime = 0;
-          audioRef.current.loop = true;
+          audioRef.current.loop = isOrder;
           audioRef.current.play().catch((error) => {
-            console.warn('Order notification sound could not play:', error.name || error.message);
+            console.warn('Notification sound could not play:', error.name || error.message);
           });
         }
+      }
+
+      if (isOrder) {
         window.dispatchEvent(new Event('new-order-received'));
       }
 
       toast.info(described.body);
 
       if (isNative) {
-        // Real entry in the Android notification bar.
-        showNativeNotification(described);
-      } else if ('Notification' in window && Notification.permission === 'granted') {
+        if (!localStorage.getItem('cashhub_fcm_token')) {
+          showNativeNotification(described);
+        }
+      } else if (!fromServiceWorker && 'Notification' in window && Notification.permission === 'granted') {
         new Notification(described.title, {
           body: described.body,
           tag: described.id,
         });
       }
     };
+
+    const handleServiceWorkerMessage = (event) => {
+      if (event.data?.type === 'CASHHUB_PUSH') {
+        handleMessage(event.data.payload, { fromServiceWorker: true });
+      }
+    };
+    navigator.serviceWorker?.addEventListener('message', handleServiceWorkerMessage);
+
+    pollCursorRef.current = new Date(Date.now() - 5000).toISOString();
+    const pollNotifications = async () => {
+      if (pollingRef.current) return;
+      pollingRef.current = true;
+      const requestStartedAt = Date.now();
+      try {
+        const response = await fetch(
+          `${API_URL}/api/notifications?after=${encodeURIComponent(pollCursorRef.current)}`,
+          { headers: { Authorization: `Bearer ${localStorage.getItem('access_token')}` } }
+        );
+        if (!response.ok) {
+          throw new Error(`Notification sync failed (${response.status})`);
+        }
+        const notifications = await response.json();
+        notifications.forEach((notification) => handleMessage(notification));
+        pollCursorRef.current = new Date(requestStartedAt - 1000).toISOString();
+      } catch (error) {
+        console.warn('Unable to sync notifications:', error);
+      } finally {
+        pollingRef.current = false;
+      }
+    };
+    pollNotifications();
+    const pollTimer = setInterval(pollNotifications, 5000);
 
     const connectChannel = (channel) => {
       const ws = new WebSocket(getWebSocketUrl(channel));
@@ -185,6 +238,8 @@ const NotificationSound = () => {
       document.removeEventListener('touchstart', unlockAudio);
       document.removeEventListener('keydown', unlockAudio);
       window.removeEventListener('stop-order-notification-sound', handleStopSound);
+      navigator.serviceWorker?.removeEventListener('message', handleServiceWorkerMessage);
+      clearInterval(pollTimer);
       if (reconnectTimerRef.current) {
         clearTimeout(reconnectTimerRef.current);
       }

@@ -12,6 +12,7 @@ import ProductDetailPage from './pages/ProductDetailPage';
 import ServicesManagement from './pages/ServicesManagement';
 import NotificationSound from './components/NotificationSound';
 import './App.css';
+import { initPushNotifications } from './utils/pushNotifications';
 
 // Protected Route Component
 const ProtectedRoute = ({ children }) => {
@@ -95,12 +96,38 @@ function AppRoutes() {
     </Routes>
   );
 }
+// --- PUSH NOTIFICATIONS INIT ---
+function PushHandler() {
+  const { user, isAuthenticated } = useAuth();
+  React.useEffect(() => {
+    if (!isAuthenticated || !user) return undefined;
 
+    let disposed = false;
+    let removeListeners;
+    const id = user._id || user.id || user.email;
+    initPushNotifications(id).then((remove) => {
+      if (disposed) {
+        remove?.();
+      } else {
+        removeListeners = remove;
+      }
+    }).catch((error) => {
+      console.error('Unable to initialize push notifications:', error);
+    });
+
+    return () => {
+      disposed = true;
+      removeListeners?.();
+    };
+  }, [isAuthenticated, user]);
+  return null;
+}
 function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
         <NotificationSound />
+        <PushHandler />
         <PullToRefresh>
           <AppRoutes />
         </PullToRefresh>

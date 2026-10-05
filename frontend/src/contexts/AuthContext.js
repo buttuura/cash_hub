@@ -194,6 +194,19 @@ export const AuthProvider = ({ children }) => {
   };
 
   const logout = () => {
+    const token = localStorage.getItem('access_token');
+    if (token && Capacitor.isNativePlatform()) {
+      const registeredToken = localStorage.getItem('cashhub_fcm_token');
+      if (registeredToken && API_URL) {
+        axios.delete(`${API_URL}/api/push/register`, {
+          headers: { Authorization: `Bearer ${token}` },
+          data: { token: registeredToken },
+        }).catch((logoutError) => {
+          console.error('Unable to unregister push token during logout:', logoutError);
+        });
+      }
+    }
+    localStorage.removeItem('cashhub_fcm_token');
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
     localStorage.removeItem('user');

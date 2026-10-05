@@ -33,6 +33,8 @@ import cloudinary
 import cloudinary.uploader
 from pywebpush import webpush, WebPushException
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+import firebase_admin
+from firebase_admin import credentials, messaging
 
 # Configure logging
 logging.basicConfig(
@@ -41,6 +43,32 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+firebase_app = None
+firebase_key_json = os.getenv("FIREBASE_SERVICE_ACCOUNT")
+firebase_key_file = os.getenv("FIREBASE_SERVICE_ACCOUNT_FILE")
+
+if firebase_key_json:
+    firebase_credential = credentials.Certificate(json.loads(firebase_key_json))
+else:
+    key_path = Path(firebase_key_file) if firebase_key_file else ROOT_DIR / "serviceAccountKey.json"
+    if not key_path.is_absolute():
+        key_path = ROOT_DIR / key_path
+    if not key_path.is_file() and not firebase_key_file:
+        legacy_key_path = ROOT_DIR / "serviceAccounttKey.json"
+        if legacy_key_path.is_file():
+            key_path = legacy_key_path
+    firebase_credential = credentials.Certificate(str(key_path)) if key_path.is_file() else None
+
+if firebase_credential:
+    try:
+        firebase_app = firebase_admin.initialize_app(firebase_credential)
+    except ValueError:
+        firebase_app = firebase_admin.get_app()
+    logger.info("Firebase Admin initialized")
+else:
+    logger.warning(
+        "Firebase Admin credentials are not configured; Android FCM delivery is disabled."
+    )
 # MongoDB connection
 mongo_url = os.environ['MONGO_URL']  # Removed .get() and fallback
 if not mongo_url:
@@ -69,6 +97,8 @@ else:
 VAPID_PUBLIC_KEY = os.environ.get('VAPID_PUBLIC_KEY')
 VAPID_PRIVATE_KEY = os.environ.get('VAPID_PRIVATE_KEY')
 VAPID_CLAIMS_EMAIL = os.environ.get('VAPID_CLAIMS_EMAIL', 'mailto:admin@c1group.site')
+if not VAPID_PUBLIC_KEY or not VAPID_PRIVATE_KEY:
+    logger.warning("VAPID keys are not configured; background Web Push notifications are disabled.")
 
 # Group Rules Constants
 MONTHLY_SAVINGS = 52000  # UGX
@@ -239,6 +269,9 @@ class PushSubscription(BaseModel):
     endpoint: str
     keys: dict
 
+class FCMTokenRegistration(BaseModel):
+    token: str = Field(..., min_length=1, max_length=4096)
+
 class ProductCreate(BaseModel):
     title: str
     description: Optional[str] = None
@@ -342,35 +375,108 @@ async def get_current_user_optional(request: Request) -> Optional[dict]:
             return None
         raise
 
-async def send_push_to_seller(seller_name: str, payload: dict):
-    if not VAPID_PUBLIC_KEY or not VAPID_PRIVATE_KEY:
+async def send_push_to_users(user_ids: list[str], payload: dict):
+    normalized_user_ids = list(dict.fromkeys(user_id for user_id in user_ids if user_id))
+    if not normalized_user_ids:
         return
 
-    seller = await db.users.find_one({
-        "name": {"$regex": f"^{re.escape((seller_name or '').strip())}$", "$options": "i"}
-    })
+    notification_id = str(payload.get("id") or uuid4().hex)
+    notification = {
+        "event_id": notification_id,
+        "type": str(payload.get("type") or "notification"),
+        "title": str(payload.get("title") or "Cash Hub"),
+        "body": str(payload.get("body") or "You have a new notification"),
+        "url": str(payload.get("url") or "/"),
+        "created_at": datetime.now(timezone.utc),
+    }
+    await db.notifications.insert_many([
+        {"user_id": user_id, **notification}
+        for user_id in normalized_user_ids
+    ])
+
+    if VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY:
+        subscriptions = await db.push_subscriptions.find({
+            "user_id": {"$in": normalized_user_ids}
+        }).to_list(1000)
+        for subscription in subscriptions:
+            try:
+                await anyio.to_thread.run_sync(lambda: webpush(
+                    subscription_info=subscription["subscription"],
+                    data=json.dumps({**payload, "id": notification_id}),
+                    vapid_private_key=VAPID_PRIVATE_KEY,
+                    vapid_claims={"sub": VAPID_CLAIMS_EMAIL},
+                ))
+            except WebPushException as exc:
+                status_code = getattr(exc.response, "status_code", None)
+                if status_code in (404, 410):
+                    await db.push_subscriptions.delete_one({"_id": subscription["_id"]})
+                else:
+                    logger.warning("Web Push delivery failed: %s", exc)
+            except Exception as exc:
+                logger.warning("Web Push delivery failed: %s", exc)
+
+    if firebase_app:
+        registrations = await db.fcm_tokens.find({
+            "user_id": {"$in": normalized_user_ids}
+        }).to_list(1000)
+        notification = messaging.Notification(
+            title=str(payload.get("title") or "Cash Hub"),
+            body=str(payload.get("body") or "You have a new notification"),
+        )
+        data = {
+            str(key): value if isinstance(value, str) else json.dumps(value)
+            for key, value in payload.items()
+            if value is not None
+        }
+        for registration in registrations:
+            try:
+                message = messaging.Message(
+                    notification=notification,
+                    data=data,
+                    token=registration["token"],
+                )
+                await anyio.to_thread.run_sync(lambda: messaging.send(message, app=firebase_app))
+            except messaging.UnregisteredError:
+                await db.fcm_tokens.delete_one({"_id": registration["_id"]})
+            except Exception as exc:
+                logger.warning("Firebase push delivery failed: %s", exc)
+
+
+@api_router.get("/notifications")
+async def get_user_notifications(
+    after: Optional[datetime] = Query(None),
+    user: dict = Depends(get_current_user),
+):
+    query = {"user_id": user["id"]}
+    if after:
+        query["created_at"] = {"$gte": after.astimezone(timezone.utc)}
+
+    notifications = await db.notifications.find(query).sort("created_at", 1).limit(100).to_list(100)
+    for notification in notifications:
+        notification["id"] = str(notification.pop("_id"))
+    return notifications
+
+
+async def send_push_to_roles(roles: list[str], payload: dict):
+    users = await db.users.find(
+        {"role": {"$in": roles}},
+        {"_id": 1},
+    ).to_list(1000)
+    await send_push_to_users([str(user["_id"]) for user in users], payload)
+
+
+async def send_push_to_seller(seller_name: str, payload: dict, seller_id: Optional[str] = None):
+    seller = None
+    if seller_id and is_valid_object_id(seller_id):
+        seller = await db.users.find_one({"_id": ObjectId(seller_id)})
+    if not seller:
+        seller = await db.users.find_one({
+            "name": {"$regex": f"^{re.escape((seller_name or '').strip())}$", "$options": "i"}
+        })
     if not seller:
         return
 
-    subscriptions = await db.push_subscriptions.find({
-        "user_id": str(seller["_id"])
-    }).to_list(100)
-    for subscription in subscriptions:
-        try:
-            await anyio.to_thread.run_sync(lambda: webpush(
-                subscription_info=subscription["subscription"],
-                data=json.dumps(payload),
-                vapid_private_key=VAPID_PRIVATE_KEY,
-                vapid_claims={"sub": VAPID_CLAIMS_EMAIL},
-            ))
-        except WebPushException as exc:
-            status_code = getattr(exc.response, "status_code", None)
-            if status_code in (404, 410):
-                await db.push_subscriptions.delete_one({"_id": subscription["_id"]})
-            else:
-                logger.warning("Web Push delivery failed: %s", exc)
-        except Exception as exc:
-            logger.warning("Web Push delivery failed: %s", exc)
+    await send_push_to_users([str(seller["_id"])], payload)
 
 @api_router.get("/push/vapid-public-key")
 async def get_vapid_public_key():
@@ -395,6 +501,23 @@ async def unsubscribe_from_push(subscription: PushSubscription, user: dict = Dep
         "endpoint": subscription.endpoint,
     })
     return {"subscribed": False}
+
+@api_router.post("/push/register")
+async def register_fcm_token(registration: FCMTokenRegistration, user: dict = Depends(get_current_user)):
+    await db.fcm_tokens.update_one(
+        {"token": registration.token},
+        {"$set": {"user_id": user["id"], "token": registration.token}},
+        upsert=True,
+    )
+    return {"registered": True}
+
+@api_router.delete("/push/register")
+async def unregister_fcm_token(registration: FCMTokenRegistration, user: dict = Depends(get_current_user)):
+    await db.fcm_tokens.delete_one({
+        "user_id": user["id"],
+        "token": registration.token,
+    })
+    return {"registered": False}
 
 async def require_admin(request: Request) -> dict:
     user = await get_current_user(request)
@@ -1188,12 +1311,26 @@ async def get_product(product_id: str):
 
 @api_router.post("/orders")
 async def create_order(order: OrderCreate, user: Optional[dict] = Depends(get_current_user_optional)):
+    seller_product = None
+    product_ids = [order.productId] if order.productId else []
+    product_ids.extend(
+        product.get("productId")
+        for product in (order.products or [])
+        if product.get("productId")
+    )
+    for product_id in dict.fromkeys(product_ids):
+        if is_valid_object_id(product_id):
+            seller_product = await db.products.find_one({"_id": ObjectId(product_id)})
+            if seller_product:
+                break
+
     order_doc = {
         "products": order.products,
         "productId": order.productId,
         "productTitle": order.productTitle,
         "productPrice": order.productPrice,
-        "sellerName": (order.sellerName or "").strip(),
+        "sellerName": (order.sellerName or (seller_product or {}).get("sellerName") or "").strip(),
+        "seller_id": (seller_product or {}).get("seller_id"),
         "buyerId": order.buyerId,
         "buyerName": order.buyerName,
         "buyerEmail": order.buyerEmail,
@@ -1220,12 +1357,13 @@ async def create_order(order: OrderCreate, user: Optional[dict] = Depends(get_cu
         "order": order_doc
     })
     await send_push_to_seller(order_doc["sellerName"], {
+        "id": f"order-{order_doc['id']}",
         "type": "new_order",
         "title": "New order received",
         "body": f"New order from {order_doc.get('buyerName') or 'a buyer'}",
         "url": "/dashboard",
         "order": order_doc,
-    })
+    }, order_doc.get("seller_id"))
     
     return order_doc
 
@@ -2142,6 +2280,20 @@ async def request_deposit(deposit: DepositRequest, user: dict = Depends(get_curr
         "type": "new_deposit",
         "deposit": deposit_doc,
     })
+    await send_push_to_roles(["admin", "super_admin", "treasurer"], {
+        "id": f"deposit-{deposit_doc['id']}",
+        "type": "new_deposit",
+        "title": "Deposit received",
+        "body": f"{deposit_doc.get('user_name') or 'A member'} deposited UGX {float(deposit_doc.get('amount') or 0):,.0f}",
+        "url": "/dashboard",
+    })
+    await send_push_to_users([deposit_doc["user_id"]], {
+        "id": f"deposit-request-{deposit_doc['id']}",
+        "type": "transaction_update",
+        "title": "Deposit request submitted",
+        "body": f"Your UGX {float(deposit_doc.get('amount') or 0):,.0f} deposit is awaiting approval.",
+        "url": "/dashboard",
+    })
 
     return deposit_doc
 
@@ -2307,6 +2459,13 @@ async def approve_deposit(approval: TransactionApproval, user: dict = Depends(re
                 {"$set": {"membership_type": "premium"}}
             )
     
+    await send_push_to_users([deposit["user_id"]], {
+        "id": f"deposit-status-{approval.transaction_id}",
+        "type": "transaction_update",
+        "title": f"Deposit {new_status}",
+        "body": f"Your UGX {float(deposit.get('amount') or 0):,.0f} deposit was {new_status}.",
+        "url": "/dashboard",
+    })
     return {"message": f"Deposit {new_status}"}
 
 @api_router.delete("/deposits/{deposit_id}")
@@ -2451,6 +2610,27 @@ async def request_loan(loan: LoanRequest, user: dict = Depends(get_current_user)
         "type": "new_loan",
         "loan": loan_doc,
     })
+    await send_push_to_roles(["admin", "super_admin", "treasurer"], {
+        "id": f"loan-{loan_doc['id']}",
+        "type": "new_loan",
+        "title": "Loan request",
+        "body": f"{loan_doc.get('user_name') or 'A member'} applied for UGX {float(loan_doc.get('amount') or 0):,.0f}",
+        "url": "/dashboard",
+    })
+    await send_push_to_users([loan_doc["user_id"]], {
+        "id": f"loan-request-{loan_doc['id']}",
+        "type": "transaction_update",
+        "title": "Loan request submitted",
+        "body": f"Your UGX {float(loan_doc.get('amount') or 0):,.0f} loan request is awaiting review.",
+        "url": "/dashboard",
+    })
+    await send_push_to_users([loan_doc["guarantor_id"]], {
+        "id": f"loan-guarantor-{loan_doc['id']}",
+        "type": "transaction_update",
+        "title": "Loan guarantee requested",
+        "body": f"{loan_doc.get('user_name') or 'A member'} requested your guarantee for UGX {float(loan_doc.get('amount') or 0):,.0f}.",
+        "url": "/dashboard",
+    })
 
     return loan_doc
 
@@ -2543,6 +2723,13 @@ async def admin_create_loan(data: AdminLoanCreate, user: dict = Depends(require_
 
     loan_doc["id"] = str(result.inserted_id)
     loan_doc.pop("_id", None)
+    await send_push_to_users([data.member_id], {
+        "id": f"loan-admin-created-{loan_doc['id']}",
+        "type": "transaction_update",
+        "title": "Loan issued",
+        "body": f"A UGX {float(loan_doc.get('amount') or 0):,.0f} loan was added to your account.",
+        "url": "/dashboard",
+    })
     return loan_doc
 
 
@@ -2736,6 +2923,21 @@ async def request_quick_loan(
     result = await db.quick_loans.insert_one(loan_doc)
     loan_doc["id"] = str(result.inserted_id)
     loan_doc.pop("_id", None)
+    await send_push_to_roles(["admin", "super_admin", "treasurer"], {
+        "id": f"quick-loan-{loan_doc['id']}",
+        "type": "new_loan",
+        "title": "Quick loan request",
+        "body": f"{loan_doc.get('user_name') or 'A member'} requested a quick loan of {loan_doc.get('currency') or 'UGX'} {float(loan_doc.get('amount') or 0):,.0f}.",
+        "url": "/dashboard",
+    })
+    if loan_doc.get("user_id"):
+        await send_push_to_users([loan_doc["user_id"]], {
+            "id": f"quick-loan-request-{loan_doc['id']}",
+            "type": "transaction_update",
+            "title": "Quick loan request submitted",
+            "body": f"Your quick loan request for {loan_doc.get('currency') or 'UGX'} {float(loan_doc.get('amount') or 0):,.0f} is awaiting review.",
+            "url": "/dashboard",
+        })
     return loan_doc
 
 @api_router.get("/quick-loans")
@@ -2790,6 +2992,14 @@ async def approve_quick_loan(approval: TransactionApproval, user: dict = Depends
             "notes": approval.notes,
         }}
     )
+    if quick_loan.get("user_id"):
+        await send_push_to_users([quick_loan["user_id"]], {
+            "id": f"quick-loan-status-{approval.transaction_id}",
+            "type": "transaction_update",
+            "title": f"Quick loan {new_status}",
+            "body": f"Your quick loan request was {new_status}.",
+            "url": "/dashboard",
+        })
     return {"message": f"Quick loan request {new_status}"}
 
 @api_router.delete("/quick-loans/{loan_id}")
@@ -2992,7 +3202,15 @@ async def guarantor_approve_loan(approval: GuarantorApproval, user: dict = Depen
         {"_id": ObjectId(approval.loan_id)},
         {"$set": update}
     )
-    
+
+    await send_push_to_users([loan["user_id"]], {
+        "id": f"loan-guarantor-status-{approval.loan_id}",
+        "type": "transaction_update",
+        "title": "Guarantor response received",
+        "body": f"Your guarantor {new_status.replace('_', ' ')} your loan request.",
+        "url": "/dashboard",
+    })
+
     return {"message": f"Loan {new_status.replace('_', ' ')}"}
 
 @api_router.get("/loans")
@@ -3071,6 +3289,13 @@ async def approve_loan(approval: TransactionApproval, user: dict = Depends(requi
                 "status": "rejected_by_guarantor"
             }}
         )
+        await send_push_to_users([loan["user_id"]], {
+            "id": f"loan-status-{approval.transaction_id}",
+            "type": "transaction_update",
+            "title": "Loan rejected",
+            "body": f"Your UGX {float(loan.get('amount') or 0):,.0f} loan request was rejected.",
+            "url": "/dashboard",
+        })
         return {"message": "Loan rejected"}
     
     # If loan is in pending_guarantor and admin approves, approve on behalf of guarantor first
@@ -3109,6 +3334,14 @@ async def approve_loan(approval: TransactionApproval, user: dict = Depends(requi
         {"_id": ObjectId(approval.transaction_id)},
         {"$set": update_data}
     )
+
+    await send_push_to_users([loan["user_id"]], {
+        "id": f"loan-status-{approval.transaction_id}",
+        "type": "transaction_update",
+        "title": f"Loan {new_status}",
+        "body": f"Your UGX {float(loan.get('amount') or 0):,.0f} loan request was {new_status}.",
+        "url": "/dashboard",
+    })
     
     return {"message": f"Loan {new_status}"}
 
@@ -3150,6 +3383,17 @@ async def repay_loan(loan_id: str, amount: float, user: dict = Depends(require_a
             {"_id": ObjectId(loan["guarantor_id"])},
             {"$inc": {"guarantees_given": -1}}
         )
+
+    await send_push_to_users([loan["user_id"]], {
+        "id": f"loan-repayment-{loan_id}-{uuid4().hex}",
+        "type": "transaction_update",
+        "title": "Loan repayment recorded",
+        "body": (
+            f"UGX {payment_to_apply:,.0f} was applied to your loan. "
+            f"Remaining balance: UGX {new_balance:,.0f}."
+        ),
+        "url": "/dashboard",
+    })
 
     return {
         "message": "Payment recorded",
@@ -3230,6 +3474,20 @@ async def request_withdrawal(withdrawal: WithdrawalRequest, user: dict = Depends
         "type": "new_withdrawal",
         "withdrawal": withdrawal_doc,
     })
+    await send_push_to_roles(["admin", "super_admin", "treasurer"], {
+        "id": f"withdrawal-{withdrawal_doc['id']}",
+        "type": "new_withdrawal",
+        "title": "Withdrawal requested",
+        "body": f"{withdrawal_doc.get('user_name') or 'A member'} requested UGX {float(withdrawal_doc.get('amount') or 0):,.0f}",
+        "url": "/dashboard",
+    })
+    await send_push_to_users([withdrawal_doc["user_id"]], {
+        "id": f"withdrawal-request-{withdrawal_doc['id']}",
+        "type": "transaction_update",
+        "title": "Withdrawal request submitted",
+        "body": f"Your UGX {float(withdrawal_doc.get('amount') or 0):,.0f} withdrawal is awaiting approval.",
+        "url": "/dashboard",
+    })
 
     return withdrawal_doc
 
@@ -3289,6 +3547,14 @@ async def approve_withdrawal(approval: TransactionApproval, user: dict = Depends
             "notes": approval.notes
         }}
     )
+
+    await send_push_to_users([withdrawal["user_id"]], {
+        "id": f"withdrawal-status-{approval.transaction_id}",
+        "type": "transaction_update",
+        "title": f"Withdrawal {new_status}",
+        "body": f"Your UGX {float(withdrawal.get('amount') or 0):,.0f} withdrawal was {new_status}.",
+        "url": "/dashboard",
+    })
     
     return {"message": f"Withdrawal {new_status}"}
 
@@ -3848,6 +4114,8 @@ async def startup_event():
         await db.withdrawals.create_index("user_id")
         await db.leaving_requests.create_index("user_id")
         await db.password_resets.create_index("expires_at", expireAfterSeconds=0)
+        await db.notifications.create_index("created_at", expireAfterSeconds=30 * 24 * 60 * 60)
+        await db.notifications.create_index([("user_id", 1), ("created_at", 1)])
         
         # Migration: Add max_guarantees field to existing users
         await db.users.update_many(

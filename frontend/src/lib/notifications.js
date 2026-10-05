@@ -79,9 +79,9 @@ export const describeNotificationEvent = (data) => {
   if (type === 'new_order') {
     const buyer = data.order?.buyerName || 'a buyer';
     return {
-      id: `order-${data.order?.id || Date.now()}`,
-      title: 'New order received',
-      body: `New order from ${buyer}`,
+      id: data.id || `order-${data.order?.id || Date.now()}`,
+      title: data.title || 'New order received',
+      body: data.body || `New order from ${buyer}`,
     };
   }
 
@@ -89,9 +89,9 @@ export const describeNotificationEvent = (data) => {
     const name = data.deposit?.user_name || data.deposit?.userName || 'A member';
     const amount = Number(data.deposit?.amount || 0).toLocaleString();
     return {
-      id: `deposit-${data.deposit?.id || Date.now()}`,
-      title: 'Deposit received',
-      body: `${name} deposited UGX ${amount}`,
+      id: data.id || `deposit-${data.deposit?.id || Date.now()}`,
+      title: data.title || 'Deposit received',
+      body: data.body || `${name} deposited UGX ${amount}`,
     };
   }
 
@@ -99,9 +99,9 @@ export const describeNotificationEvent = (data) => {
     const name = data.withdrawal?.user_name || data.withdrawal?.userName || 'A member';
     const amount = Number(data.withdrawal?.amount || 0).toLocaleString();
     return {
-      id: `withdrawal-${data.withdrawal?.id || Date.now()}`,
-      title: 'Withdrawal requested',
-      body: `${name} requested UGX ${amount}`,
+      id: data.id || `withdrawal-${data.withdrawal?.id || Date.now()}`,
+      title: data.title || 'Withdrawal requested',
+      body: data.body || `${name} requested UGX ${amount}`,
     };
   }
 
@@ -109,9 +109,17 @@ export const describeNotificationEvent = (data) => {
     const name = data.loan?.user_name || data.loan?.userName || 'A member';
     const amount = Number(data.loan?.amount || 0).toLocaleString();
     return {
-      id: `loan-${data.loan?.id || Date.now()}`,
-      title: 'Loan request',
-      body: `${name} applied for UGX ${amount}`,
+      id: data.id || `loan-${data.loan?.id || Date.now()}`,
+      title: data.title || 'Loan request',
+      body: data.body || `${name} applied for UGX ${amount}`,
+    };
+  }
+
+  if (type === 'transaction_update') {
+    return {
+      id: data.id || `transaction-${Date.now()}`,
+      title: data.title || 'Transaction update',
+      body: data.body || 'Your transaction has been updated.',
     };
   }
 

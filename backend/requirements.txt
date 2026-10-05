@@ -33,3 +33,4 @@ pywebpush
 
 # Scheduled tasks
 apscheduler
+firebase-admin
