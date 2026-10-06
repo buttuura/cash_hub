@@ -26,4 +26,17 @@ describe('describeNotificationEvent', () => {
       body: 'Your withdrawal was approved.',
     });
   });
+
+  it('describes deposit submissions for administrators', () => {
+    expect(describeNotificationEvent({
+      id: 'deposit-123',
+      type: 'new_deposit',
+      title: 'Deposit received',
+      body: 'Jane deposited UGX 52,000',
+    })).toEqual({
+      id: 'deposit-123',
+      title: 'Deposit received',
+      body: 'Jane deposited UGX 52,000',
+    });
+  });
 });

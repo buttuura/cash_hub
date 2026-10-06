@@ -831,7 +831,6 @@ useEffect(() => {
         payload,
         { headers: getAuthHeaders() }
       );
-      toast.success('Deposit request submitted for approval');
 
       fetchData._cache = null;
       setDepositDialogOpen(false);

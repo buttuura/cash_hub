@@ -250,3 +250,53 @@ def test_register_defaults_new_users_to_seller_membership(server_module):
 
     assert response["membership_type"] == "seller"
     assert fake_users.inserted["membership_type"] == "seller"
+
+
+def test_group_push_targets_all_privileged_user_subscriptions(server_module):
+    users = [
+        {"_id": "treasurer-1"},
+        {"_id": "admin-1"},
+    ]
+
+    class FakeCollection:
+        def __init__(self, results):
+            self.results = results
+            self.query = None
+
+        def find(self, query, *_args):
+            self.query = query
+            return FakeCursor(self.results)
+
+    user_collection = FakeCollection(users)
+    subscriptions = [
+        {"_id": "subscription-1", "subscription": {"endpoint": "https://push.example/1"}},
+        {"_id": "subscription-2", "subscription": {"endpoint": "https://push.example/2"}},
+    ]
+    subscription_collection = FakeCollection(subscriptions)
+    server_module.db.users = user_collection
+    server_module.db.push_subscriptions = subscription_collection
+    server_module.VAPID_PUBLIC_KEY = "test-public-key"
+    server_module.VAPID_PRIVATE_KEY = "test-private-key"
+
+    with (
+        patch.object(server_module, "webpush") as webpush,
+        patch.object(
+            server_module.anyio.to_thread,
+            "run_sync",
+            new=AsyncMock(side_effect=lambda callback: callback()),
+        ),
+    ):
+        asyncio.run(
+            server_module.send_push_to_roles(
+                ["admin", "super_admin", "treasurer"],
+                {"type": "new_deposit", "title": "Deposit received"},
+            )
+        )
+
+    assert user_collection.query == {
+        "role": {"$in": ["admin", "super_admin", "treasurer"]}
+    }
+    assert subscription_collection.query == {
+        "user_id": {"$in": ["treasurer-1", "admin-1"]}
+    }
+    assert webpush.call_count == 2

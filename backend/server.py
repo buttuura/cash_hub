@@ -2275,7 +2275,6 @@ async def request_deposit(deposit: DepositRequest, user: dict = Depends(get_curr
     deposit_doc["id"] = str(result.inserted_id)
     deposit_doc.pop("_id", None)
 
-    # Notify treasurers/admins so they see the deposit on their phone.
     await manager.broadcast_to_seller("__group__", {
         "type": "new_deposit",
         "deposit": deposit_doc,
@@ -2285,13 +2284,6 @@ async def request_deposit(deposit: DepositRequest, user: dict = Depends(get_curr
         "type": "new_deposit",
         "title": "Deposit received",
         "body": f"{deposit_doc.get('user_name') or 'A member'} deposited UGX {float(deposit_doc.get('amount') or 0):,.0f}",
-        "url": "/dashboard",
-    })
-    await send_push_to_users([deposit_doc["user_id"]], {
-        "id": f"deposit-request-{deposit_doc['id']}",
-        "type": "transaction_update",
-        "title": "Deposit request submitted",
-        "body": f"Your UGX {float(deposit_doc.get('amount') or 0):,.0f} deposit is awaiting approval.",
         "url": "/dashboard",
     })
 
