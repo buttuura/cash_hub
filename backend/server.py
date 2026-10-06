@@ -79,6 +79,7 @@ client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
 scheduler = None
+ORDER_NOTIFICATION_REPEAT_INTERVAL = timedelta(minutes=1)
 
 UPLOAD_DIR = ROOT_DIR / 'uploads'
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -272,6 +273,9 @@ class PushSubscription(BaseModel):
 class FCMTokenRegistration(BaseModel):
     token: str = Field(..., min_length=1, max_length=4096)
 
+class NotificationSettingsUpdate(BaseModel):
+    order_sound_enabled: bool = False
+
 class ProductCreate(BaseModel):
     title: str
     description: Optional[str] = None
@@ -381,18 +385,45 @@ async def send_push_to_users(user_ids: list[str], payload: dict):
         return
 
     notification_id = str(payload.get("id") or uuid4().hex)
+    notification_type = str(payload.get("type") or "notification")
+    now = datetime.now(timezone.utc)
+    order_sound_by_user = {}
+    if notification_type == "new_order":
+        object_ids = [
+            ObjectId(user_id)
+            for user_id in normalized_user_ids
+            if is_valid_object_id(user_id)
+        ]
+        recipients = await db.users.find(
+            {"_id": {"$in": object_ids}},
+            {"notification_settings.order_sound_enabled": 1},
+        ).to_list(1000)
+        order_sound_by_user = {
+            str(recipient["_id"]): bool(
+                recipient.get("notification_settings", {}).get("order_sound_enabled", False)
+            )
+            for recipient in recipients
+        }
+
     notification = {
         "event_id": notification_id,
-        "type": str(payload.get("type") or "notification"),
+        "type": notification_type,
         "title": str(payload.get("title") or "Cash Hub"),
         "body": str(payload.get("body") or "You have a new notification"),
         "url": str(payload.get("url") or "/"),
-        "created_at": datetime.now(timezone.utc),
+        "created_at": now,
+        "read_at": None,
     }
-    await db.notifications.insert_many([
-        {"user_id": user_id, **notification}
-        for user_id in normalized_user_ids
-    ])
+    notification_documents = []
+    for user_id in normalized_user_ids:
+        user_notification = {"user_id": user_id, **notification}
+        if notification_type == "new_order":
+            sound_enabled = order_sound_by_user.get(user_id, False)
+            user_notification["sound_enabled"] = sound_enabled
+            if sound_enabled:
+                user_notification["next_repeat_at"] = now + ORDER_NOTIFICATION_REPEAT_INTERVAL
+        notification_documents.append(user_notification)
+    await db.notifications.insert_many(notification_documents)
 
     if VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY:
         subscriptions = await db.push_subscriptions.find({
@@ -402,7 +433,15 @@ async def send_push_to_users(user_ids: list[str], payload: dict):
             try:
                 await anyio.to_thread.run_sync(lambda: webpush(
                     subscription_info=subscription["subscription"],
-                    data=json.dumps({**payload, "id": notification_id}),
+                    data=json.dumps({
+                        **payload,
+                        "id": notification_id,
+                        **(
+                            {"sound_enabled": order_sound_by_user.get(subscription["user_id"], False)}
+                            if notification_type == "new_order"
+                            else {}
+                        ),
+                    }),
                     vapid_private_key=VAPID_PRIVATE_KEY,
                     vapid_claims={"sub": VAPID_CLAIMS_EMAIL},
                 ))
@@ -428,18 +467,96 @@ async def send_push_to_users(user_ids: list[str], payload: dict):
             for key, value in payload.items()
             if value is not None
         }
+        is_order = notification_type == "new_order"
         for registration in registrations:
             try:
+                sound_enabled = order_sound_by_user.get(registration["user_id"], False)
+                message_data = dict(data)
+                if is_order:
+                    message_data["sound_enabled"] = str(sound_enabled).lower()
                 message = messaging.Message(
                     notification=notification,
-                    data=data,
+                    data=message_data,
                     token=registration["token"],
+                    android=messaging.AndroidConfig(
+                        priority="high" if is_order else "normal",
+                        notification=messaging.AndroidNotification(
+                            channel_id="cashhub-orders" if is_order and sound_enabled else "cashhub-silent",
+                            tag=notification_id if is_order else None,
+                        ),
+                    ),
                 )
                 await anyio.to_thread.run_sync(lambda: messaging.send(message, app=firebase_app))
             except messaging.UnregisteredError:
                 await db.fcm_tokens.delete_one({"_id": registration["_id"]})
             except Exception as exc:
                 logger.warning("Firebase push delivery failed: %s", exc)
+
+
+async def resend_unread_order_notifications():
+    if not firebase_app:
+        return
+
+    now = datetime.now(timezone.utc)
+    due_notifications = await db.notifications.find({
+        "type": "new_order",
+        "sound_enabled": True,
+        "read_at": None,
+        "next_repeat_at": {"$lte": now},
+    }).to_list(1000)
+
+    for notification in due_notifications:
+        claimed = await db.notifications.update_one(
+            {
+                "_id": notification["_id"],
+                "type": "new_order",
+                "sound_enabled": True,
+                "read_at": None,
+                "next_repeat_at": {"$lte": now},
+            },
+            {
+                "$set": {"next_repeat_at": now + ORDER_NOTIFICATION_REPEAT_INTERVAL},
+                "$inc": {"repeat_count": 1},
+            },
+        )
+        if not claimed.modified_count:
+            continue
+
+        registrations = await db.fcm_tokens.find({
+            "user_id": notification["user_id"],
+        }).to_list(1000)
+        data = {
+            "id": notification["event_id"],
+            "type": "new_order",
+            "title": notification["title"],
+            "body": notification["body"],
+            "url": notification.get("url") or "/dashboard",
+            "sound_enabled": "true",
+        }
+        for registration in registrations:
+            try:
+                message = messaging.Message(
+                    notification=messaging.Notification(
+                        title=notification["title"],
+                        body=notification["body"],
+                    ),
+                    data=data,
+                    token=registration["token"],
+                    android=messaging.AndroidConfig(
+                        priority="high",
+                        notification=messaging.AndroidNotification(
+                            channel_id="cashhub-orders",
+                            tag=notification["event_id"],
+                        ),
+                    ),
+                )
+                await anyio.to_thread.run_sync(
+                    lambda: messaging.send(message, app=firebase_app)
+                )
+            except messaging.UnregisteredError:
+                await db.fcm_tokens.delete_one({"_id": registration["_id"]})
+            except Exception as exc:
+                logger.warning("Repeated order notification delivery failed: %s", exc)
 
 
 @api_router.get("/notifications")
@@ -453,8 +570,62 @@ async def get_user_notifications(
 
     notifications = await db.notifications.find(query).sort("created_at", 1).limit(100).to_list(100)
     for notification in notifications:
-        notification["id"] = str(notification.pop("_id"))
+        notification["id"] = notification.get("event_id") or str(notification["_id"])
+        notification.pop("_id", None)
     return notifications
+
+
+@api_router.post("/notifications/{event_id}/read")
+async def mark_notification_read(event_id: str, user: dict = Depends(get_current_user)):
+    result = await db.notifications.update_one(
+        {
+            "user_id": user["id"],
+            "event_id": event_id,
+            "type": "new_order",
+            "read_at": None,
+        },
+        {
+            "$set": {
+                "read_at": datetime.now(timezone.utc),
+                "next_repeat_at": None,
+            }
+        },
+    )
+    return {"marked_read": result.modified_count > 0}
+
+
+@api_router.get("/notification-settings")
+async def get_notification_settings(user: dict = Depends(get_current_user)):
+    settings = user.get("notification_settings") or {}
+    return {
+        "order_sound_enabled": bool(settings.get("order_sound_enabled", False)),
+    }
+
+
+@api_router.put("/notification-settings")
+async def update_notification_settings(
+    settings: NotificationSettingsUpdate,
+    user: dict = Depends(get_current_user),
+):
+    await db.users.update_one(
+        {"_id": ObjectId(user["id"])},
+        {"$set": {"notification_settings.order_sound_enabled": settings.order_sound_enabled}},
+    )
+    if not settings.order_sound_enabled:
+        await db.notifications.update_many(
+            {
+                "user_id": user["id"],
+                "type": "new_order",
+                "read_at": None,
+            },
+            {
+                "$set": {
+                    "sound_enabled": False,
+                    "next_repeat_at": None,
+                }
+            },
+        )
+    return {"order_sound_enabled": settings.order_sound_enabled}
 
 
 async def send_push_to_roles(roles: list[str], payload: dict):
@@ -1419,6 +1590,19 @@ async def update_order_status(order_id: str, data: OrderStatusUpdate, user: Opti
         {"_id": ObjectId(order_id)},
         {"$set": update_fields}
     )
+    await db.notifications.update_one(
+        {
+            "event_id": f"order-{order_id}",
+            "type": "new_order",
+            "read_at": None,
+        },
+        {
+            "$set": {
+                "read_at": datetime.now(timezone.utc),
+                "next_repeat_at": None,
+            }
+        },
+    )
 
     return {"message": f"Order {data.status}"}
 
@@ -1453,6 +1637,20 @@ async def delete_order(order_id: str, user: Optional[dict] = Depends(get_current
     )
     if result.modified_count == 0:
         raise HTTPException(status_code=404, detail="Order not found")
+
+    await db.notifications.update_many(
+        {
+            "event_id": f"order-{order_id}",
+            "type": "new_order",
+            "read_at": None,
+        },
+        {
+            "$set": {
+                "read_at": datetime.now(timezone.utc),
+                "next_repeat_at": None,
+            }
+        },
+    )
 
     return {"message": "Order deleted", "id": order_id}
 
@@ -4077,6 +4275,13 @@ async def startup_event():
     if scheduler is None or not scheduler.running:
         scheduler = AsyncIOScheduler()
         scheduler.add_job(accrue_interest_for_all_loans, 'cron', hour=0, minute=0, timezone='UTC')
+        scheduler.add_job(
+            resend_unread_order_notifications,
+            'interval',
+            seconds=60,
+            max_instances=1,
+            coalesce=True,
+        )
         scheduler.start()
         logger.info("Monthly interest accrual scheduler started")
 
@@ -4108,6 +4313,8 @@ async def startup_event():
         await db.password_resets.create_index("expires_at", expireAfterSeconds=0)
         await db.notifications.create_index("created_at", expireAfterSeconds=30 * 24 * 60 * 60)
         await db.notifications.create_index([("user_id", 1), ("created_at", 1)])
+        await db.notifications.create_index([("type", 1), ("read_at", 1), ("next_repeat_at", 1)])
+        await db.fcm_tokens.create_index("user_id")
         
         # Migration: Add max_guarantees field to existing users
         await db.users.update_many(

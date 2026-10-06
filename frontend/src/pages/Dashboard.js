@@ -1546,6 +1546,7 @@ useEffect(() => {
   if (!isSellerMember && isAdmin) {
     navItems.push({ id: 'admin', label: 'Admin', icon: Shield });
   }
+  navItems.push({ id: 'settings', label: 'Settings' });
 
   const loanAmountValue = parseFloat(loanAmount) || 0;
 
@@ -1738,7 +1739,11 @@ useEffect(() => {
               {navItems.map((item) => (
                 <button
                   key={item.id}
-                  onClick={() => item.id === 'services' ? navigate('/services-management') : setActiveTab(item.id)}
+                  onClick={() => {
+                    if (item.id === 'services') navigate('/services-management');
+                    else if (item.id === 'settings') navigate('/settings');
+                    else setActiveTab(item.id);
+                  }}
                   data-testid={`nav-${item.id}`}
                   className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
                     activeTab === item.id
@@ -1832,6 +1837,8 @@ useEffect(() => {
                   onClick={() => {
                     if (item.id === 'services') {
                       navigate('/services-management');
+                    } else if (item.id === 'settings') {
+                      navigate('/settings');
                     } else {
                       setActiveTab(item.id);
                     }
@@ -1843,7 +1850,7 @@ useEffect(() => {
                       : 'text-[#5C665D] hover:bg-[#E8EBE8]'
                   }`}
                 >
-                  <item.icon className="w-5 h-5" />
+                  {item.icon && <item.icon className="w-5 h-5" />}
                   {item.label}
                 </button>
               ))}

@@ -1450,7 +1450,7 @@ const handleOpenPurchase = (product) => {
       </Dialog>
 
       <Dialog open={purchaseOpen} onOpenChange={setPurchaseOpen}>
-        <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto flex flex-col">
+        <DialogContent belowStickyNav className="sm:max-w-lg max-h-[80vh] overflow-y-auto flex flex-col">
           <DialogHeader>
             <DialogTitle>Purchase request</DialogTitle>
             <DialogDescription>Send your contact details so the seller can follow up.</DialogDescription>

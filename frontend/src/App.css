@@ -8,7 +8,6 @@ html {
   min-height: 100%;
   background: transparent;
   scroll-behavior: smooth;
-  overscroll-behavior-y: contain;
 }
 
 @keyframes cashhub-pull-spin {

@@ -3,7 +3,19 @@ import { useAuth } from '../contexts/AuthContext';
 import { toast } from 'sonner';
 import { Capacitor } from '@capacitor/core';
 import { API_URL } from '../lib/api';
-import { describeNotificationEvent, requestNotificationPermission, showNativeNotification } from '../lib/notifications';
+import {
+  describeNotificationEvent,
+  ORDER_NOTIFICATION_CHANNEL_ID,
+  requestNotificationPermission,
+  showNativeNotification,
+  SILENT_NOTIFICATION_CHANNEL_ID,
+} from '../lib/notifications';
+import {
+  getOrderSoundEnabled,
+  ORDER_SOUND_SETTING_CHANGED,
+  saveOrderSoundEnabled,
+} from '../lib/notificationSettings';
+import { acknowledgeOrderNotification } from '../lib/notificationActions';
 
 const getWebSocketUrl = (channel) => {
   const url = new URL(API_URL || window.location.origin);
@@ -28,6 +40,7 @@ const NotificationSound = () => {
   const seenNotificationsRef = useRef(new Map());
   const pollCursorRef = useRef(null);
   const pollingRef = useRef(false);
+  const orderSoundEnabledRef = useRef(false);
 
   const isNative = Capacitor.isNativePlatform() && Capacitor.getPlatform() !== 'web';
 
@@ -38,6 +51,34 @@ const NotificationSound = () => {
     ? [user.name, '__group__']
     : [user?.name].filter(Boolean);
   const channelKey = channels.join('|');
+
+  useEffect(() => {
+    const userId = user?.id || user?._id;
+    orderSoundEnabledRef.current = getOrderSoundEnabled(userId);
+
+    const handleSettingChange = (event) => {
+      if (event.detail?.userId !== userId) return;
+      orderSoundEnabledRef.current = Boolean(event.detail.enabled);
+      if (!event.detail.enabled) {
+        window.dispatchEvent(new Event('stop-order-notification-sound'));
+      }
+    };
+    window.addEventListener(ORDER_SOUND_SETTING_CHANGED, handleSettingChange);
+
+    if (isAuthenticated && userId) {
+      fetch(`${API_URL}/api/notification-settings`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('access_token') || ''}` },
+      }).then(async (response) => {
+        if (!response.ok) throw new Error(`Could not load notification settings (${response.status})`);
+        const settings = await response.json();
+        saveOrderSoundEnabled(userId, Boolean(settings.order_sound_enabled));
+      }).catch((error) => {
+        console.warn('Unable to sync notification settings:', error);
+      });
+    }
+
+    return () => window.removeEventListener(ORDER_SOUND_SETTING_CHANGED, handleSettingChange);
+  }, [isAuthenticated, user?._id, user?.id]);
 
   useEffect(() => {
     if (!isAuthenticated || !channels.length) return;
@@ -141,12 +182,16 @@ const NotificationSound = () => {
       seenNotifications.set(described.id, now);
 
       const isOrder = data.type === 'new_order';
-      const shouldPlaySound = ['new_order', 'new_deposit', 'new_loan', 'new_withdrawal', 'transaction_update'].includes(data.type);
+      const shouldPlaySound = isOrder && (
+        data.sound_enabled === undefined
+          ? orderSoundEnabledRef.current
+          : data.sound_enabled === true || data.sound_enabled === 'true'
+      );
 
       if (shouldPlaySound) {
         if (audioRef.current) {
           audioRef.current.currentTime = 0;
-          audioRef.current.loop = isOrder;
+          audioRef.current.loop = true;
           audioRef.current.play().catch((error) => {
             console.warn('Notification sound could not play:', error.name || error.message);
           });
@@ -157,26 +202,50 @@ const NotificationSound = () => {
         window.dispatchEvent(new Event('new-order-received'));
       }
 
-      toast.info(described.body);
+      toast.info(described.body, isOrder ? {
+        action: {
+          label: 'Acknowledge',
+          onClick: () => acknowledgeOrderNotification({ id: described.id, type: 'new_order' }),
+        },
+      } : undefined);
 
       if (isNative) {
         if (!localStorage.getItem('cashhub_fcm_token')) {
-          showNativeNotification(described);
+          showNativeNotification({
+            ...described,
+            type: data.type,
+            channelId: shouldPlaySound ? ORDER_NOTIFICATION_CHANNEL_ID : SILENT_NOTIFICATION_CHANNEL_ID,
+          });
         }
       } else if (!fromServiceWorker && 'Notification' in window && Notification.permission === 'granted') {
-        new Notification(described.title, {
+        const browserNotification = new Notification(described.title, {
           body: described.body,
           tag: described.id,
         });
+        browserNotification.onclick = () => {
+          window.focus();
+          acknowledgeOrderNotification({ id: described.id, type: data.type });
+          browserNotification.close();
+        };
       }
     };
 
     const handleServiceWorkerMessage = (event) => {
       if (event.data?.type === 'CASHHUB_PUSH') {
         handleMessage(event.data.payload, { fromServiceWorker: true });
+      } else if (event.data?.type === 'ACK_ORDER_NOTIFICATION') {
+        acknowledgeOrderNotification({ id: event.data.eventId, type: 'new_order' });
       }
     };
     navigator.serviceWorker?.addEventListener('message', handleServiceWorkerMessage);
+
+    const notificationId = new URLSearchParams(window.location.search).get('notificationId');
+    if (notificationId) {
+      acknowledgeOrderNotification({ id: notificationId, type: 'new_order' });
+      const url = new URL(window.location.href);
+      url.searchParams.delete('notificationId');
+      window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+    }
 
     pollCursorRef.current = new Date(Date.now() - 5000).toISOString();
     const pollNotifications = async () => {

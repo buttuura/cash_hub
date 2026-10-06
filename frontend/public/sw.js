@@ -142,10 +142,14 @@ self.addEventListener('push', (event) => {
         icon: '/icons/icon-192.png',
         badge: '/icons/icon-192.png',
         tag: data.id || `${data.type || 'cash-hub-notification'}-${Date.now()}`,
-        renotify: false,
-        silent: false,
-        vibrate: [200, 100, 200],
-        data: { url: data.url || '/' },
+        renotify: data.type === 'new_order' && data.sound_enabled === true,
+        silent: data.type !== 'new_order' || data.sound_enabled !== true,
+        vibrate: data.sound_enabled === true ? [200, 100, 200] : [],
+        data: {
+          url: data.url || '/',
+          id: data.id,
+          type: data.type,
+        },
       });
     })
   );
@@ -153,15 +157,25 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const targetUrl = new URL(event.notification.data?.url || '/', self.location.origin).href;
+  const notificationData = event.notification.data || {};
+  const target = new URL(notificationData.url || '/', self.location.origin);
+  if (notificationData.type === 'new_order' && notificationData.id) {
+    target.searchParams.set('notificationId', notificationData.id);
+  }
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
       const existingClient = clients.find((client) => 'focus' in client);
       if (existingClient) {
-        existingClient.navigate(targetUrl);
+        if (notificationData.type === 'new_order' && notificationData.id) {
+          existingClient.postMessage({
+            type: 'ACK_ORDER_NOTIFICATION',
+            eventId: notificationData.id,
+          });
+        }
+        existingClient.navigate(target.href);
         return existingClient.focus();
       }
-      return self.clients.openWindow(targetUrl);
+      return self.clients.openWindow(target.href);
     })
   );
 });

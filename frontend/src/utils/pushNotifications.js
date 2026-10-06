@@ -2,6 +2,19 @@ import { PushNotifications } from '@capacitor/push-notifications';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { Capacitor } from '@capacitor/core';
 import { API_URL } from '../lib/api';
+import {
+  requestNotificationPermission,
+  SILENT_NOTIFICATION_CHANNEL_ID,
+} from '../lib/notifications';
+import { acknowledgeOrderNotification } from '../lib/notificationActions';
+
+const localNotificationId = (eventId) => {
+  let hash = 0;
+  for (const character of String(eventId || Date.now())) {
+    hash = (hash * 31 + character.charCodeAt(0)) % 2147483647;
+  }
+  return hash || 1;
+};
 
 export async function initPushNotifications(userId) {
   if (!Capacitor.isNativePlatform() || !userId) return;
@@ -33,12 +46,21 @@ export async function initPushNotifications(userId) {
       console.error('Firebase push registration failed:', error);
     }));
 
+    listeners.push(await PushNotifications.addListener('pushNotificationActionPerformed', ({ notification }) => {
+      acknowledgeOrderNotification(notification.data);
+    }));
+
+    listeners.push(await LocalNotifications.addListener('localNotificationActionPerformed', ({ notification }) => {
+      acknowledgeOrderNotification(notification.extra);
+    }));
+
     listeners.push(await PushNotifications.addListener('pushNotificationReceived', (notification) => {
       LocalNotifications.schedule({
         notifications: [{
-          id: Date.now() % 2147483647,
+          id: localNotificationId(notification.data?.id),
           title: notification.title || 'Cash Hub',
           body: notification.body || 'You have a new notification',
+          channelId: SILENT_NOTIFICATION_CHANNEL_ID,
           extra: notification.data,
         }],
       }).catch((error) => {
@@ -46,8 +68,8 @@ export async function initPushNotifications(userId) {
       });
     }));
 
-    const permission = await PushNotifications.requestPermissions();
-    if (permission.receive !== 'granted') {
+    const permission = await requestNotificationPermission();
+    if (permission !== 'granted') {
       await Promise.all(listeners.map((listener) => listener.remove()));
       return;
     }

@@ -3,6 +3,9 @@ import { LocalNotifications } from '@capacitor/local-notifications';
 
 const isNative = () => Capacitor.isNativePlatform() && Capacitor.getPlatform() !== 'web';
 
+export const ORDER_NOTIFICATION_CHANNEL_ID = 'cashhub-orders';
+export const SILENT_NOTIFICATION_CHANNEL_ID = 'cashhub-silent';
+
 let channelReady = null;
 
 // Android requires a notification channel before anything can be posted.
@@ -11,15 +14,26 @@ const ensureChannel = async () => {
 
   channelReady = (async () => {
     if (Capacitor.getPlatform() === 'android') {
-      await LocalNotifications.createChannel({
-        id: 'cashhub-activity',
-        name: 'Group activity',
-        description: 'Orders, deposits, loans and withdrawals for your savings group.',
-        importance: 4,
-        visibility: 1,
-        lights: true,
-        lightColor: '#2C5530',
-      });
+      await Promise.all([
+        LocalNotifications.createChannel({
+          id: ORDER_NOTIFICATION_CHANNEL_ID,
+          name: 'Orders',
+          description: 'New product orders that need your attention.',
+          importance: 4,
+          visibility: 1,
+          lights: true,
+          lightColor: '#2C5530',
+        }),
+        LocalNotifications.createChannel({
+          id: SILENT_NOTIFICATION_CHANNEL_ID,
+          name: 'Other notifications',
+          description: 'Notifications without sound.',
+          importance: 2,
+          visibility: 1,
+          lights: false,
+          vibration: false,
+        }),
+      ]);
     }
   })().catch((error) => {
     console.warn('Could not create notification channel', error);
@@ -45,7 +59,13 @@ export const requestNotificationPermission = async () => {
 
 // Android 13+ requires POST_NOTIFICATIONS, which Capacitor adds via the
 // plugin manifest merge but is only granted at runtime.
-export const showNativeNotification = async ({ id, title, body, channelId = 'cashhub-activity' }) => {
+export const showNativeNotification = async ({
+  id,
+  type,
+  title,
+  body,
+  channelId = SILENT_NOTIFICATION_CHANNEL_ID,
+}) => {
   if (!isNative()) return false;
 
   try {
@@ -61,7 +81,7 @@ export const showNativeNotification = async ({ id, title, body, channelId = 'cas
           channelId,
           smallIcon: 'ic_stat_icon_config_sample',
           // Tapping the notification should open the app.
-          extra: { notificationId: id },
+          extra: { id, type, notificationId: id },
           schedule: { at: new Date(Date.now() + 100) },
         },
       ],
