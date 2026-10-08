@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import axios from 'axios';
-import { renderMatches, useNavigate } from 'react-router-dom';
+import { renderMatches, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '../components/ui/card';
@@ -17,6 +17,7 @@ import { OFFICERS } from '../data/officers';
 import { resolveImageUrl } from '../lib/utils';
 import { API_URL } from '../lib/api';
 import { registerRefreshHandler } from '../lib/refreshBus';
+import CheckoutAccountChoice from '../components/CheckoutAccountChoice';
 
 const ICON_MAP = {
   'food': ShoppingBag,
@@ -144,6 +145,7 @@ const extractPersonName = (label) => {
 
 const ShopPage = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, isAuthenticated, isAdmin, isSeller } = useAuth();
   const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
   const [selectedCategory, setSelectedCategory] = useState('food');
@@ -259,6 +261,8 @@ const ShopPage = () => {
     }
   });
   const [cartOpen, setCartOpen] = useState(false);
+  const [cartCheckoutMode, setCartCheckoutMode] = useState(isAuthenticated ? 'account' : 'guest');
+  const [purchaseCheckoutMode, setPurchaseCheckoutMode] = useState(isAuthenticated ? 'account' : 'guest');
   const [purchaseName, setPurchaseName] = useState('');
   const [purchaseEmail, setPurchaseEmail] = useState('');
   const [purchasePhone, setPurchasePhone] = useState('');
@@ -274,6 +278,31 @@ const ShopPage = () => {
   const mobileCategoryMenuRef = useRef(null);
   const popularCategoryRowsRef = useRef({});
   const [overflowingPopularCategories, setOverflowingPopularCategories] = useState({});
+  const resumedCheckout = useRef('');
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const checkout = params.get('checkout');
+    if (!checkout || resumedCheckout.current === checkout) return;
+    if (checkout === 'cart-account') {
+      resumedCheckout.current = checkout;
+      setCartCheckoutMode('account');
+      setCartBuyerName(user?.name || '');
+      setCartBuyerEmail(user?.email || '');
+      setCartBuyerPhone(user?.phone || '');
+      setCartOpen(true);
+    } else if (checkout === 'purchase-account') {
+      const product = products.find((item) => String(item.id) === params.get('product'));
+      if (!product) return;
+      resumedCheckout.current = checkout;
+      setPurchaseCheckoutMode('account');
+      setPurchaseProduct(product);
+      setPurchaseName(user?.name || '');
+      setPurchaseEmail(user?.email || '');
+      setPurchasePhone(user?.phone || '');
+      setPurchaseOpen(true);
+    }
+  }, [location.search, products, user]);
 
   useEffect(() => {
     if (!mobileMenuOpen) return;
@@ -368,9 +397,18 @@ const ShopPage = () => {
     });
   };
 
+  const getCartProduct = (item) => item.product
+    || products.find((product) => String(product.id) === String(item.productId))
+    || {
+      id: item.productId,
+      title: item.title || 'Product',
+      price: Number(item.price || 0),
+      sellerName: item.sellerName || 'Member',
+    };
+
   const getCartTotal = () => {
     return cart.reduce((total, item) => {
-      const itemPrice = Number(item.product?.price || 0);
+      const itemPrice = Number(getCartProduct(item).price || 0);
       return total + (itemPrice > 0 ? itemPrice * item.quantity : 0);
     }, 0);
   };
@@ -378,11 +416,12 @@ const ShopPage = () => {
   const getCartItemsBySeller = () => {
     const sellers = {};
     cart.forEach(item => {
-      const seller = item.product.sellerName || item.product.seller_name || 'Member';
+      const product = getCartProduct(item);
+      const seller = product.sellerName || product.seller_name || 'Member';
       if (!sellers[seller]) {
         sellers[seller] = [];
       }
-      sellers[seller].push(item);
+      sellers[seller].push({ ...item, product });
     });
     return sellers;
   };
@@ -391,6 +430,49 @@ const ShopPage = () => {
     const headers = { Authorization: `Bearer ${localStorage.getItem('access_token')}` };
     const response = await axios.post(`${API_URL}/api/orders`, orderData, { headers });
     return response.data;
+  };
+
+  const submitCheckoutOrder = async (orderData, checkoutMode) => {
+    if (checkoutMode === 'account' && isAuthenticated) {
+      return submitOrder(orderData);
+    }
+    const response = await axios.post(`${API_URL}/api/orders`, orderData, {
+      headers: {},
+    });
+    return response.data;
+  };
+
+  const handleOpenCart = () => {
+    setCartCheckoutMode(isAuthenticated ? 'account' : 'guest');
+    setCartBuyerName(user?.name || '');
+    setCartBuyerEmail(user?.email || '');
+    setCartBuyerPhone(user?.phone || '');
+    setCartOpen(true);
+  };
+
+  const handleAccountCheckout = (checkout, productId) => {
+    const params = new URLSearchParams({ checkout });
+    if (productId) params.set('product', productId);
+    const returnTo = `/shop?${params.toString()}`;
+    navigate(`/login?returnTo=${encodeURIComponent(returnTo)}`);
+  };
+
+  const handleCartCheckoutModeChange = (mode) => {
+    setCartCheckoutMode(mode);
+    if (mode === 'account') {
+      setCartBuyerName((current) => current || user?.name || '');
+      setCartBuyerEmail((current) => current || user?.email || '');
+      setCartBuyerPhone((current) => current || user?.phone || '');
+    }
+  };
+
+  const handlePurchaseCheckoutModeChange = (mode) => {
+    setPurchaseCheckoutMode(mode);
+    if (mode === 'account') {
+      setPurchaseName((current) => current || user?.name || '');
+      setPurchaseEmail((current) => current || user?.email || '');
+      setPurchasePhone((current) => current || user?.phone || '');
+    }
   };
 
   const fetchOrders = async () => {
@@ -417,19 +499,20 @@ const ShopPage = () => {
     try {
       await Promise.all(
         cart.map((item) => {
-          const total = item.product.price * item.quantity;
-          return submitOrder({
-            products: [{ productId: item.productId, quantity: item.quantity, title: item.product.title, price: item.product.price }],
-            productTitle: item.product.title,
-            productPrice: item.product.price,
-            sellerName: item.product.sellerName || item.product.seller_name || 'Member',
+          const product = getCartProduct(item);
+          const total = Number(product.price || 0) * item.quantity;
+          return submitCheckoutOrder({
+            products: [{ productId: item.productId, quantity: item.quantity, title: product.title, price: product.price }],
+            productTitle: product.title,
+            productPrice: product.price,
+            sellerName: product.sellerName || product.seller_name || 'Member',
             buyerName: cartBuyerName.trim(),
             buyerEmail: cartBuyerEmail.trim(),
             buyerPhone: cartBuyerPhone.trim(),
             note: cartBuyerNote.trim(),
             total: total,
             status: 'pending',
-          });
+          }, cartCheckoutMode);
         })
       );
 
@@ -510,7 +593,7 @@ const ShopPage = () => {
 
     try {
       setOrderSubmitting(true);
-      await submitOrder({
+      await submitCheckoutOrder({
         productId: purchaseProduct.id,
         productTitle: purchaseProduct.title,
         productPrice: purchaseProduct.price,
@@ -520,7 +603,7 @@ const ShopPage = () => {
         buyerPhone: purchasePhone.trim(),
         note: purchaseNote.trim(),
         status: 'pending',
-      });
+      }, purchaseCheckoutMode);
       toast.success('Order request sent. The seller will contact you by phone.');
       setPurchaseOpen(false);
       setPurchaseName('');
@@ -791,6 +874,10 @@ const handleOpenPurchase = (product) => {
       return;
     }
     setPurchaseProduct(product);
+    setPurchaseCheckoutMode(isAuthenticated ? 'account' : 'guest');
+    setPurchaseName(user?.name || '');
+    setPurchaseEmail(user?.email || '');
+    setPurchasePhone(user?.phone || '');
     setPurchaseOpen(true);
   };
 
@@ -825,11 +912,16 @@ const handleOpenPurchase = (product) => {
                 <Search className="h-4 w-4" />
               </Button>
               <Button
-                onClick={() => setCartOpen(true)}
+                onClick={handleOpenCart}
                 className="bg-white text-[#172B12] border border-[#172B12] hover:bg-[#ECF8E9] relative"
               >
                 <ShoppingCart className="h-4 w-4" />
                 <span className="sr-only">Cart</span>
+                {cart.length > 0 && (
+                  <span className="absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#D05A49] px-1 text-[10px] font-bold text-white">
+                    {cart.reduce((total, item) => total + Number(item.quantity || 0), 0)}
+                  </span>
+                )}
               </Button>
             </div>
            
@@ -908,7 +1000,7 @@ const handleOpenPurchase = (product) => {
              {/* Cart button - on the right for desktop */}
              <div className="flex items-center gap-2">
                <Button
-                 onClick={() => setCartOpen(true)}
+                 onClick={handleOpenCart}
                  className="bg-white text-[#172B12] border border-[#172B12] hover:bg-[#ECF8E9] relative"
                >
                  <ShoppingCart className="h-4 w-4 mr-2" />
@@ -1469,9 +1561,18 @@ const handleOpenPurchase = (product) => {
               <p className="text-xs text-[#6B7C61]">Seller: {purchaseProduct?.sellerName}</p>
               <p className="text-xs font-semibold text-[#2B6F38]">UGX {Number(purchaseProduct?.price || 0).toLocaleString()}</p>
             </div>
+            <CheckoutAccountChoice
+              mode={purchaseCheckoutMode}
+              onModeChange={handlePurchaseCheckoutModeChange}
+              isAuthenticated={isAuthenticated}
+              onAccountRequired={() => handleAccountCheckout('purchase-account', purchaseProduct?.id)}
+            />
+            {purchaseCheckoutMode === 'account' && isAuthenticated && (
+              <p className="text-xs text-[#5C665D]">Buying as {user?.name || user?.email}. This order will appear in your account.</p>
+            )}
             <div className="space-y-2">
               <Label htmlFor="purchase-name" className="text-sm font-medium text-slate-700">Your name</Label>
-              <Input id="purchase-name" value={purchaseName} onChange={(event) => setPurchaseName(event.target.value)} placeholder="Your name" />
+              <Input id="purchase-name" value={purchaseName} onChange={(event) => setPurchaseName(event.target.value)} placeholder="Your name" required />
             </div>
             <div className="space-y-2">
               <Label htmlFor="purchase-email" className="text-sm font-medium text-slate-700">Email</Label>
@@ -1493,7 +1594,7 @@ const handleOpenPurchase = (product) => {
        </Dialog>
 
        <Dialog open={cartOpen} onOpenChange={setCartOpen}>
-        <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto flex flex-col">
+         <DialogContent belowStickyNav className="sm:max-w-lg max-h-[80vh] overflow-y-auto flex flex-col">
           <DialogHeader>
             <DialogTitle>Shopping Cart</DialogTitle>
             <DialogDescription>Review your cart and checkout. Orders will be sent to each seller separately.</DialogDescription>
@@ -1507,12 +1608,12 @@ const handleOpenPurchase = (product) => {
                   {Object.entries(getCartItemsBySeller()).map(([seller, items]) => (
                     <div key={seller} className="rounded-lg border border-slate-200 p-3">
                       <p className="text-sm font-semibold text-[#172B12]">Seller: {seller}</p>
-                      <p className="text-xs text-[#6B7C61] mb-2">Total: UGX {items.reduce((sum, item) => sum + item.product.price * item.quantity, 0).toLocaleString()}</p>
+                      <p className="text-xs text-[#6B7C61] mb-2">Total: UGX {items.reduce((sum, item) => sum + Number(item.product?.price || 0) * item.quantity, 0).toLocaleString()}</p>
                       {items.map(item => (
                         <div key={item.productId} className="flex items-center justify-between py-2 border-t border-slate-100">
                           <div className="flex-1">
-                            <p className="text-sm font-medium text-[#172B12]">{item.product.title}</p>
-                            <p className="text-xs text-[#4B5A45]">UGX {Number(item.product.price).toLocaleString()} x {item.quantity}</p>
+                            <p className="text-sm font-medium text-[#172B12]">{item.product?.title || 'Product'}</p>
+                            <p className="text-xs text-[#4B5A45]">UGX {Number(item.product?.price || 0).toLocaleString()} x {item.quantity}</p>
                           </div>
                           <div className="flex items-center gap-2">
                             <button
@@ -1540,9 +1641,18 @@ const handleOpenPurchase = (product) => {
                 <div className="border-t border-slate-200 pt-4">
                   <p className="text-lg font-semibold text-[#172B12]">Grand Total: UGX {getCartTotal().toLocaleString()}</p>
                 </div>
+                <CheckoutAccountChoice
+                  mode={cartCheckoutMode}
+                  onModeChange={handleCartCheckoutModeChange}
+                  isAuthenticated={isAuthenticated}
+                  onAccountRequired={() => handleAccountCheckout('cart-account')}
+                />
+                {cartCheckoutMode === 'account' && isAuthenticated && (
+                  <p className="text-xs text-[#5C665D]">Buying as {user?.name || user?.email}. These orders will appear in your account.</p>
+                )}
                 <div className="space-y-2">
                   <Label htmlFor="cart-name" className="text-sm font-medium text-slate-700">Your name</Label>
-                  <Input id="cart-name" value={cartBuyerName} onChange={(event) => setCartBuyerName(event.target.value)} placeholder="Your name" />
+                  <Input id="cart-name" value={cartBuyerName} onChange={(event) => setCartBuyerName(event.target.value)} placeholder="Your name" required />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="cart-email" className="text-sm font-medium text-slate-700">Email</Label>
@@ -1556,7 +1666,7 @@ const handleOpenPurchase = (product) => {
                   <Label htmlFor="cart-note" className="text-sm font-medium text-slate-700">Message to sellers</Label>
                   <Textarea id="cart-note" value={cartBuyerNote} onChange={(event) => setCartBuyerNote(event.target.value)} placeholder="Write a message to all sellers" rows={3} />
                 </div>
-                <Button onClick={handleCartCheckout} className="bg-[#172B12] text-white hover:bg-[#0f2409]" disabled={cart.length === 0}>
+                <Button onClick={handleCartCheckout} className="bg-[#172B12] text-white hover:bg-[#0f2409]" disabled={orderSubmitting || cart.length === 0}>
                   {orderSubmitting ? 'Sending requests...' : `Send ${cart.length} order(s)`}
                 </Button>
               </>

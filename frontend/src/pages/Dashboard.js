@@ -42,6 +42,7 @@ import {
   Calendar,
   Percent,
   UserCheck,
+  User,
   DoorOpen,
   DollarSign,
   Receipt,
@@ -52,6 +53,7 @@ import {
   Copy,
   Check,
   Settings,
+  Package,
   Image as ImageIcon,
   ImagePlus,
   Search,
@@ -66,6 +68,7 @@ import {
   exportWithdrawalsPDF,
   exportPettyCashPDF,
   exportFullGroupReportPDF,
+  exportOrderReceiptPDF,
 } from '../utils/pdfExport';
 import { FileDown } from 'lucide-react';
 import { resolveImageUrl } from '../lib/utils';
@@ -200,6 +203,7 @@ const Dashboard = () => {
   const [withdrawalReason, setWithdrawalReason] = useState('');
   const [myProducts, setMyProducts] = useState([]);
   const [orders, setOrders] = useState([]);
+  const [remindingOrderId, setRemindingOrderId] = useState(null);
   const [expandedProducts, setExpandedProducts] = useState(new Set());
   const sellerInitialTabSet = useRef(false);
 
@@ -588,11 +592,38 @@ const Dashboard = () => {
   const sellerOrders = isAdmin
     ? orders
     : user?.name
-      ? orders.filter((order) => (order.sellerName || '').trim().toLowerCase() === (user.name || '').trim().toLowerCase())
+      ? orders.filter((order) => (
+        String(order.seller_id || '') === String(user.id || '')
+        || (order.sellerName || '').trim().toLowerCase() === (user.name || '').trim().toLowerCase()
+      ))
       : orders;
+  const buyerOrders = orders.filter((order) =>
+    String(order.buyerId || order.buyer_id || order.created_by || '') === String(user?.id || '')
+  );
 
   const pendingOrdersCount = sellerOrders?.filter((o) => o.status === 'pending').length || 0;
   const isSellerMember = Boolean(isSeller || String(user?.membership_type || '').toLowerCase() === 'seller');
+
+  // Product approval state. Sellers list products but an admin must approve
+  // them before they appear on the shop page.
+  const normalizeProductStatus = (product) => {
+    const raw = String(product?.status || product?.approval_status || '').toLowerCase();
+    if (['approved', 'active', 'live', 'published'].includes(raw)) return 'approved';
+    if (['rejected', 'declined', 'cancelled'].includes(raw)) return 'rejected';
+    if (['cancelled', 'canceled', 'withdrawn'].includes(raw)) return 'cancelled';
+    if (['pending', 'pending_approval', 'awaiting', 'review'].includes(raw)) return 'pending';
+    // A product with no explicit status is treated as pending approval.
+    return 'pending';
+  };
+
+  const productStatuses = myProducts.map((p) => ({
+    ...p,
+    _status: normalizeProductStatus(p),
+  }));
+  const approvedProducts = productStatuses.filter((p) => p._status === 'approved');
+  const pendingProducts = productStatuses.filter((p) => p._status === 'pending');
+  const rejectedProducts = productStatuses.filter((p) => p._status === 'rejected');
+  const cancelledProducts = productStatuses.filter((p) => p._status === 'cancelled');
   const userSlotCount = user?.max_guarantees || rules?.max_guarantees_per_member || 2;
   const userMaxLoan = (rules?.max_loan_amount || 0) * userSlotCount;
   const adminMemberForLoan = members.find((m) => m.id === adminLoanDialogOpenMemberId);
@@ -634,10 +665,10 @@ useEffect(() => {
     }, [fetchData]);
 
   useEffect(() => {
-    if (activeTab === 'marketplace') {
+    if (activeTab === 'marketplace' || (isSellerMember && activeTab === 'overview')) {
       fetchMyProducts();
     }
-  }, [activeTab, fetchMyProducts]);
+  }, [activeTab, fetchMyProducts, isSellerMember]);
 
   useEffect(() => {
     if (activeTab === 'projects') {
@@ -651,7 +682,7 @@ useEffect(() => {
 
   useEffect(() => {
     if (isSellerMember && !sellerInitialTabSet.current) {
-      setActiveTab('marketplace');
+      setActiveTab('overview');
       sellerInitialTabSet.current = true;
     }
   }, [isSellerMember]);
@@ -668,16 +699,6 @@ useEffect(() => {
 
   const handleOrderStatusChange = async (orderId, status) => {
     try {
-      // When rejected, delete the order entirely per product requirement
-      if (status === 'rejected') {
-        await axios.delete(`${API_URL}/api/orders/${orderId}`, {
-          headers: getAuthHeaders(),
-        });
-        stopOrderNotificationSound();
-        setOrders((prev) => prev.filter((order) => order.id !== orderId));
-        toast.success('Order rejected and removed.');
-        return;
-      }
       await axios.patch(`${API_URL}/api/orders/${orderId}/status`, {
         status,
         notes: '',
@@ -685,15 +706,50 @@ useEffect(() => {
         headers: getAuthHeaders(),
       });
       stopOrderNotificationSound();
+      const statusUpdatedAt = new Date().toISOString();
       setOrders((prev) =>
         prev.map((order) =>
-          order.id === orderId ? { ...order, status } : order
+          order.id === orderId ? {
+            ...order,
+            status,
+            shipped: status === 'shipped' || status === 'delivered' || order.shipped,
+            delivered: status === 'delivered' || order.delivered,
+            status_updated_at: statusUpdatedAt,
+            status_history: [
+              ...(order.status_history || []),
+              { status, updated_at: statusUpdatedAt },
+            ],
+          } : order
         )
       );
-      toast.success(`Order ${status === 'approved' ? 'approved' : status} successfully.`);
+      toast.success(`Order marked ${status.replace('_', ' ')}.`);
      } catch (err) {
       console.error('Failed to update order status:', err);
       toast.error(err.response?.data?.detail || 'Failed to update order status');
+    }
+  };
+
+  const handleRemindSeller = async (orderId) => {
+    setRemindingOrderId(orderId);
+    try {
+      await axios.post(`${API_URL}/api/orders/${orderId}/remind`, {}, {
+        headers: getAuthHeaders(),
+      });
+      toast.success('Reminder sent to the seller.');
+    } catch (err) {
+      console.error('Failed to remind seller:', err);
+      toast.error(err.response?.data?.detail || 'Failed to send reminder');
+    } finally {
+      setRemindingOrderId(null);
+    }
+  };
+
+  const handleDownloadOrderReceipt = async (order) => {
+    try {
+      await exportOrderReceiptPDF(order, user?.name, user?.phone, user?.email);
+    } catch (err) {
+      console.error('Failed to generate order receipt:', err);
+      toast.error('Could not generate the order receipt. Please try again.');
     }
   };
 
@@ -1517,12 +1573,110 @@ useEffect(() => {
       rejected_by_guarantor: 'Rejected by Guarantor',
     };
     const label = labels[status] || (status ? status.charAt(0).toUpperCase() + status.slice(1) : '');
+return (
+       <Badge className={`${styles[status] || styles.pending} flex items-center gap-1 border`}>
+         {icons[status] || icons.pending}
+         {label}
+       </Badge>
+     );
+  };
+
+  const renderProductStatusBadge = (product) => {
+    const status = product?._status || normalizeProductStatus(product);
+    const styles = {
+      approved: 'bg-[#DEF2DD] text-[#2C5530] border-[#2C5530]/20',
+      pending: 'bg-[#FEF6E8] text-[#C57A17] border-[#E8B25C]/30',
+      rejected: 'bg-[#FBD7D4] text-[#D05A49] border-[#D05A49]/30',
+      cancelled: 'bg-[#F1F1F1] text-[#7A4A42] border-[#D48C70]/30',
+    };
+    const icons = {
+      approved: <CheckCircle className="w-3 h-3" />,
+      pending: <Clock className="w-3 h-3" />,
+      rejected: <XCircle className="w-3 h-3" />,
+      cancelled: <XCircle className="w-3 h-3" />,
+    };
+    const labels = {
+      approved: 'Approved',
+      pending: 'Pending Approval',
+      rejected: 'Rejected',
+      cancelled: 'Cancelled',
+    };
     return (
       <Badge className={`${styles[status] || styles.pending} flex items-center gap-1 border`}>
         {icons[status] || icons.pending}
-        {label}
+        {labels[status] || status}
       </Badge>
     );
+  };
+
+  const handleCancelProduct = async (product) => {
+    if (!window.confirm(`Cancel listing "${product.title}"? It will be removed from the shop.`)) return;
+    try {
+      await axios.patch(`${API_URL}/api/products/${product.id}`, {
+        status: 'cancelled',
+        cancelled_at: new Date().toISOString(),
+      }, { headers: getAuthHeaders() });
+      setMyProducts((prev) => prev.map((p) =>
+        p.id === product.id ? { ...p, status: 'cancelled', cancelled_at: new Date().toISOString() } : p
+      ));
+      toast.success('Product cancelled.');
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Failed to cancel product');
+    }
+  };
+
+  // Maps an order's status to a buyer-facing progress bar so a buyer can see
+  // how far along their purchase is, from request through to delivery.
+  const describeOrderTracking = (order) => {
+    const status = String(order?.status || 'pending').toLowerCase();
+    const cancelled = status === 'rejected' || status === 'cancelled';
+
+    if (status === 'delivered' || order?.delivered || order?.delivered_at) {
+      return {
+        progress: 100,
+        statusLabel: 'Delivered',
+        statusStyles: 'bg-[#DEF2DD] text-[#2C5530]',
+        note: 'Your order has been delivered.',
+      };
+    }
+    if (status === 'shipped' || order?.shipped) {
+      return {
+        progress: 75,
+        statusLabel: 'Shipped',
+        statusStyles: 'bg-[#2C5530]/10 text-[#2C5530]',
+        note: 'On the way to you.',
+      };
+    }
+    if (cancelled) {
+      return {
+        progress: 100,
+        statusLabel: status === 'rejected' ? 'Rejected' : 'Cancelled',
+        statusStyles: 'bg-[#FBD7D4] text-[#D05A49]',
+        note: status === 'rejected' ? 'The seller declined this order.' : 'This order was cancelled.',
+      };
+    }
+    if (status === 'processing') {
+      return {
+        progress: 65,
+        statusLabel: 'Processing',
+        statusStyles: 'bg-[#2C5530]/10 text-[#2C5530]',
+        note: 'The seller is preparing your order.',
+      };
+    }
+    if (status === 'approved') {
+      return {
+        progress: 50,
+        statusLabel: 'Approved',
+        statusStyles: 'bg-[#DEF2DD] text-[#2C5530]',
+        note: 'Accepted by the seller. Awaiting preparation.',
+      };
+    }
+    return {
+      progress: 25,
+      statusLabel: 'Pending',
+      statusStyles: 'bg-[#FEF6E8] text-[#C57A17]',
+      note: 'Awaiting seller review.',
+    };
   };
 
   const isMember = user?.role === 'member';
@@ -1608,7 +1762,7 @@ useEffect(() => {
         </div>
       )}
 
-      {popupAnnouncements.length > 0 && !announcementDismissed && (
+      {popupAnnouncements.length > 0 && !announcementDismissed && !isSellerMember && (
         <div className="fixed inset-0 z-[10050] flex items-center justify-center bg-[#190b08]/55 px-4 pointer-events-none">
           <div className="pointer-events-auto max-w-xl w-full overflow-hidden rounded-2xl border-2 border-[#D05A49] bg-white shadow-2xl shadow-[#D05A49]/30 ring-4 ring-[#E8B25C]/25 animate-in fade-in zoom-in-95 duration-300">
             <div className="flex items-center gap-3 bg-[#D05A49] px-5 py-3 text-white">
@@ -1864,28 +2018,84 @@ useEffect(() => {
          {/* Overview Tab */}
          {activeTab === 'overview' && (
            <div className="space-y-6 animate-fade-in">
-             {isSellerMember ? (
-               <Card className="bg-white border border-[#E8EBE8] shadow-sm">
-                 <CardContent className="p-8 space-y-4">
-                   <div className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-[#D48C70]/10 text-[#D48C70]">
-                     <Shield className="w-6 h-6" />
-                   </div>
-                   <div className="space-y-2">
-                     <h2 className="text-2xl font-bold font-['Manrope'] text-[#1E231F]">Seller account access is restricted</h2>
-                     <p className="text-[#5C665D]">
-                       Seller accounts can only use Overview and Orders. Financial features are hidden and protected.
-                     </p>
-                   </div>
-                   <Button
-                     onClick={() => handleSellerRestriction('overview')}
-                     className="bg-[#25D366] hover:bg-[#1EA852] text-white"
-                   >
-                     <MessageCircle className="w-4 h-4 mr-2" />
-                     Contact Admin on WhatsApp
-                   </Button>
-                 </CardContent>
-               </Card>
-             ) : (
+{isSellerMember ? (
+                <div className="space-y-4">
+                <Card className="bg-white border border-[#E8EBE8] shadow-sm">
+                  <CardContent className="p-8 space-y-4">
+                    <div className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-[#347242]/10 text-[#347242]">
+                      <User className="w-6 h-6" />
+                    </div>
+                    <div className="space-y-2">
+                      <h2 className="text-2xl font-bold font-['Manrope'] text-[#1E231F]">Seller overview</h2>
+                      <p className="text-[#5C665D]">
+                        Your account, your listed products, and the orders you are fulfilling.
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      <div className="rounded-xl border border-[#E8EBE8] bg-[#F7FCF4] p-3">
+                        <p className="text-xs text-[#5C665D] uppercase tracking-wide">Account</p>
+                        <p className="text-sm font-bold text-[#1E231F]">{user?.name || 'Member'}</p>
+                        <p className="text-xs text-[#5C665D]">{user?.membership_type || 'Seller'}</p>
+                      </div>
+                      <div className="rounded-xl border border-[#E8EBE8] bg-[#F7FCF4] p-3">
+                        <p className="text-xs text-[#5C665D] uppercase tracking-wide">Listed products</p>
+                        <p className="text-sm font-bold text-[#1E231F]">{myProducts.length}</p>
+                        <p className="text-xs text-[#5C665D]">{approvedProducts.length} approved</p>
+                      </div>
+                      <div className="rounded-xl border border-[#E8EBE8] bg-[#F7FCF4] p-3">
+                        <p className="text-xs text-[#5C665D] uppercase tracking-wide">Pending approval</p>
+                        <p className="text-sm font-bold text-[#E8B25C]">{pendingProducts.length}</p>
+                        <p className="text-xs text-[#5C665D]">awaiting admin</p>
+                      </div>
+                      <div className="rounded-xl border border-[#E8EBE8] bg-[#F7FCF4] p-3">
+                        <p className="text-xs text-[#5C665D] uppercase tracking-wide">Orders to fulfil</p>
+                        <p className="text-sm font-bold text-[#1E231F]">{sellerOrders.length}</p>
+                        <p className="text-xs text-[#5C665D]">{pendingOrdersCount} pending</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card className="bg-white border border-[#E8EBE8] shadow-sm">
+                  <CardHeader className="flex flex-row items-center justify-between gap-4">
+                    <div>
+                      <CardTitle className="text-lg">Recent incoming orders</CardTitle>
+                      <CardDescription>
+                        Track orders from your buyers and continue fulfilment in Orders.
+                      </CardDescription>
+                    </div>
+                    <Button size="sm" variant="outline" onClick={() => setActiveTab('marketplace')}>
+                      Manage orders
+                    </Button>
+                  </CardHeader>
+                  <CardContent>
+                    {sellerOrders.length === 0 ? (
+                      <p className="text-sm text-[#5C665D]">New orders will appear here.</p>
+                    ) : (
+                      <div className="divide-y divide-[#E8EBE8]">
+                        {sellerOrders.slice(0, 3).map((order) => {
+                          const tracking = describeOrderTracking(order);
+                          return (
+                            <div key={order.id} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
+                              <div>
+                                <p className="font-semibold text-[#1E231F]">
+                                  Order #{order.id?.slice(-6).toUpperCase()} · {order.buyerName || 'Buyer'}
+                                </p>
+                                <p className="text-xs text-[#5C665D]">
+                                  {order.productTitle || order.products?.map((product) => product.title).filter(Boolean).join(', ') || 'Product order'}
+                                </p>
+                              </div>
+                              <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${tracking.statusStyles}`}>
+                                {tracking.statusLabel}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+                </div>
+              ) : (
                <>
              {/* Stats Cards */}
              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
@@ -2020,6 +2230,113 @@ useEffect(() => {
               </CardContent>
             </Card>
             </div>
+
+            {/* My order tracking - shows buyers how their shop orders are progressing */}
+            {isSellerMember && buyerOrders.length > 0 && (
+              <Card className="bg-white border border-[#E8EBE8] shadow-sm" data-testid="my-orders-tracking">
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Package className="w-5 h-5 text-[#2C5530]" />
+                    My order tracking
+                  </CardTitle>
+                  <CardDescription>
+                    Follow the status of the orders you placed on the shop page, from request through approval to delivery.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-[#E8EBE8] bg-[#FAFAF8]">
+                          <th className="text-left py-3 px-3 font-semibold text-[#5C665D]">Order</th>
+                          <th className="text-left py-3 px-3 font-semibold text-[#5C665D]">Product</th>
+                          <th className="text-right py-3 px-3 font-semibold text-[#5C665D]">Total</th>
+                          <th className="text-left py-3 px-3 font-semibold text-[#5C665D]">Placed</th>
+                          <th className="text-center py-3 px-3 font-semibold text-[#5C665D]">Status</th>
+                          <th className="text-left py-3 px-3 font-semibold text-[#5C665D]">Progress</th>
+                          <th className="text-center py-3 px-3 font-semibold text-[#5C665D]">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {buyerOrders.map((order) => {
+                            const orderProducts = [];
+                            if (order.products && Array.isArray(order.products) && order.products.length > 0) {
+                              order.products.forEach((p) => {
+                                const known = getProductById(p.product_id) || p;
+                                orderProducts.push({
+                                  title: known?.title || p.title || 'Product',
+                                  price: Number(known?.price || p.price || 0),
+                                  quantity: Number(p.quantity || 1),
+                                });
+                              });
+                            }
+                            const orderTotal = Number(order.total || orderProducts.reduce((sum, p) => sum + p.price * p.quantity, 0) || 0);
+                            const requestedDate = order.created_at
+                              ? new Date(order.created_at).toLocaleDateString()
+                              : '—';
+                            const tracking = describeOrderTracking(order);
+
+                            return (
+                              <tr key={order.id} className="border-b border-[#E8EBE8] last:border-0">
+                                <td className="py-3 px-3 font-semibold text-[#1E231F]">
+                                  #{order.id?.slice(-6).toUpperCase()}
+                                </td>
+                                <td className="py-3 px-3 text-[#4B5A45]">
+                                  {orderProducts.length
+                                    ? orderProducts.map((p) => `${p.title} ×${p.quantity}`).join(', ')
+                                    : '—'}
+                                </td>
+                                <td className="py-3 px-3 text-right font-bold text-[#1E231F]">
+                                  UGX {orderTotal.toLocaleString()}
+                                </td>
+                                <td className="py-3 px-3 text-[#4B5A45]">{requestedDate}</td>
+                                <td className="py-3 px-3 text-center">
+                                  <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${tracking.statusStyles}`}>
+                                    {tracking.statusLabel}
+                                  </span>
+                                </td>
+                                <td className="py-3 px-3">
+                                  <div className="flex items-center gap-2">
+                                    <div className="h-2 flex-1 rounded-full bg-[#E8EBE8] overflow-hidden">
+                                      <div
+                                        className="h-full bg-[#2C5530] transition-all duration-300"
+                                        style={{ width: `${tracking.progress}%` }}
+                                      />
+                                    </div>
+                                    <span className="text-xs text-[#5C665D] w-8 text-right">{tracking.progress}%</span>
+                                  </div>
+                                  {tracking.note && (
+                                    <p className="text-xs text-[#5C665D] mt-1">{tracking.note}</p>
+                                  )}
+                                </td>
+                                <td className="py-3 px-3">
+                                  <div className="flex justify-center gap-2">
+                                    <Button size="sm" variant="outline" onClick={() => handleDownloadOrderReceipt(order)}>
+                                      <Receipt className="mr-1 h-4 w-4" />
+                                      Receipt
+                                    </Button>
+                                    {!['delivered', 'rejected', 'cancelled'].includes(String(order.status || '').toLowerCase()) && (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        disabled={remindingOrderId === order.id}
+                                        onClick={() => handleRemindSeller(order.id)}
+                                      >
+                                        <MessageCircle className="mr-1 h-4 w-4" />
+                                        {remindingOrderId === order.id ? 'Sending...' : 'Remind'}
+                                      </Button>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                      </tbody>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Quick Actions */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -3637,6 +3954,95 @@ useEffect(() => {
         {/* Marketplace Tab */}
         {activeTab === 'marketplace' && (
           <div className="space-y-6 animate-fade-in" data-testid="marketplace-tab">
+            {!isSellerMember && (
+              <Card className="bg-white border border-[#E8EBE8] shadow-sm" data-testid="buyer-orders">
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Package className="w-5 h-5 text-[#2C5530]" />
+                    My orders
+                  </CardTitle>
+                  <CardDescription>
+                    Track each purchase, download its receipt, or ask the seller for an update.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {buyerOrders.length === 0 ? (
+                    <p className="rounded-xl border border-[#E8EBE8] bg-[#F7FCF4] p-5 text-sm text-[#5C665D]">
+                      You have not placed any orders while signed in.
+                    </p>
+                  ) : (
+                    <div className="space-y-3">
+                      {buyerOrders.map((order) => {
+                        const tracking = describeOrderTracking(order);
+                        const items = Array.isArray(order.products) && order.products.length
+                          ? order.products
+                          : [{ title: order.productTitle || 'Product', quantity: 1 }];
+                        const lastUpdated = order.status_updated_at || order.created_at || order.createdAt;
+                        return (
+                          <div key={order.id} className="rounded-xl border border-[#E8EBE8] p-4">
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                              <div>
+                                <p className="font-semibold text-[#1E231F]">
+                                  Order #{order.id?.slice(-6).toUpperCase()}
+                                </p>
+                                <p className="mt-1 text-sm text-[#4B5A45]">
+                                  {items.map((item) => `${item.title || 'Product'} ×${item.quantity || 1}`).join(', ')}
+                                </p>
+                                <p className="mt-1 text-xs text-[#5C665D]">
+                                  Seller: {order.sellerName || 'Seller'} · UGX {Number(order.total || 0).toLocaleString()}
+                                </p>
+                              </div>
+                              <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${tracking.statusStyles}`}>
+                                {tracking.statusLabel}
+                              </span>
+                            </div>
+                            <div className="mt-3 flex items-center gap-2">
+                              <div className="h-2 flex-1 overflow-hidden rounded-full bg-[#E8EBE8]">
+                                <div className="h-full bg-[#2C5530] transition-all" style={{ width: `${tracking.progress}%` }} />
+                              </div>
+                              <span className="w-10 text-right text-xs text-[#5C665D]">{tracking.progress}%</span>
+                            </div>
+                            {Array.isArray(order.status_history) && order.status_history.length > 0 && (
+                              <ol className="mt-3 flex flex-wrap gap-x-4 gap-y-1" aria-label="Order status history">
+                                {order.status_history.map((entry, index) => (
+                                  <li key={`${entry.status}-${entry.updated_at || index}`} className="text-xs text-[#5C665D]">
+                                    <span className="font-semibold capitalize">{String(entry.status || '').replace(/_/g, ' ')}</span>
+                                    {entry.updated_at && ` · ${new Date(entry.updated_at).toLocaleDateString()}`}
+                                  </li>
+                                ))}
+                              </ol>
+                            )}
+                            <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+                              <p className="text-xs text-[#5C665D]">
+                                {tracking.note}{lastUpdated ? ` Updated ${new Date(lastUpdated).toLocaleDateString()}.` : ''}
+                              </p>
+                              <div className="flex flex-wrap gap-2">
+                                <Button size="sm" variant="outline" onClick={() => handleDownloadOrderReceipt(order)}>
+                                  <Receipt className="mr-1.5 h-4 w-4" />
+                                  Receipt
+                                </Button>
+                                {!['delivered', 'rejected', 'cancelled'].includes(String(order.status || '').toLowerCase()) && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    disabled={remindingOrderId === order.id}
+                                    onClick={() => handleRemindSeller(order.id)}
+                                  >
+                                    <MessageCircle className="mr-1.5 h-4 w-4" />
+                                    {remindingOrderId === order.id ? 'Sending...' : 'Remind seller'}
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h2 className="text-2xl font-bold font-['Manrope'] text-[#1E231F]">Order handling</h2>
@@ -3708,6 +4114,7 @@ useEffect(() => {
                             }
 
                             const orderTotal = Number(order.total || orderProducts.reduce((sum, p) => sum + p.price * p.quantity, 0) || 0);
+                            const tracking = describeOrderTracking(order);
                             const requestedDate = new Date(order.created_at || order.createdAt).toLocaleString('en-US', {
                               month: 'short',
                               day: 'numeric',
@@ -3758,8 +4165,8 @@ useEffect(() => {
                                   {requestedDate}
                                 </TableCell>
                                 <TableCell>
-                                  <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${order.status === 'approved' ? 'bg-[#DEF2DD] text-[#2C5530]' : order.status === 'rejected' ? 'bg-[#FBD7D4] text-[#D05A49]' : 'bg-[#FEF6E8] text-[#C57A17]'}`}>
-                                    {order.status === 'pending' ? 'Pending' : order.status === 'approved' ? 'Approved' : 'Rejected'}
+                                  <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${tracking.statusStyles}`}>
+                                    {tracking.statusLabel}
                                   </span>
                                 </TableCell>
                                 <TableCell>
@@ -3770,9 +4177,24 @@ useEffect(() => {
                                           Approve
                                         </Button>
                                         <Button size="sm" variant="outline" className="border-[#D05A49] text-[#D05A49] hover:bg-[#FDE8E7]" onClick={() => handleOrderStatusChange(order.id, 'rejected')}>
-                                          Reject
+                                          Decline
                                         </Button>
                                       </>
+                                    )}
+                                    {order.status === 'approved' && (
+                                      <Button size="sm" variant="outline" onClick={() => handleOrderStatusChange(order.id, 'processing')}>
+                                        Start preparing
+                                      </Button>
+                                    )}
+                                    {order.status === 'processing' && (
+                                      <Button size="sm" variant="outline" onClick={() => handleOrderStatusChange(order.id, 'shipped')}>
+                                        Mark shipped
+                                      </Button>
+                                    )}
+                                    {(order.status === 'shipped' || order.shipped) && !order.delivered && (
+                                      <Button size="sm" variant="outline" onClick={() => handleOrderStatusChange(order.id, 'delivered')}>
+                                        Mark delivered
+                                      </Button>
                                     )}
                                     <Button size="sm" variant="outline" className="border-[#2C5530] text-[#2C5530] hover:bg-[#2C5530]/5" onClick={() => handleNotifyBuyer(order)}>
                                       Notify Buyer
@@ -3893,31 +4315,44 @@ useEffect(() => {
                                 </span>
                               )}
                             </TableCell>
-                            <TableCell>
-                              <p className="text-sm text-[#4B5A45]">{new Date(product.created_at || product.createdAt).toLocaleDateString()}</p>
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex justify-center gap-2">
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className={product.sold_out
-                                    ? 'border-[#2C5530] text-[#2C5530] hover:bg-[#2C5530]/5'
-                                    : 'border-[#C57A17] text-[#C57A17] hover:bg-[#FEF6E8]'}
-                                  onClick={() => handleToggleSoldOut(product)}
-                                >
-                                  {product.sold_out ? 'Mark Available' : 'Mark Sold Out'}
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="border-[#D05A49] text-[#D05A49] hover:bg-[#FDE8E7]"
-                                  onClick={() => handleDeleteProduct(product.id)}
-                                >
-                                  Delete
-                                </Button>
-                              </div>
-                            </TableCell>
+<TableCell>
+                               <p className="text-sm text-[#4B5A45]">{new Date(product.created_at || product.createdAt).toLocaleDateString()}</p>
+                             </TableCell>
+                             <TableCell>
+                               {renderProductStatusBadge(product)}
+                             </TableCell>
+<TableCell>
+                               <div className="flex justify-center gap-2">
+                                 <Button
+                                   size="sm"
+                                   variant="outline"
+                                   className={product.sold_out
+                                     ? 'border-[#2C5530] text-[#2C5530] hover:bg-[#2C5530]/5'
+                                     : 'border-[#C57A17] text-[#C57A17] hover:bg-[#FEF6E8]'}
+                                   onClick={() => handleToggleSoldOut(product)}
+                                 >
+                                   {product.sold_out ? 'Mark Available' : 'Mark Sold Out'}
+                                 </Button>
+                                 {product._status === 'pending' && (
+                                   <Button
+                                     size="sm"
+                                     variant="outline"
+                                     className="border-[#E8B25C] text-[#C57A17] hover:bg-[#FEF6E8]"
+                                     onClick={() => handleCancelProduct(product)}
+                                   >
+                                     Cancel
+                                   </Button>
+                                 )}
+                                 <Button
+                                   size="sm"
+                                   variant="outline"
+                                   className="border-[#D05A49] text-[#D05A49] hover:bg-[#FDE8E7]"
+                                   onClick={() => handleDeleteProduct(product.id)}
+                                 >
+                                   Delete
+                                 </Button>
+                               </div>
+                             </TableCell>
                           </TableRow>
                         ))}
                       </TableBody>

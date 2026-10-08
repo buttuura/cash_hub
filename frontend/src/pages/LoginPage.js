@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import axios from 'axios';
 import { Button } from '../components/ui/button';
@@ -44,6 +44,9 @@ const LoginPage = () => {
   const [biometricConfigured, setBiometricConfigured] = useState(false);
   const [biometricLoading, setBiometricLoading] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
+  const returnTo = new URLSearchParams(location.search).get('returnTo');
+  const postLoginPath = returnTo?.startsWith('/') && !returnTo.startsWith('//') ? returnTo : '/dashboard';
 
   useEffect(() => {
     let active = true;
@@ -71,7 +74,7 @@ const LoginPage = () => {
           // Password login has already succeeded; biometric enrollment is optional.
         }
       }
-      navigate('/dashboard');
+      navigate(postLoginPath);
     } catch (err) {
       setError(err.message || 'Login failed');
     } finally {
@@ -90,11 +93,11 @@ const LoginPage = () => {
         await enableBiometric(identifier, password);
         setBiometricConfigured(true);
         await login(identifier, password);
-        navigate('/dashboard');
+        navigate(postLoginPath);
         return;
       }
       await loginWithBiometric();
-      navigate('/dashboard');
+      navigate(postLoginPath);
     } catch (err) {
       setError(err.message || 'Biometric login failed. Check that fingerprint or face unlock is enrolled on this device.');
     } finally {
@@ -311,7 +314,7 @@ const LoginPage = () => {
               <p className="text-[#5C665D]">
                 Don't have an account?{' '}
                 <Link 
-                  to="/register" 
+                  to={`/register${location.search}`}
                   className="text-[#2C5530] font-semibold hover:underline"
                   data-testid="register-link"
                 >

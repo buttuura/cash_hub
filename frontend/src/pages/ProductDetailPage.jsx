@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
@@ -15,6 +15,7 @@ import { Share } from '@capacitor/share';
 import { resolveImageUrl } from '../lib/utils';
 import { API_URL } from '../lib/api';
 import { registerRefreshHandler } from '../lib/refreshBus';
+import CheckoutAccountChoice from '../components/CheckoutAccountChoice';
 const PUBLIC_APP_URL = process.env.REACT_APP_PUBLIC_APP_URL || 'https://c1group.site';
 
 function getImageUrl(imageUrl) {
@@ -24,7 +25,8 @@ function getImageUrl(imageUrl) {
 function ProductDetailPage() {
   const { productId } = useParams();
   const navigate = useNavigate();
-  const { user, getAuthHeaders } = useAuth();
+  const location = useLocation();
+  const { user, isAuthenticated, getAuthHeaders } = useAuth();
   const [product, setProduct] = useState(null);
   const [loading, setLoading] = useState(true);
   const [currentImgIndex, setCurrentImgIndex] = useState(0);
@@ -45,7 +47,9 @@ function ProductDetailPage() {
     catch { return []; }
   });
   const [cartOpen, setCartOpen] = useState(false);
+  const [cartCheckoutMode, setCartCheckoutMode] = useState(isAuthenticated ? 'account' : 'guest');
   const [buyNowOpen, setBuyNowOpen] = useState(false);
+  const [buyCheckoutMode, setBuyCheckoutMode] = useState(isAuthenticated ? 'account' : 'guest');
   const [buyerName, setBuyerName] = useState('');
   const [buyerEmail, setBuyerEmail] = useState('');
   const [buyerPhone, setBuyerPhone] = useState('');
@@ -57,6 +61,27 @@ function ProductDetailPage() {
   const [cartBuyerNote, setCartBuyerNote] = useState('');
   const [cartOrderSubmitting, setCartOrderSubmitting] = useState(false);
   const [expandedDesc, setExpandedDesc] = useState(false);
+  const resumedCheckout = useRef('');
+
+  useEffect(() => {
+    if (!product) return;
+    const checkout = new URLSearchParams(location.search).get('checkout');
+    if (!checkout || resumedCheckout.current === checkout) return;
+    resumedCheckout.current = checkout;
+    if (checkout === 'buy-account') {
+      setBuyCheckoutMode('account');
+      setBuyerName(user?.name || '');
+      setBuyerEmail(user?.email || '');
+      setBuyerPhone(user?.phone || '');
+      setBuyNowOpen(true);
+    } else if (checkout === 'cart-account') {
+      setCartCheckoutMode('account');
+      setCartBuyerName(user?.name || '');
+      setCartBuyerEmail(user?.email || '');
+      setCartBuyerPhone(user?.phone || '');
+      setCartOpen(true);
+    }
+  }, [location.search, product, user]);
 
   const contactPhone = product?.contact_phone;
   const hasPrice = product && Number(product.price) > 0;
@@ -258,9 +283,41 @@ function ProductDetailPage() {
     }
     setBuyerName(user?.name || '');
     setBuyerEmail(user?.email || '');
-    setBuyerPhone('');
+    setBuyerPhone(user?.phone || '');
     setBuyerNote('');
+    setBuyCheckoutMode(isAuthenticated ? 'account' : 'guest');
     setBuyNowOpen(true);
+  };
+
+  const handleOpenCart = () => {
+    setCartCheckoutMode(isAuthenticated ? 'account' : 'guest');
+    setCartBuyerName(user?.name || '');
+    setCartBuyerEmail(user?.email || '');
+    setCartBuyerPhone(user?.phone || '');
+    setCartOpen(true);
+  };
+
+  const handleAccountCheckout = (checkout) => {
+    const returnTo = `/product/${productId}?checkout=${checkout}`;
+    navigate(`/login?returnTo=${encodeURIComponent(returnTo)}`);
+  };
+
+  const handleBuyCheckoutModeChange = (mode) => {
+    setBuyCheckoutMode(mode);
+    if (mode === 'account') {
+      setBuyerName((current) => current || user?.name || '');
+      setBuyerEmail((current) => current || user?.email || '');
+      setBuyerPhone((current) => current || user?.phone || '');
+    }
+  };
+
+  const handleCartCheckoutModeChange = (mode) => {
+    setCartCheckoutMode(mode);
+    if (mode === 'account') {
+      setCartBuyerName((current) => current || user?.name || '');
+      setCartBuyerEmail((current) => current || user?.email || '');
+      setCartBuyerPhone((current) => current || user?.phone || '');
+    }
   };
 
   const getCart = () => {
@@ -318,7 +375,9 @@ function ProductDetailPage() {
         status: 'pending',
         quantity: quantity,
       };
-      await axios.post(`${API_URL}/api/orders`, orderData, { headers: getAuthHeaders() });
+      await axios.post(`${API_URL}/api/orders`, orderData, {
+        headers: buyCheckoutMode === 'account' && isAuthenticated ? getAuthHeaders() : {},
+      });
       toast.success('Order placed successfully! The seller will contact you shortly.');
       setBuyNowOpen(false);
       setQuantity(1);
@@ -340,7 +399,9 @@ function ProductDetailPage() {
   };
 
   const submitOrder = async (orderData) => {
-    const response = await axios.post(`${API_URL}/api/orders`, orderData, { headers: getAuthHeaders() });
+    const response = await axios.post(`${API_URL}/api/orders`, orderData, {
+      headers: cartCheckoutMode === 'account' && isAuthenticated ? getAuthHeaders() : {},
+    });
     return response.data;
   };
 
@@ -611,7 +672,7 @@ function ProductDetailPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setCartOpen(true)}
+                  onClick={handleOpenCart}
                   className="border-slate-200 text-[#4B5A45] hover:bg-slate-50 relative"
                 >
                   <ShoppingCart className="h-4 w-4 mr-2" />
@@ -799,6 +860,15 @@ function ProductDetailPage() {
               <p className="text-sm text-[#4B5A45]">Your cart is empty.</p>
             ) : (
               <>
+                <CheckoutAccountChoice
+                  mode={cartCheckoutMode}
+                  onModeChange={handleCartCheckoutModeChange}
+                  isAuthenticated={isAuthenticated}
+                  onAccountRequired={() => handleAccountCheckout('cart-account')}
+                />
+                {cartCheckoutMode === 'account' && isAuthenticated && (
+                  <p className="text-xs text-[#5C665D]">Buying as {user?.name || user?.email}. These orders will appear in your account.</p>
+                )}
                 <div className="space-y-4">
                   {cartItems.map(item => (
                     <div key={item.productId} className="flex items-center justify-between py-2 border-t border-slate-100">
@@ -820,7 +890,7 @@ function ProductDetailPage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="cart-name" className="text-sm font-medium text-slate-700">Your name</Label>
-                  <Input id="cart-name" value={cartBuyerName} onChange={(e) => setCartBuyerName(e.target.value)} placeholder="Your name" />
+                  <Input id="cart-name" value={cartBuyerName} onChange={(e) => setCartBuyerName(e.target.value)} placeholder="Your name" required />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="cart-email" className="text-sm font-medium text-slate-700">Email (optional)</Label>
@@ -852,6 +922,15 @@ function ProductDetailPage() {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
+            <CheckoutAccountChoice
+              mode={buyCheckoutMode}
+              onModeChange={handleBuyCheckoutModeChange}
+              isAuthenticated={isAuthenticated}
+              onAccountRequired={() => handleAccountCheckout('buy-account')}
+            />
+            {buyCheckoutMode === 'account' && isAuthenticated && (
+              <p className="text-xs text-[#5C665D]">Buying as {user?.name || user?.email}. This order will appear in your account.</p>
+            )}
             <div className="bg-slate-50 rounded-xl p-3 flex items-center gap-3">
               {allImages[0] && (
                 <img src={getImageUrl(allImages[0])} alt={product.title} className="w-16 h-16 rounded-lg object-cover" />
@@ -864,7 +943,7 @@ function ProductDetailPage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="buyer-name">Full name</Label>
-              <Input id="buyer-name" value={buyerName} onChange={(e) => setBuyerName(e.target.value)} placeholder="Your full name" />
+              <Input id="buyer-name" value={buyerName} onChange={(e) => setBuyerName(e.target.value)} placeholder="Your full name" required />
             </div>
             <div className="space-y-2">
               <Label htmlFor="buyer-email">Email (optional)</Label>

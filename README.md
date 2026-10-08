@@ -19,6 +19,10 @@ CLOUDINARY_URL=cloudinary://<API_KEY>:<API_SECRET>@<CLOUD_NAME>
 - `POST /api/uploads` - upload a file and store metadata in MongoDB.
 - `POST /api/products` - create a product and optionally upload an image to Cloudinary.
 
+## Marketplace orders
+
+At checkout, buyers can continue as a guest or sign in/create an account. Guest orders need contact details; orders placed with an account are linked to that buyer for tracking. Signed-in buyers can track orders from **Dashboard → Orders**, download PDF receipts, and remind sellers. Seller accounts see incoming orders on the dashboard **Overview** and can manage them under **Orders**; sellers can update accepted orders as they are prepared, shipped, and delivered. Status changes and buyer reminders are sent to the other account as notifications.
+
 ## Local configuration
 
 Copy `backend/.env.example` to `backend/.env` and fill in your values.

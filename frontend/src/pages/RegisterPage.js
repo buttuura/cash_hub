@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -22,6 +22,9 @@ const RegisterPage = () => {
   const [error, setError] = useState('');
   const { register } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const returnTo = new URLSearchParams(location.search).get('returnTo');
+  const postRegisterPath = returnTo?.startsWith('/') && !returnTo.startsWith('//') ? returnTo : '/dashboard';
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -74,7 +77,7 @@ const RegisterPage = () => {
         nextOfKinPhone.trim(),
         nationalId.trim() || null
       );
-      navigate('/dashboard');
+      navigate(postRegisterPath);
     } catch (err) {
       setError(err.message || 'Registration failed');
     } finally {
@@ -286,7 +289,7 @@ const RegisterPage = () => {
               <p className="text-[#5C665D]">
                 Already have an account?{' '}
                 <Link 
-                  to="/login" 
+                  to={`/login${location.search}`}
                   className="text-[#2C5530] font-semibold hover:underline"
                   data-testid="login-link"
                 >

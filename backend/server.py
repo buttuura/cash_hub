@@ -1495,6 +1495,7 @@ async def create_order(order: OrderCreate, user: Optional[dict] = Depends(get_cu
             if seller_product:
                 break
 
+    created_at = datetime.now(timezone.utc).isoformat()
     order_doc = {
         "products": order.products,
         "productId": order.productId,
@@ -1509,7 +1510,11 @@ async def create_order(order: OrderCreate, user: Optional[dict] = Depends(get_cu
         "note": order.note,
         "total": order.total,
         "status": order.status,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": created_at,
+        "status_history": [{
+            "status": order.status,
+            "updated_at": created_at,
+        }],
     }
 
     if user:
@@ -1552,6 +1557,7 @@ async def get_orders(user: Optional[dict] = Depends(get_current_user_optional)):
                 {
                     "$or": [
                         {"buyerId": user["id"]},
+                        {"seller_id": user["id"]},
                         {"sellerName": {"$regex": f"^{re.escape((user['name'] or '').strip())}$", "$options": "i"}}
                     ]
                 }
@@ -1573,22 +1579,61 @@ async def update_order_status(order_id: str, data: OrderStatusUpdate, user: Opti
         raise HTTPException(status_code=404, detail="Order not found")
 
     is_admin = user.get("role") in ["admin", "super_admin", "treasurer"]
-    is_seller = (order.get("sellerName") or "").strip().lower() == (user.get("name") or "").strip().lower()
+    is_seller = (
+        order.get("seller_id") == user.get("id")
+        or (order.get("sellerName") or "").strip().lower() == (user.get("name") or "").strip().lower()
+    )
 
     if not is_admin and not is_seller:
         raise HTTPException(status_code=403, detail="You can only update your own orders")
 
-    allowed_statuses = ["pending", "approved", "rejected"]
+    allowed_statuses = ["pending", "approved", "processing", "shipped", "delivered", "rejected"]
     if data.status not in allowed_statuses:
         raise HTTPException(status_code=400, detail=f"Status must be one of: {', '.join(allowed_statuses)}")
 
-    update_fields = {"status": data.status}
+    current_status = str(order.get("status") or "pending").lower()
+    allowed_transitions = {
+        "pending": {"approved", "rejected"},
+        "approved": {"processing", "shipped", "delivered", "rejected"},
+        "processing": {"shipped", "delivered", "rejected"},
+        "shipped": {"delivered"},
+        "delivered": set(),
+        "rejected": set(),
+    }
+    if data.status != current_status and data.status not in allowed_transitions.get(current_status, set()):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Order cannot move from {current_status} to {data.status}",
+        )
+    if data.status == current_status:
+        return {"message": f"Order already {data.status}"}
+
+    now = datetime.now(timezone.utc)
+    update_fields = {
+        "status": data.status,
+        "status_updated_at": now.isoformat(),
+    }
+    if data.status in ["shipped", "delivered"]:
+        update_fields["shipped"] = True
+        update_fields.setdefault("shipped_at", now.isoformat())
+    if data.status == "delivered":
+        update_fields["delivered"] = True
+        update_fields["delivered_at"] = now.isoformat()
     if data.notes:
         update_fields["note"] = data.notes
 
     await db.orders.update_one(
         {"_id": ObjectId(order_id)},
-        {"$set": update_fields}
+        {
+            "$set": update_fields,
+            "$push": {
+                "status_history": {
+                    "status": data.status,
+                    "updated_at": now.isoformat(),
+                    "updated_by": user["id"],
+                }
+            },
+        }
     )
     await db.notifications.update_one(
         {
@@ -1604,7 +1649,56 @@ async def update_order_status(order_id: str, data: OrderStatusUpdate, user: Opti
         },
     )
 
+    buyer_id = order.get("buyerId") or order.get("created_by")
+    if buyer_id and buyer_id != user["id"]:
+        await send_push_to_users([buyer_id], {
+            "id": f"order-status-{order_id}-{uuid4().hex}",
+            "type": "order_status",
+            "title": "Order status updated",
+            "body": f"Your order is now {data.status.replace('_', ' ')}.",
+            "url": "/dashboard",
+            "order_id": order_id,
+        })
+
     return {"message": f"Order {data.status}"}
+
+@api_router.post("/orders/{order_id}/remind")
+async def remind_order_seller(order_id: str, user: dict = Depends(get_current_user)):
+    if not is_valid_object_id(order_id):
+        raise HTTPException(status_code=400, detail="Invalid order id")
+
+    order = await db.orders.find_one({"_id": ObjectId(order_id), "deleted": {"$ne": True}})
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    buyer_id = order.get("buyerId") or order.get("created_by")
+    if buyer_id != user["id"]:
+        raise HTTPException(status_code=403, detail="You can only remind sellers about your own orders")
+
+    seller = None
+    seller_id = order.get("seller_id")
+    if seller_id and is_valid_object_id(seller_id):
+        seller = await db.users.find_one({"_id": ObjectId(seller_id)})
+    if not seller:
+        seller = await db.users.find_one({
+            "name": {"$regex": f"^{re.escape((order.get('sellerName') or '').strip())}$", "$options": "i"}
+        })
+    if not seller:
+        raise HTTPException(status_code=404, detail="Seller account could not be found")
+
+    await send_push_to_users([str(seller["_id"])], {
+        "id": f"order-reminder-{order_id}-{uuid4().hex}",
+        "type": "order_reminder",
+        "title": "Buyer reminder",
+        "body": f"{order.get('buyerName') or 'A buyer'} is asking for an update on order #{order_id[-6:].upper()}.",
+        "url": "/dashboard",
+        "order_id": order_id,
+    })
+    await db.orders.update_one(
+        {"_id": ObjectId(order_id)},
+        {"$set": {"seller_reminder_sent_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    return {"message": "Reminder sent to the seller"}
 
 @api_router.delete("/orders/{order_id}")
 async def delete_order(order_id: str, user: Optional[dict] = Depends(get_current_user_optional)):
