@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
 from motor.motor_asyncio import AsyncIOMotorClient
 from bson import ObjectId
+from pymongo import ReturnDocument
 import os
 import re
 import logging
@@ -169,6 +170,7 @@ class ConnectionManager:
                 self.disconnect(ws, seller_name)
 
 manager = ConnectionManager()
+UGANDA_TIMEZONE = timezone(timedelta(hours=3))
 
 # ==================== PYDANTIC MODELS ====================
 
@@ -1495,7 +1497,20 @@ async def create_order(order: OrderCreate, user: Optional[dict] = Depends(get_cu
             if seller_product:
                 break
 
-    created_at = datetime.now(timezone.utc).isoformat()
+    order_created_at = datetime.now(timezone.utc)
+    created_at = order_created_at.isoformat()
+    receipt_date = order_created_at.astimezone(UGANDA_TIMEZONE).strftime("%Y%m%d")
+
+    receipt_counter = await db.receipt_counters.find_one_and_update(
+        {"_id": f"order-receipt:{receipt_date}"},
+        {
+            "$inc": {"sequence": 1},
+            "$setOnInsert": {"date": receipt_date},
+        },
+        upsert=True,
+        return_document=ReturnDocument.AFTER,
+    )
+    receipt_number = f"C1SG-{receipt_date}-{int(receipt_counter['sequence']):03d}"
     order_doc = {
         "products": order.products,
         "productId": order.productId,
@@ -1511,6 +1526,7 @@ async def create_order(order: OrderCreate, user: Optional[dict] = Depends(get_cu
         "total": order.total,
         "status": order.status,
         "created_at": created_at,
+        "receipt_number": receipt_number,
         "status_history": [{
             "status": order.status,
             "updated_at": created_at,

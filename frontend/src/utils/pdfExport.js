@@ -655,112 +655,237 @@ export const exportPettyCashPDF = async (items, filenamePrefix = 'petty-cash') =
 const drawReceiptLine = (doc, y, text, x = 14, align = 'left', bold = false) => {
   doc.setFontSize(9);
   doc.setFont(undefined, bold ? 'bold' : 'normal');
+  doc.setTextColor(...RECEIPT_GREEN);
   doc.text(text, x, y, { align });
   return y + 5;
 };
 
 const drawDashedLine = (doc, y) => {
-  doc.setDrawColor(180);
+  doc.setDrawColor(...RECEIPT_GOLD);
   doc.setLineDashPattern([2, 2], 0);
   doc.line(14, y, doc.internal.pageSize.width - 14, y);
   doc.setLineDashPattern([], 0);
   return y + 4;
 };
 
-const drawItemRow = (doc, y, item, qty, lineTotal) => {
+const drawSummaryItemsHeader = (doc, y) => {
+  const pageWidth = doc.internal.pageSize.width;
+  doc.setFillColor(...RECEIPT_GREEN);
+  doc.rect(14, y - 4, pageWidth - 28, 8, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(7);
+  doc.setFont(undefined, 'bold');
+  doc.text('DESCRIPTION', 17, y + 1);
+  doc.text('QTY', 104, y + 1, { align: 'center' });
+  doc.text('PRICE', 145, y + 1, { align: 'right' });
+  doc.text('TOTAL', pageWidth - 17, y + 1, { align: 'right' });
+  return y + 10;
+};
+
+const drawItemRow = (doc, y, item, qty, unitPrice) => {
   doc.setFontSize(9);
   doc.setFont(undefined, 'normal');
-  const shortTitle = item.length > 30 ? item.substring(0, 27) + '...' : item;
-  doc.text(shortTitle, 14, y);
-  doc.text(String(qty), 80, y);
-  doc.text(fmtUGX(lineTotal), doc.internal.pageSize.width - 14, y, { align: 'right' });
+  doc.setTextColor(45, 45, 45);
+  const shortTitle = item.length > 52 ? item.substring(0, 49) + '...' : item;
+  doc.text(shortTitle, 17, y);
+  doc.text(String(qty), 104, y, { align: 'center' });
+  doc.text(fmtUGX(unitPrice), 145, y, { align: 'right' });
+  doc.text(fmtUGX(unitPrice * qty), doc.internal.pageSize.width - 17, y, { align: 'right' });
   return y + 5;
+};
+
+const RECEIPT_GREEN = [10, 46, 31];
+const RECEIPT_GOLD = [212, 175, 55];
+
+const getOrderReceiptNumber = (order) => {
+  const storedNumber = String(order.receipt_number || '');
+  const storedMatch = storedNumber.match(/^C1SG-(\d{8})-(\d+)$/i);
+  if (storedMatch) {
+    return `C1SG-${storedMatch[1]}-${storedMatch[2].padStart(3, '0')}`;
+  }
+
+  const date = new Date(order.created_at || order.createdAt || Date.now());
+  const datePart = Number.isNaN(date.getTime())
+    ? new Date().toISOString().slice(0, 10).replace(/-/g, '')
+    : `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}`;
+  const idDigits = String(order.id || '').replace(/\D/g, '').slice(-3);
+  const sequence = idDigits && Number(idDigits) ? idDigits.padStart(3, '0') : '001';
+  return `C1SG-${datePart}-${sequence}`;
+};
+
+const loadReceiptLogo = () => getImageDataUrl(`${process.env.PUBLIC_URL || ''}/classOne-logo.png`);
+
+const drawReceiptHeader = (doc, title = 'RECEIPT', logo = null) => {
+  const pageWidth = doc.internal.pageSize.width;
+  doc.setFillColor(...RECEIPT_GREEN);
+  doc.rect(0, 0, pageWidth, 34, 'F');
+  doc.setFillColor(...RECEIPT_GOLD);
+  doc.rect(0, 34, pageWidth, 1.5, 'F');
+
+  if (logo) {
+    doc.addImage(logo, getImageFormat(logo), 14, 4, 20, 26, undefined, 'FAST');
+  }
+
+  doc.setTextColor(...RECEIPT_GOLD);
+  doc.setFont(undefined, 'bold');
+  doc.setFontSize(11);
+  doc.text('Class One Savings Group', 42, 11);
+  doc.setTextColor(255, 255, 255);
+  doc.setFont(undefined, 'normal');
+  doc.setFontSize(8);
+  doc.text('Supporting Savings & Financial Growth', 42, 17);
+  doc.setTextColor(255, 255, 255);
+  doc.setFont(undefined, 'bold');
+  doc.setFontSize(20);
+  doc.text(title, 42, 28);
+};
+
+const RECEIPT_FOOTER_HEIGHT = 33;
+
+const drawReceiptFooter = (doc, y, receiptLabel) => {
+  const pageWidth = doc.internal.pageSize.width;
+  const left = 0;
+  const width = pageWidth;
+  doc.setFillColor(...RECEIPT_GOLD);
+  doc.rect(left, y, width, 1, 'F');
+  doc.setFillColor(...RECEIPT_GREEN);
+  doc.rect(left, y + 1, width, 13, 'F');
+  doc.setTextColor(...RECEIPT_GOLD);
+  doc.setFont(undefined, 'bold');
+  doc.setFontSize(14);
+  doc.text('Thank you for your purchase.', pageWidth / 2, y + 9.5, { align: 'center' });
+
+  doc.setFillColor(255, 255, 255);
+  doc.rect(left, y + 14, width, 17, 'F');
+  doc.setTextColor(85, 85, 85);
+  doc.setFont(undefined, 'normal');
+  doc.setFontSize(9);
+  doc.text('Class One Savings Group · Fort Portal, Uganda', pageWidth / 2, y + 18.5, { align: 'center' });
+  doc.setTextColor(136, 136, 136);
+  doc.setFontSize(8.5);
+  doc.text(
+    'This is a computer-generated receipt. No signature required.',
+    pageWidth / 2,
+    y + 22.5,
+    { align: 'center' }
+  );
+  doc.setTextColor(...RECEIPT_GREEN);
+  doc.setFontSize(8);
+  doc.text(receiptLabel, pageWidth / 2, y + 27, { align: 'center', maxWidth: width - 8 });
+  doc.setFillColor(...RECEIPT_GOLD);
+  doc.rect(left, y + 31, width, 1, 'F');
 };
 
 export const exportOrderReceiptPDF = async (order, buyerName, buyerPhone, buyerEmail) => {
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.width;
-  let y = 20;
+  const receiptLogo = await loadReceiptLogo();
+  drawReceiptHeader(doc, 'RECEIPT', receiptLogo);
+  const createdAt = order.created_at || order.createdAt;
+  const receiptDate = createdAt ? new Date(createdAt) : new Date();
+  let y = 44;
 
-  doc.setFontSize(18);
-  doc.setFont(undefined, 'bold');
-  doc.setTextColor(44, 85, 48);
-  doc.text('Class One Savings', pageWidth / 2, y, { align: 'center' });
-  y += 8;
-
-  doc.setFontSize(14);
-  doc.setTextColor(44, 85, 48);
-  doc.text('RECEIPT', pageWidth / 2, y, { align: 'center' });
-  y += 10;
-
-  y = drawDashedLine(doc, y);
-
-  y = drawReceiptLine(doc, y, `Receipt No: ${order.id || 'N/A'}`, 14, 'left', true);
-  y = drawReceiptLine(doc, y, `Date: ${fmtDate(order.createdAt || order.created_at)}`, 14, 'left');
-  y = drawReceiptLine(doc, y, `Seller: ${order.sellerName || 'N/A'}`, 14, 'left');
-  y = drawReceiptLine(doc, y, `Customer: ${buyerName || order.buyerName || 'N/A'}`, 14, 'left');
-  if (buyerPhone || order.buyerPhone) {
-    y = drawReceiptLine(doc, y, `Phone: ${buyerPhone || order.buyerPhone}`, 14, 'left');
-  }
-  if (buyerEmail || order.buyerEmail) {
-    y = drawReceiptLine(doc, y, `Email: ${buyerEmail || order.buyerEmail}`, 14, 'left');
-  }
-  y += 2;
-
-  y = drawDashedLine(doc, y);
-
-  doc.setFont(undefined, 'bold');
+  doc.setTextColor(...RECEIPT_GREEN);
   doc.setFontSize(9);
-  doc.text('Item', 14, y);
-  doc.text('Qty', 75, y);
-  doc.text('Price', 110, y, { align: 'right' });
-  doc.text('Total', pageWidth - 14, y, { align: 'right' });
-  y += 2;
-  y = drawDashedLine(doc, y);
+  doc.setFont(undefined, 'bold');
+  doc.text('Receipt No:', 14, y);
+  doc.text('Date:', pageWidth - 65, y);
+  doc.setFont(undefined, 'normal');
+  doc.text(getOrderReceiptNumber(order), 14, y + 5);
+  doc.text(
+    Number.isNaN(receiptDate.getTime()) ? '-' : receiptDate.toLocaleDateString('en-GB'),
+    pageWidth - 65,
+    y + 5
+  );
+  doc.setDrawColor(220);
+  doc.line(14, y + 9, pageWidth - 14, y + 9);
+
+  y += 17;
+  doc.setFont(undefined, 'bold');
+  doc.text('Seller:', 14, y);
+  doc.text('Customer:', pageWidth / 2 + 4, y);
+  doc.setFont(undefined, 'normal');
+  doc.text(order.sellerName || 'N/A', 14, y + 5);
+  doc.text(buyerName || order.buyerName || 'N/A', pageWidth / 2 + 4, y + 5);
+  const sellerPhone = order.sellerPhone || order.seller_phone;
+  const customerPhone = buyerPhone || order.buyerPhone;
+  const customerEmail = buyerEmail || order.buyerEmail;
+  if (sellerPhone) doc.text(String(sellerPhone), 14, y + 10);
+  if (customerPhone) doc.text(String(customerPhone), pageWidth / 2 + 4, y + 10);
+  if (customerEmail) doc.text(String(customerEmail), pageWidth / 2 + 4, y + 15);
 
   const products = order.products && Array.isArray(order.products)
     ? order.products
     : order.productTitle
-      ? [{ title: order.productTitle, quantity: 1, price: order.productPrice || order.total || 0 }]
+      ? [{ title: order.productTitle, quantity: order.quantity || 1, price: order.productPrice || order.total || 0 }]
       : [];
+  const normalizedProducts = products.map((product) => ({
+    title: product.title || 'Item',
+    quantity: Number(product.quantity || 1),
+    price: Number(product.price || 0),
+  }));
+  const subtotal = Number(order.total ?? normalizedProducts.reduce(
+    (sum, product) => sum + product.price * product.quantity,
+    0
+  ));
 
-  products.forEach((p) => {
-    const qty = p.quantity || 1;
-    const unitPrice = p.price || 0;
-    const lineTotal = unitPrice * qty;
-    const title = p.title || 'Item';
-    const shortTitle = title.length > 28 ? title.substring(0, 25) + '...' : title;
-    doc.setFontSize(9);
-    doc.setFont(undefined, 'normal');
-    doc.text(shortTitle, 14, y);
-    doc.text(String(qty), 75, y);
-    doc.text(fmtUGX(unitPrice), 110, y, { align: 'right' });
-    doc.text(fmtUGX(lineTotal), pageWidth - 14, y, { align: 'right' });
-    y += 5;
+  autoTable(doc, {
+    startY: y + (customerEmail ? 20 : customerPhone ? 15 : 10),
+    margin: { left: 14, right: 14, bottom: 22 },
+    head: [['DESCRIPTION', 'QTY', 'PRICE', 'TOTAL']],
+    body: normalizedProducts.map((product) => [
+      product.title,
+      String(product.quantity),
+      fmtUGX(product.price),
+      fmtUGX(product.price * product.quantity),
+    ]),
+    styles: { fontSize: 9, cellPadding: 3, textColor: [45, 45, 45], lineColor: [220, 220, 220] },
+    headStyles: { fillColor: RECEIPT_GREEN, textColor: [255, 255, 255], fontStyle: 'bold' },
+    alternateRowStyles: { fillColor: [248, 248, 246] },
+    columnStyles: {
+      0: { cellWidth: 'auto' },
+      1: { cellWidth: 18, halign: 'center' },
+      2: { cellWidth: 38, halign: 'right' },
+      3: { cellWidth: 38, halign: 'right' },
+    },
   });
 
-  y = drawDashedLine(doc, y);
+  y = doc.lastAutoTable.finalY + 9;
+  if (y + 30 + RECEIPT_FOOTER_HEIGHT > doc.internal.pageSize.height - 5) {
+    doc.addPage();
+    drawReceiptHeader(doc, 'RECEIPT', receiptLogo);
+    y = 48;
+  }
+  const totalsX = pageWidth * 0.36;
+  const totalsWidth = pageWidth - totalsX - 14;
+  doc.setDrawColor(...RECEIPT_GOLD);
+  doc.setLineWidth(0.7);
+  doc.rect(totalsX, y, totalsWidth, 28);
+  doc.setTextColor(45, 45, 45);
+  doc.setFont(undefined, 'normal');
+  doc.setFontSize(9);
+  doc.text('Subtotal:', totalsX + 4, y + 7);
+  doc.text(fmtUGX(subtotal), pageWidth - 18, y + 7, { align: 'right' });
+  doc.setTextColor(...RECEIPT_GREEN);
+  doc.setFont(undefined, 'bold');
+  doc.setFontSize(12);
+  doc.text('TOTAL:', totalsX + 4, y + 15);
+  doc.text(fmtUGX(subtotal), pageWidth - 18, y + 15, { align: 'right' });
+  doc.setTextColor(90, 90, 90);
+  doc.setFont(undefined, 'italic');
+  doc.setFontSize(7);
+  const amountWords = `${numberToWords(subtotal)} Only`;
+  doc.text(doc.splitTextToSize(amountWords, totalsWidth - 8), pageWidth - 18, y + 22, { align: 'right' });
+  drawReceiptFooter(doc, y + 30, `Receipt No: ${getOrderReceiptNumber(order)}`);
 
-  const subtotal = order.total || products.reduce((sum, p) => sum + (p.price || 0) * (p.quantity || 1), 0);
-  y = drawReceiptLine(doc, y, `Subtotal: ${fmtUGX(subtotal)}`, pageWidth - 14, 'right', true);
-  y = drawReceiptLine(doc, y, `TOTAL: ${fmtUGX(subtotal)}`, pageWidth - 14, 'right', true);
-  y += 4;
-
-  y = drawDashedLine(doc, y);
-
-  doc.setFontSize(8);
-  doc.setTextColor(100);
-  doc.text('Thank you for your purchase!', pageWidth / 2, y, { align: 'center' });
-  y += 5;
-  doc.text('For inquiries, contact the seller directly.', pageWidth / 2, y, { align: 'center' });
-
-  await savePdf(doc, `receipt-${order.id || 'order'}-${new Date().toISOString().split('T')[0]}.pdf`);
+  await savePdf(doc, `receipt-${getOrderReceiptNumber(order)}.pdf`);
 };
 
 export const exportCustomerReceiptPDF = async (customers, options = {}) => {
   const { singleSeller, dateRange } = options;
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.width;
+  const receiptLogo = await loadReceiptLogo();
 
   customers.forEach((customer, customerIndex) => {
     const sortedOrders = (customer.orders || []).slice().sort((a, b) => {
@@ -769,32 +894,22 @@ export const exportCustomerReceiptPDF = async (customers, options = {}) => {
       return dateA - dateB;
     });
 
-    let y = 20;
+    let y = 45;
     if (customerIndex > 0) {
       doc.addPage();
     }
 
-    doc.setFontSize(18);
-    doc.setFont(undefined, 'bold');
-    doc.setTextColor(44, 85, 48);
-    doc.text('Class One Savings', pageWidth / 2, y, { align: 'center' });
-    y += 8;
-
-    doc.setFontSize(14);
-    doc.setTextColor(44, 85, 48);
-    doc.text('Customer Receipt', pageWidth / 2, y, { align: 'center' });
-    y += 10;
-
-    y = drawDashedLine(doc, y);
+    drawReceiptHeader(doc, 'CUSTOMER RECEIPT', receiptLogo);
 
     doc.setFontSize(8);
-    doc.setTextColor(150);
+    doc.setTextColor(90, 90, 90);
     doc.text(`Generated: ${new Date().toLocaleString()}`, 14, y);
-    y += 10;
+    if (dateRange) doc.text(`Period: ${dateRange}`, pageWidth - 14, y, { align: 'right' });
+    y += 8;
 
     doc.setFontSize(11);
     doc.setFont(undefined, 'bold');
-    doc.setTextColor(44, 85, 48);
+    doc.setTextColor(...RECEIPT_GREEN);
     doc.text(`Customer: ${customer.name}`, 14, y);
     y += 6;
     doc.setFontSize(9);
@@ -803,40 +918,49 @@ export const exportCustomerReceiptPDF = async (customers, options = {}) => {
     doc.text(`Contact: ${customer.phone || customer.email || '-'}`, 14, y);
     y += 8;
 
-    y = drawDashedLine(doc, y);
+    doc.setDrawColor(...RECEIPT_GOLD);
+    doc.setLineWidth(0.6);
+    doc.line(14, y, pageWidth - 14, y);
+    y += 6;
 
     let customerTotal = 0;
 
     sortedOrders.forEach((o) => {
-      if (y > 240) {
+      if (y + 26 + RECEIPT_FOOTER_HEIGHT > doc.internal.pageSize.height - 5) {
         doc.addPage();
-        y = 20;
+        drawReceiptHeader(doc, 'CUSTOMER RECEIPT', receiptLogo);
+        y = 45;
       }
 
       doc.setFontSize(9);
       doc.setFont(undefined, 'bold');
-      doc.setTextColor(44, 85, 48);
-      doc.text(`Order: ${o.id || '-'}  |  Date: ${fmtDate(o.createdAt || o.created_at)}  |  Seller: ${o.sellerName || '-'}`, 14, y);
-      y += 5;
+      doc.setTextColor(...RECEIPT_GREEN);
+      doc.text(`Receipt: ${getOrderReceiptNumber(o)}  |  Date: ${fmtDate(o.createdAt || o.created_at)}  |  Seller: ${o.sellerName || '-'}`, 14, y);
+      y += 6;
+      y = drawSummaryItemsHeader(doc, y);
 
       const products = o.products && Array.isArray(o.products)
         ? o.products
         : o.productTitle
-          ? [{ title: o.productTitle, quantity: 1, price: o.productPrice || o.total || 0 }]
+          ? [{ title: o.productTitle, quantity: o.quantity || 1, price: o.productPrice || o.total || 0 }]
           : [];
 
       products.forEach((p) => {
         if (y > 270) {
           doc.addPage();
-          y = 20;
+          drawReceiptHeader(doc, 'CUSTOMER RECEIPT', receiptLogo);
+          y = drawSummaryItemsHeader(doc, 45);
         }
         const qty = p.quantity || 1;
-        const lineTotal = (p.price || 0) * qty;
         const title = p.title || 'Item';
-        const shortTitle = title.length > 32 ? title.substring(0, 29) + '...' : title;
-        y = drawItemRow(doc, y, shortTitle, qty, lineTotal);
+        y = drawItemRow(doc, y, title, qty, Number(p.price || 0));
       });
 
+      if (y > 265) {
+        doc.addPage();
+        drawReceiptHeader(doc, 'CUSTOMER RECEIPT', receiptLogo);
+        y = 45;
+      }
       const orderTotal = o.total || products.reduce((sum, p) => sum + (p.price || 0) * (p.quantity || 1), 0);
       customerTotal += orderTotal;
       y = drawReceiptLine(doc, y, `Order Total: ${fmtUGX(orderTotal)}`, pageWidth - 14, 'right', true);
@@ -844,21 +968,32 @@ export const exportCustomerReceiptPDF = async (customers, options = {}) => {
       y += 2;
     });
 
-    if (y > 240) {
+    if (y + 24 + RECEIPT_FOOTER_HEIGHT > doc.internal.pageSize.height - 8) {
       doc.addPage();
-      y = 20;
+      drawReceiptHeader(doc, 'CUSTOMER RECEIPT', receiptLogo);
+      y = 45;
     }
 
-    y = drawDashedLine(doc, y);
+    const totalsX = pageWidth * 0.36;
+    const totalsWidth = pageWidth - totalsX - 14;
+    doc.setDrawColor(...RECEIPT_GOLD);
+    doc.setLineWidth(0.7);
+    doc.rect(totalsX, y, totalsWidth, 24);
+    doc.setTextColor(...RECEIPT_GREEN);
     doc.setFontSize(11);
     doc.setFont(undefined, 'bold');
-    doc.setTextColor(212, 140, 112);
-    doc.text(`Customer Total: ${fmtUGX(customerTotal)}`, 14, y);
-    y += 6;
-    doc.setFontSize(9);
-    doc.setFont(undefined, 'normal');
-    doc.setTextColor(92, 102, 93);
-    doc.text(`${sortedOrders.length} order(s)`, 14, y);
+    doc.text(`Customer Total: ${fmtUGX(customerTotal)}`, pageWidth - 18, y + 8, { align: 'right' });
+    doc.setFontSize(8);
+    doc.setFont(undefined, 'italic');
+    doc.setTextColor(90, 90, 90);
+    doc.text(`${numberToWords(customerTotal)} Only · ${sortedOrders.length} order(s)`, pageWidth - 18, y + 17, { align: 'right' });
+    const receiptNumbers = sortedOrders.map(getOrderReceiptNumber);
+    const shownReceiptNumbers = receiptNumbers.slice(0, 3).join(', ');
+    const remainingReceipts = receiptNumbers.length - 3;
+    const receiptLabel = receiptNumbers.length > 3
+      ? `Receipt Nos: ${shownReceiptNumbers} +${remainingReceipts} more (listed above)`
+      : `Receipt Nos: ${shownReceiptNumbers || 'None'}`;
+    drawReceiptFooter(doc, y + 26, receiptLabel);
   });
 
   await savePdf(doc, `customer-receipt-${new Date().toISOString().split('T')[0]}.pdf`);
@@ -868,28 +1003,17 @@ export const exportSellerReceiptPDF = async (sellers, options = {}) => {
   const { dateRange } = options;
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.width;
-  let y = 20;
-
-  doc.setFontSize(18);
-  doc.setFont(undefined, 'bold');
-  doc.setTextColor(44, 85, 48);
-  doc.text('Class One Savings', pageWidth / 2, y, { align: 'center' });
-  y += 8;
-
-  doc.setFontSize(14);
-  doc.setTextColor(44, 85, 48);
-  doc.text('Seller Receipts', pageWidth / 2, y, { align: 'center' });
-  y += 10;
-
-  y = drawDashedLine(doc, y);
+  const receiptLogo = await loadReceiptLogo();
+  drawReceiptHeader(doc, 'SELLER RECEIPTS', receiptLogo);
+  let y = 45;
 
   doc.setFontSize(8);
-  doc.setTextColor(150);
+  doc.setTextColor(90, 90, 90);
   doc.text(`Generated: ${new Date().toLocaleString()}`, 14, y);
   if (dateRange) {
-    doc.text(`Period: ${dateRange}`, 14, y + 5);
+    doc.text(`Period: ${dateRange}`, pageWidth - 14, y, { align: 'right' });
   }
-  y += 12;
+  y += 10;
 
   let grandTotal = 0;
 
@@ -900,49 +1024,56 @@ export const exportSellerReceiptPDF = async (sellers, options = {}) => {
       return dateA - dateB;
     });
 
-    if (y > 240) {
+    if (y + 26 + RECEIPT_FOOTER_HEIGHT > doc.internal.pageSize.height - 5) {
       doc.addPage();
-      y = 20;
+      drawReceiptHeader(doc, 'SELLER RECEIPTS', receiptLogo);
+      y = 45;
     }
 
     doc.setFontSize(11);
     doc.setFont(undefined, 'bold');
-    doc.setTextColor(44, 85, 48);
+    doc.setTextColor(...RECEIPT_GREEN);
     doc.text(`Seller: ${seller.name}`, 14, y);
     y += 8;
 
     y = drawDashedLine(doc, y);
 
     sortedOrders.forEach((o) => {
-      if (y > 240) {
+      if (y + 24 + RECEIPT_FOOTER_HEIGHT > doc.internal.pageSize.height - 8) {
         doc.addPage();
-        y = 20;
+        drawReceiptHeader(doc, 'SELLER RECEIPTS', receiptLogo);
+        y = 45;
       }
 
       doc.setFontSize(9);
       doc.setFont(undefined, 'bold');
-      doc.setTextColor(44, 85, 48);
-      doc.text(`Order: ${o.id || '-'}  |  Date: ${fmtDate(o.createdAt || o.created_at)}  |  Buyer: ${o.buyerName || '-'}`, 14, y);
-      y += 5;
+      doc.setTextColor(...RECEIPT_GREEN);
+      doc.text(`Receipt: ${getOrderReceiptNumber(o)}  |  Date: ${fmtDate(o.createdAt || o.created_at)}  |  Buyer: ${o.buyerName || '-'}`, 14, y);
+      y += 6;
+      y = drawSummaryItemsHeader(doc, y);
 
       const products = o.products && Array.isArray(o.products)
         ? o.products
         : o.productTitle
-          ? [{ title: o.productTitle, quantity: 1, price: o.productPrice || o.total || 0 }]
+          ? [{ title: o.productTitle, quantity: o.quantity || 1, price: o.productPrice || o.total || 0 }]
           : [];
 
       products.forEach((p) => {
         if (y > 270) {
           doc.addPage();
-          y = 20;
+          drawReceiptHeader(doc, 'SELLER RECEIPTS', receiptLogo);
+          y = drawSummaryItemsHeader(doc, 45);
         }
         const qty = p.quantity || 1;
-        const lineTotal = (p.price || 0) * qty;
         const title = p.title || 'Item';
-        const shortTitle = title.length > 32 ? title.substring(0, 29) + '...' : title;
-        y = drawItemRow(doc, y, shortTitle, qty, lineTotal);
+        y = drawItemRow(doc, y, title, qty, Number(p.price || 0));
       });
 
+      if (y > 265) {
+        doc.addPage();
+        drawReceiptHeader(doc, 'SELLER RECEIPTS', receiptLogo);
+        y = 45;
+      }
       const orderTotal = o.total || products.reduce((sum, p) => sum + (p.price || 0) * (p.quantity || 1), 0);
       grandTotal += orderTotal;
       y = drawReceiptLine(doc, y, `Order Total: ${fmtUGX(orderTotal)}`, pageWidth - 14, 'right', true);
@@ -953,19 +1084,35 @@ export const exportSellerReceiptPDF = async (sellers, options = {}) => {
 
   if (y > 240) {
     doc.addPage();
-    y = 20;
+    drawReceiptHeader(doc, 'SELLER RECEIPTS', receiptLogo);
+    y = 45;
   }
 
-  y = drawDashedLine(doc, y);
+  const totalsX = pageWidth * 0.36;
+  const totalsWidth = pageWidth - totalsX - 14;
+  doc.setDrawColor(...RECEIPT_GOLD);
+  doc.setLineWidth(0.7);
+  doc.rect(totalsX, y, totalsWidth, 24);
+  doc.setTextColor(...RECEIPT_GREEN);
   doc.setFontSize(11);
   doc.setFont(undefined, 'bold');
-  doc.setTextColor(212, 140, 112);
-  doc.text(`Grand Total Sales: ${fmtUGX(grandTotal)}`, 14, y);
-  y += 6;
-  doc.setFontSize(9);
-  doc.setFont(undefined, 'normal');
-  doc.setTextColor(92, 102, 93);
-  doc.text(`${sellers.length} seller(s), ${sellers.reduce((sum, s) => sum + s.orders.length, 0)} order(s)`, 14, y);
+  doc.text(`Grand Total Sales: ${fmtUGX(grandTotal)}`, pageWidth - 18, y + 8, { align: 'right' });
+  doc.setFontSize(8);
+  doc.setFont(undefined, 'italic');
+  doc.setTextColor(90, 90, 90);
+  doc.text(
+    `${numberToWords(grandTotal)} Only · ${sellers.length} seller(s), ${sellers.reduce((sum, seller) => sum + seller.orders.length, 0)} order(s)`,
+    pageWidth - 18,
+    y + 17,
+    { align: 'right' }
+  );
+  const receiptNumbers = sellers.flatMap((seller) => seller.orders.map(getOrderReceiptNumber));
+  const shownReceiptNumbers = receiptNumbers.slice(0, 3).join(', ');
+  const remainingReceipts = receiptNumbers.length - 3;
+  const receiptLabel = receiptNumbers.length > 3
+    ? `Receipt Nos: ${shownReceiptNumbers} +${remainingReceipts} more (listed above)`
+    : `Receipt Nos: ${shownReceiptNumbers || 'None'}`;
+  drawReceiptFooter(doc, y + 26, receiptLabel);
 
   await savePdf(doc, `seller-receipt-${new Date().toISOString().split('T')[0]}.pdf`);
 };
