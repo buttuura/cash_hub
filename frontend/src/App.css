@@ -111,6 +111,18 @@ nav {
   padding-right: max(env(safe-area-inset-right), 16px);
 }
 
+.dialog-viewport-fit {
+  max-height: calc(100dvh - max(env(safe-area-inset-top), 1rem) - max(env(safe-area-inset-bottom), 1rem));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+@media (max-width: 639px) {
+  .dialog-viewport-fit {
+    width: calc(100% - 2rem);
+  }
+}
+
 @media (max-width: 1023px), (max-height: 700px) {
   .dialog-below-sticky-nav {
     top: calc(var(--shop-nav-bottom, var(--dashboard-nav-bottom, 157px)) + 8px) !important;
