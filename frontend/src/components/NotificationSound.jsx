@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { toast } from 'sonner';
 import { Capacitor } from '@capacitor/core';
@@ -35,7 +35,6 @@ const urlBase64ToUint8Array = (value) => {
 const NotificationSound = () => {
   const { user, isAuthenticated } = useAuth();
   const audioRef = useRef(null);
-  const reconnectTimerRef = useRef(null);
   const audioUnlockedRef = useRef(false);
   const seenNotificationsRef = useRef(new Map());
   const pollCursorRef = useRef(null);
@@ -45,12 +44,13 @@ const NotificationSound = () => {
   const isNative = Capacitor.isNativePlatform() && Capacitor.getPlatform() !== 'web';
 
   // Treasurers and admins care about group-wide money movement, so they listen
-  // to the shared channel as well as their own name.
+  // to the shared channel as well as their own account channel.
   const isPrivileged = user?.role === 'treasurer' || user?.role === 'admin' || user?.role === 'super_admin';
-  const channels = isPrivileged
-    ? [user.name, '__group__']
-    : [user?.name].filter(Boolean);
-  const channelKey = channels.join('|');
+  const userId = user?.id || user?._id;
+  const channels = useMemo(
+    () => (isPrivileged ? [userId, '__group__'] : [userId].filter(Boolean)),
+    [isPrivileged, userId]
+  );
 
   useEffect(() => {
     const userId = user?.id || user?._id;
@@ -82,6 +82,9 @@ const NotificationSound = () => {
 
   useEffect(() => {
     if (!isAuthenticated || !channels.length) return;
+    const audio = audioRef.current;
+    let disposed = false;
+    const reconnectTimers = new Map();
 
     // Ask once the OS-level permission (required on Android 13+).
     if (isNative) {
@@ -133,7 +136,6 @@ const NotificationSound = () => {
     registerPushNotifications();
 
     const unlockAudio = () => {
-      const audio = audioRef.current;
       if (!audio || audioUnlockedRef.current) return;
 
       audio.muted = true;
@@ -155,9 +157,9 @@ const NotificationSound = () => {
     document.addEventListener('keydown', unlockAudio, { once: true });
 
     const stopSound = () => {
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current.currentTime = 0;
+      if (audio) {
+        audio.pause();
+        audio.currentTime = 0;
       }
     };
 
@@ -169,7 +171,7 @@ const NotificationSound = () => {
 
     const openSockets = [];
 
-    const handleMessage = (data, { fromServiceWorker = false } = {}) => {
+    const handleMessage = (data, { fromServiceWorker = false, forceDisplay = false } = {}) => {
       const described = describeNotificationEvent(data);
       if (!described) return;
 
@@ -178,7 +180,7 @@ const NotificationSound = () => {
       for (const [id, timestamp] of seenNotifications) {
         if (now - timestamp > 60000) seenNotifications.delete(id);
       }
-      if (seenNotifications.has(described.id)) return;
+      if (!forceDisplay && seenNotifications.has(described.id)) return;
       seenNotifications.set(described.id, now);
 
       const isOrder = data.type === 'new_order';
@@ -189,10 +191,10 @@ const NotificationSound = () => {
       );
 
       if (shouldPlaySound) {
-        if (audioRef.current) {
-          audioRef.current.currentTime = 0;
-          audioRef.current.loop = true;
-          audioRef.current.play().catch((error) => {
+        if (audio) {
+          audio.currentTime = 0;
+          audio.loop = true;
+          audio.play().catch((error) => {
             console.warn('Notification sound could not play:', error.name || error.message);
           });
         }
@@ -203,8 +205,9 @@ const NotificationSound = () => {
       }
 
       toast.info(described.body, isOrder ? {
+        duration: 24 * 60 * 60 * 1000,
         action: {
-          label: 'Acknowledge',
+          label: 'I received this order',
           onClick: () => acknowledgeOrderNotification({ id: described.id, type: 'new_order' }),
         },
       } : undefined);
@@ -224,7 +227,7 @@ const NotificationSound = () => {
         });
         browserNotification.onclick = () => {
           window.focus();
-          acknowledgeOrderNotification({ id: described.id, type: data.type });
+          handleMessage(data, { fromServiceWorker: true, forceDisplay: true });
           browserNotification.close();
         };
       }
@@ -233,17 +236,28 @@ const NotificationSound = () => {
     const handleServiceWorkerMessage = (event) => {
       if (event.data?.type === 'CASHHUB_PUSH') {
         handleMessage(event.data.payload, { fromServiceWorker: true });
+      } else if (event.data?.type === 'ORDER_NOTIFICATION_OPENED') {
+        handleMessage(event.data.payload, { fromServiceWorker: true, forceDisplay: true });
       } else if (event.data?.type === 'ACK_ORDER_NOTIFICATION') {
         acknowledgeOrderNotification({ id: event.data.eventId, type: 'new_order' });
       }
     };
     navigator.serviceWorker?.addEventListener('message', handleServiceWorkerMessage);
 
+    const handleNativeNotificationOpened = (event) => {
+      handleMessage(event.detail, { forceDisplay: true });
+    };
+    window.addEventListener('cashhub-native-notification-opened', handleNativeNotificationOpened);
+
+    const notificationAckId = new URLSearchParams(window.location.search).get('notificationAckId');
+    if (notificationAckId) {
+      acknowledgeOrderNotification({ id: notificationAckId, type: 'new_order' });
+    }
     const notificationId = new URLSearchParams(window.location.search).get('notificationId');
-    if (notificationId) {
-      acknowledgeOrderNotification({ id: notificationId, type: 'new_order' });
+    if (notificationId || notificationAckId) {
       const url = new URL(window.location.href);
       url.searchParams.delete('notificationId');
+      url.searchParams.delete('notificationAckId');
       window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
     }
 
@@ -270,9 +284,10 @@ const NotificationSound = () => {
       }
     };
     pollNotifications();
-    const pollTimer = setInterval(pollNotifications, 5000);
+    const pollTimer = setInterval(pollNotifications, 15000);
 
     const connectChannel = (channel) => {
+      if (disposed) return;
       const ws = new WebSocket(getWebSocketUrl(channel));
       openSockets.push(ws);
 
@@ -291,7 +306,15 @@ const NotificationSound = () => {
       };
 
       ws.onclose = () => {
-        reconnectTimerRef.current = setTimeout(() => connectChannel(channel), 3000);
+        const socketIndex = openSockets.indexOf(ws);
+        if (socketIndex !== -1) openSockets.splice(socketIndex, 1);
+        if (disposed) return;
+        const previousTimer = reconnectTimers.get(channel);
+        if (previousTimer) clearTimeout(previousTimer);
+        reconnectTimers.set(channel, setTimeout(() => {
+          reconnectTimers.delete(channel);
+          connectChannel(channel);
+        }, 3000));
       };
 
       ws.onerror = (error) => {
@@ -303,23 +326,26 @@ const NotificationSound = () => {
     channels.forEach(connectChannel);
 
     return () => {
+      disposed = true;
       document.removeEventListener('pointerdown', unlockAudio);
       document.removeEventListener('touchstart', unlockAudio);
       document.removeEventListener('keydown', unlockAudio);
       window.removeEventListener('stop-order-notification-sound', handleStopSound);
       navigator.serviceWorker?.removeEventListener('message', handleServiceWorkerMessage);
+      window.removeEventListener('cashhub-native-notification-opened', handleNativeNotificationOpened);
       clearInterval(pollTimer);
-      if (reconnectTimerRef.current) {
-        clearTimeout(reconnectTimerRef.current);
-      }
-      openSockets.forEach((ws) => ws.close());
-      openSockets.length = 0;
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current.currentTime = 0;
+      reconnectTimers.forEach(clearTimeout);
+      reconnectTimers.clear();
+      openSockets.splice(0).forEach((ws) => {
+        ws.onclose = null;
+        ws.close();
+      });
+      if (audio) {
+        audio.pause();
+        audio.currentTime = 0;
       }
     };
-  }, [channelKey, isAuthenticated]);
+  }, [channels, isAuthenticated, isNative]);
 
   if (!isAuthenticated) return null;
 

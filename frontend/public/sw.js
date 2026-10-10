@@ -145,10 +145,17 @@ self.addEventListener('push', (event) => {
         renotify: data.type === 'new_order' && data.sound_enabled === true,
         silent: data.type !== 'new_order' || data.sound_enabled !== true,
         vibrate: data.sound_enabled === true ? [200, 100, 200] : [],
+        actions: data.type === 'new_order' ? [{
+          action: 'received-order',
+          title: 'I received this order',
+        }] : [],
         data: {
           url: data.url || '/',
           id: data.id,
           type: data.type,
+          title: data.title || 'New order received',
+          body: data.body || 'A customer placed an order.',
+          sound_enabled: data.sound_enabled,
         },
       });
     })
@@ -165,15 +172,29 @@ self.addEventListener('notificationclick', (event) => {
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
       const existingClient = clients.find((client) => 'focus' in client);
+      const acknowledged = event.action === 'received-order';
       if (existingClient) {
-        if (notificationData.type === 'new_order' && notificationData.id) {
+        if (acknowledged && notificationData.type === 'new_order' && notificationData.id) {
           existingClient.postMessage({
             type: 'ACK_ORDER_NOTIFICATION',
             eventId: notificationData.id,
           });
+        } else {
+          existingClient.postMessage({
+            type: 'ORDER_NOTIFICATION_OPENED',
+            payload: notificationData,
+          });
+        }
+        if (acknowledged) {
+          target.searchParams.delete('notificationId');
+          target.searchParams.set('notificationAckId', notificationData.id);
         }
         existingClient.navigate(target.href);
         return existingClient.focus();
+      }
+      if (acknowledged && notificationData.id) {
+        target.searchParams.delete('notificationId');
+        target.searchParams.set('notificationAckId', notificationData.id);
       }
       return self.clients.openWindow(target.href);
     })

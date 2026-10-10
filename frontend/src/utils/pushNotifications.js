@@ -3,18 +3,15 @@ import { LocalNotifications } from '@capacitor/local-notifications';
 import { Capacitor } from '@capacitor/core';
 import { API_URL } from '../lib/api';
 import {
+  getLocalNotificationId,
   requestNotificationPermission,
+  ORDER_NOTIFICATION_CHANNEL_ID,
+  ORDER_NOTIFICATION_ACTION_TYPE_ID,
+  ORDER_RECEIVED_ACTION_ID,
   SILENT_NOTIFICATION_CHANNEL_ID,
 } from '../lib/notifications';
 import { acknowledgeOrderNotification } from '../lib/notificationActions';
-
-const localNotificationId = (eventId) => {
-  let hash = 0;
-  for (const character of String(eventId || Date.now())) {
-    hash = (hash * 31 + character.charCodeAt(0)) % 2147483647;
-  }
-  return hash || 1;
-};
+import { getOrderSoundEnabled } from '../lib/notificationSettings';
 
 export async function initPushNotifications(userId) {
   if (!Capacitor.isNativePlatform() || !userId) return;
@@ -23,8 +20,13 @@ export async function initPushNotifications(userId) {
   if (!accessToken) return;
 
   const listeners = [];
+  const removeListeners = async () => {
+    await Promise.allSettled(listeners.map((listener) => listener.remove()));
+  };
+
   try {
     listeners.push(await PushNotifications.addListener('registration', ({ value }) => {
+      if (!value) return;
       fetch(`${API_URL}/api/push/register`, {
         method: 'POST',
         headers: {
@@ -47,22 +49,49 @@ export async function initPushNotifications(userId) {
     }));
 
     listeners.push(await PushNotifications.addListener('pushNotificationActionPerformed', ({ notification }) => {
-      acknowledgeOrderNotification(notification.data);
+      window.dispatchEvent(new CustomEvent('cashhub-native-notification-opened', {
+        detail: notification.data,
+      }));
     }));
 
     listeners.push(await LocalNotifications.addListener('localNotificationActionPerformed', ({ notification }) => {
-      acknowledgeOrderNotification(notification.extra);
+      if (notification.actionId === ORDER_RECEIVED_ACTION_ID) {
+        acknowledgeOrderNotification(notification.extra);
+      } else {
+        window.dispatchEvent(new CustomEvent('cashhub-native-notification-opened', {
+          detail: notification.extra,
+        }));
+      }
     }));
 
     listeners.push(await PushNotifications.addListener('pushNotificationReceived', (notification) => {
-      LocalNotifications.schedule({
-        notifications: [{
-          id: localNotificationId(notification.data?.id),
-          title: notification.title || 'Cash Hub',
-          body: notification.body || 'You have a new notification',
-          channelId: SILENT_NOTIFICATION_CHANNEL_ID,
-          extra: notification.data,
-        }],
+      const data = notification?.data || {};
+      const soundEnabled = data.sound_enabled === undefined
+        ? getOrderSoundEnabled(userId)
+        : data.sound_enabled === true || data.sound_enabled === 'true';
+      const channelId = data.type === 'new_order' && soundEnabled
+        ? ORDER_NOTIFICATION_CHANNEL_ID
+        : SILENT_NOTIFICATION_CHANNEL_ID;
+
+      requestNotificationPermission().then((permission) => {
+        if (permission !== 'granted') return;
+        const notificationId = getLocalNotificationId(data.id || notification?.id || Date.now());
+        return LocalNotifications.schedule({
+          notifications: [{
+            id: notificationId,
+            title: notification?.title || data.title || 'Cash Hub',
+            body: notification?.body || data.body || 'You have a new notification',
+            channelId,
+            smallIcon: 'ic_stat_notification',
+            ...(data.type === 'new_order'
+              ? { actionTypeId: ORDER_NOTIFICATION_ACTION_TYPE_ID }
+              : {}),
+            ...(channelId === ORDER_NOTIFICATION_CHANNEL_ID
+              ? { sound: 'order_ring_tone.m4a' }
+              : {}),
+            extra: { ...data, notificationId },
+          }],
+        });
       }).catch((error) => {
         console.error('Unable to display foreground push notification:', error);
       });
@@ -70,15 +99,15 @@ export async function initPushNotifications(userId) {
 
     const permission = await requestNotificationPermission();
     if (permission !== 'granted') {
-      await Promise.all(listeners.map((listener) => listener.remove()));
+      await removeListeners();
       return;
     }
 
     await PushNotifications.register();
   } catch (error) {
-    await Promise.all(listeners.map((listener) => listener.remove()));
+    await removeListeners();
     throw error;
   }
 
-  return async () => Promise.all(listeners.map((listener) => listener.remove()));
+  return removeListeners;
 }

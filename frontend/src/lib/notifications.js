@@ -3,10 +3,13 @@ import { LocalNotifications } from '@capacitor/local-notifications';
 
 const isNative = () => Capacitor.isNativePlatform() && Capacitor.getPlatform() !== 'web';
 
-export const ORDER_NOTIFICATION_CHANNEL_ID = 'cashhub-orders';
-export const SILENT_NOTIFICATION_CHANNEL_ID = 'cashhub-silent';
+export const ORDER_NOTIFICATION_CHANNEL_ID = 'cashhub-orders-v2';
+export const SILENT_NOTIFICATION_CHANNEL_ID = 'cashhub-silent-v2';
+export const ORDER_NOTIFICATION_ACTION_TYPE_ID = 'cashhub-order-actions';
+export const ORDER_RECEIVED_ACTION_ID = 'order-received';
 
 let channelReady = null;
+let permissionRequest = null;
 
 // Android requires a notification channel before anything can be posted.
 const ensureChannel = async () => {
@@ -21,22 +24,35 @@ const ensureChannel = async () => {
           description: 'New product orders that need your attention.',
           importance: 4,
           visibility: 1,
+          sound: 'order_ring_tone.m4a',
           lights: true,
           lightColor: '#2C5530',
+          vibration: true,
         }),
         LocalNotifications.createChannel({
           id: SILENT_NOTIFICATION_CHANNEL_ID,
           name: 'Other notifications',
           description: 'Notifications without sound.',
-          importance: 2,
+          importance: 3,
           visibility: 1,
           lights: false,
           vibration: false,
         }),
       ]);
     }
+    await LocalNotifications.registerActionTypes({
+      types: [{
+        id: ORDER_NOTIFICATION_ACTION_TYPE_ID,
+        actions: [{
+          id: ORDER_RECEIVED_ACTION_ID,
+          title: 'I received this order',
+        }],
+      }],
+    });
   })().catch((error) => {
+    channelReady = null;
     console.warn('Could not create notification channel', error);
+    throw error;
   });
 
   return channelReady;
@@ -44,17 +60,33 @@ const ensureChannel = async () => {
 
 export const requestNotificationPermission = async () => {
   if (!isNative()) return 'unsupported';
-  try {
+  if (permissionRequest) return permissionRequest;
+
+  permissionRequest = (async () => {
     await ensureChannel();
     const current = await LocalNotifications.checkPermissions();
     if (current.display === 'granted') return 'granted';
 
     const asked = await LocalNotifications.requestPermissions();
     return asked.display;
+  })();
+
+  try {
+    return await permissionRequest;
   } catch (error) {
     console.warn('Could not request notification permission', error);
     return 'denied';
+  } finally {
+    permissionRequest = null;
   }
+};
+
+export const getLocalNotificationId = (eventId) => {
+  let hash = 0;
+  for (const character of String(eventId || Date.now())) {
+    hash = (hash * 31 + character.charCodeAt(0)) % 2147483647;
+  }
+  return hash || 1;
 };
 
 // Android 13+ requires POST_NOTIFICATIONS, which Capacitor adds via the
@@ -75,13 +107,23 @@ export const showNativeNotification = async ({
     await LocalNotifications.schedule({
       notifications: [
         {
-          id: Math.floor(Date.now() % 2147483647),
-          title,
-          body,
+          id: getLocalNotificationId(id),
+          title: title || 'Cash Hub',
+          body: body || 'You have a new notification',
           channelId,
-          smallIcon: 'ic_stat_icon_config_sample',
+          smallIcon: 'ic_stat_notification',
+          ...(channelId === ORDER_NOTIFICATION_CHANNEL_ID
+            ? { sound: 'order_ring_tone.m4a' }
+            : {}),
+          ...(type === 'new_order'
+            ? { actionTypeId: ORDER_NOTIFICATION_ACTION_TYPE_ID }
+            : {}),
           // Tapping the notification should open the app.
-          extra: { id, type, notificationId: id },
+          extra: {
+            id,
+            type,
+            notificationId: getLocalNotificationId(id),
+          },
           schedule: { at: new Date(Date.now() + 100) },
         },
       ],

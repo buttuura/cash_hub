@@ -95,8 +95,8 @@ const SettingsPage = () => {
               <div className="space-y-1">
                 <h2 className="font-semibold text-[#1E231F]">Repeat sound for new orders</h2>
                 <p className="text-sm leading-relaxed text-[#5C665D]">
-                  When enabled, Android repeats order alerts every minute until acknowledged.
-                  While Cash Hub or the web app is open, the sound loops until you acknowledge the alert.
+                  Android repeats the order alert every minute until you tap “I received this order”.
+                  While Cash Hub or the web app is open, the sound keeps looping until you confirm receipt.
                   Other notifications stay silent.
                 </p>
               </div>

@@ -12,7 +12,6 @@ import { Toaster, toast } from 'sonner';
 import { ShoppingCart, FastForward, Cpu, Sparkles, ShoppingBag, HardHat, PenTool, Shirt, HeartPulse, Home, BookOpen, Dumbbell, Gamepad2, Briefcase, Menu, X, Search, Phone, MessageCircle } from 'lucide-react';
 import ProductCard from '../components/ProductCard';
 import ProductShareButton from '../components/ProductShareButton';
-import { exportLoanAgreementPDF } from '../utils/pdfExport';
 import { OFFICERS } from '../data/officers';
 import { resolveImageUrl } from '../lib/utils';
 import { API_URL } from '../lib/api';
@@ -536,19 +535,25 @@ const ShopPage = () => {
     if (!loanRequestData) return;
     const officer = OFFICERS.find((o) => o.code === loanRequestData.officerCode)
       || (loanRequestData.officer_name ? { name: loanRequestData.officer_name, code: loanRequestData.officerCode } : null);
-    await exportLoanAgreementPDF(loanRequestData, officer, {
-      download: true,
-      collateralImage: collateralImagePreview,
-      nationalIdImages: nationalIdPreviews,
-      borrowerAddress: loanAddress,
-      borrowerCity: loanCity,
-      currency: loanCurrency,
-      security: loanSecurity,
-      guarantorName: loanGuarantorName,
-      guarantorAddress: loanGuarantorAddress,
-      jurisdiction: loanJurisdiction,
-      witnessName: loanWitnessName,
-    }).catch(() => {});
+    try {
+      const { exportLoanAgreementPDF } = await import('../utils/pdfExport');
+      await exportLoanAgreementPDF(loanRequestData, officer, {
+        download: true,
+        collateralImage: collateralImagePreview,
+        nationalIdImages: nationalIdPreviews,
+        borrowerAddress: loanAddress,
+        borrowerCity: loanCity,
+        currency: loanCurrency,
+        security: loanSecurity,
+        guarantorName: loanGuarantorName,
+        guarantorAddress: loanGuarantorAddress,
+        jurisdiction: loanJurisdiction,
+        witnessName: loanWitnessName,
+      });
+    } catch (error) {
+      console.error('Failed to generate loan agreement PDF:', error);
+      toast.error('Unable to generate the loan agreement. Please try again.');
+    }
   };
 
   const resetQuickLoanDialogState = () => {

@@ -145,29 +145,29 @@ class ConnectionManager:
     def __init__(self):
         self.active_connections = {}
 
-    async def connect(self, websocket: WebSocket, seller_name: str):
+    async def connect(self, websocket: WebSocket, seller_id: str):
         await websocket.accept()
-        if seller_name not in self.active_connections:
-            self.active_connections[seller_name] = []
-        self.active_connections[seller_name].append(websocket)
+        if seller_id not in self.active_connections:
+            self.active_connections[seller_id] = []
+        self.active_connections[seller_id].append(websocket)
 
-    def disconnect(self, websocket: WebSocket, seller_name: str):
-        if seller_name in self.active_connections:
-            self.active_connections[seller_name].remove(websocket)
-            if not self.active_connections[seller_name]:
-                del self.active_connections[seller_name]
+    def disconnect(self, websocket: WebSocket, seller_id: str):
+        if seller_id in self.active_connections:
+            self.active_connections[seller_id].remove(websocket)
+            if not self.active_connections[seller_id]:
+                del self.active_connections[seller_id]
 
-    async def broadcast_to_seller(self, seller_name: str, message: dict):
+    async def broadcast_to_seller(self, seller_id: str, message: dict):
         import json
-        if seller_name in self.active_connections:
+        if seller_id in self.active_connections:
             dead = []
-            for ws in self.active_connections[seller_name]:
+            for ws in self.active_connections[seller_id]:
                 try:
                     await ws.send_text(json.dumps(message))
                 except Exception:
                     dead.append(ws)
             for ws in dead:
-                self.disconnect(ws, seller_name)
+                self.disconnect(ws, seller_id)
 
 manager = ConnectionManager()
 UGANDA_TIMEZONE = timezone(timedelta(hours=3))
@@ -276,7 +276,7 @@ class FCMTokenRegistration(BaseModel):
     token: str = Field(..., min_length=1, max_length=4096)
 
 class NotificationSettingsUpdate(BaseModel):
-    order_sound_enabled: bool = False
+    order_sound_enabled: bool = True
 
 class ProductCreate(BaseModel):
     title: str
@@ -302,7 +302,7 @@ class OrderCreate(BaseModel):
     productId: Optional[str] = None
     productTitle: Optional[str] = None
     productPrice: Optional[float] = None
-    sellerName: str
+    sellerName: Optional[str] = None
     buyerId: Optional[str] = None
     buyerName: Optional[str] = None
     buyerEmail: Optional[str] = None
@@ -402,7 +402,7 @@ async def send_push_to_users(user_ids: list[str], payload: dict):
         ).to_list(1000)
         order_sound_by_user = {
             str(recipient["_id"]): bool(
-                recipient.get("notification_settings", {}).get("order_sound_enabled", False)
+                recipient.get("notification_settings", {}).get("order_sound_enabled", True)
             )
             for recipient in recipients
         }
@@ -481,10 +481,11 @@ async def send_push_to_users(user_ids: list[str], payload: dict):
                     data=message_data,
                     token=registration["token"],
                     android=messaging.AndroidConfig(
-                        priority="high" if is_order else "normal",
+                        priority="high",
                         notification=messaging.AndroidNotification(
-                            channel_id="cashhub-orders" if is_order and sound_enabled else "cashhub-silent",
+                            channel_id="cashhub-orders-v2" if is_order and sound_enabled else "cashhub-silent-v2",
                             tag=notification_id if is_order else None,
+                            sound="order_ring_tone" if is_order and sound_enabled else None,
                         ),
                     ),
                 )
@@ -547,8 +548,9 @@ async def resend_unread_order_notifications():
                     android=messaging.AndroidConfig(
                         priority="high",
                         notification=messaging.AndroidNotification(
-                            channel_id="cashhub-orders",
+                            channel_id="cashhub-orders-v2",
                             tag=notification["event_id"],
+                            sound="order_ring_tone",
                         ),
                     ),
                 )
@@ -600,7 +602,7 @@ async def mark_notification_read(event_id: str, user: dict = Depends(get_current
 async def get_notification_settings(user: dict = Depends(get_current_user)):
     settings = user.get("notification_settings") or {}
     return {
-        "order_sound_enabled": bool(settings.get("order_sound_enabled", False)),
+        "order_sound_enabled": bool(settings.get("order_sound_enabled", True)),
     }
 
 
@@ -638,14 +640,34 @@ async def send_push_to_roles(roles: list[str], payload: dict):
     await send_push_to_users([str(user["_id"]) for user in users], payload)
 
 
+async def find_unique_legacy_seller(seller_name: Optional[str]):
+    name = (seller_name or "").strip()
+    if not name:
+        return None
+
+    sellers = await db.users.find(
+        {"name": {"$regex": f"^{re.escape(name)}$", "$options": "i"}},
+        {"_id": 1, "name": 1},
+    ).limit(2).to_list(2)
+    return sellers[0] if len(sellers) == 1 else None
+
+
+async def order_belongs_to_seller(order: dict, user: dict) -> bool:
+    seller_id = order.get("seller_id")
+    if seller_id:
+        return str(seller_id) == str(user.get("id"))
+
+    legacy_seller = await find_unique_legacy_seller(order.get("sellerName"))
+    return bool(legacy_seller and str(legacy_seller["_id"]) == str(user.get("id")))
+
+
 async def send_push_to_seller(seller_name: str, payload: dict, seller_id: Optional[str] = None):
-    seller = None
-    if seller_id and is_valid_object_id(seller_id):
+    if seller_id:
+        if not is_valid_object_id(seller_id):
+            return
         seller = await db.users.find_one({"_id": ObjectId(seller_id)})
-    if not seller:
-        seller = await db.users.find_one({
-            "name": {"$regex": f"^{re.escape((seller_name or '').strip())}$", "$options": "i"}
-        })
+    else:
+        seller = await find_unique_legacy_seller(seller_name)
     if not seller:
         return
 
@@ -1484,18 +1506,34 @@ async def get_product(product_id: str):
 
 @api_router.post("/orders")
 async def create_order(order: OrderCreate, user: Optional[dict] = Depends(get_current_user_optional)):
-    seller_product = None
-    product_ids = [order.productId] if order.productId else []
+    product_ids = []
+    if order.productId:
+        product_ids.append(order.productId)
     product_ids.extend(
         product.get("productId")
         for product in (order.products or [])
         if product.get("productId")
     )
-    for product_id in dict.fromkeys(product_ids):
-        if is_valid_object_id(product_id):
-            seller_product = await db.products.find_one({"_id": ObjectId(product_id)})
-            if seller_product:
-                break
+    product_ids = list(dict.fromkeys(product_ids))
+    if not product_ids or any(not is_valid_object_id(product_id) for product_id in product_ids):
+        raise HTTPException(status_code=400, detail="A valid product is required to place an order")
+
+    seller_products = []
+    for product_id in product_ids:
+        product = await db.products.find_one({"_id": ObjectId(product_id)})
+        if not product:
+            raise HTTPException(status_code=400, detail="An ordered product could not be found")
+        seller_products.append(product)
+
+    seller_ids = {str(product.get("seller_id") or "") for product in seller_products}
+    if len(seller_ids) != 1 or not next(iter(seller_ids)) or not is_valid_object_id(next(iter(seller_ids))):
+        raise HTTPException(status_code=400, detail="Ordered products must belong to one valid seller")
+
+    seller_id = next(iter(seller_ids))
+    seller_account = await db.users.find_one({"_id": ObjectId(seller_id)})
+    if not seller_account:
+        raise HTTPException(status_code=400, detail="The product seller account could not be found")
+    seller_product = seller_products[0]
 
     order_created_at = datetime.now(timezone.utc)
     created_at = order_created_at.isoformat()
@@ -1516,8 +1554,13 @@ async def create_order(order: OrderCreate, user: Optional[dict] = Depends(get_cu
         "productId": order.productId,
         "productTitle": order.productTitle,
         "productPrice": order.productPrice,
-        "sellerName": (order.sellerName or (seller_product or {}).get("sellerName") or "").strip(),
-        "seller_id": (seller_product or {}).get("seller_id"),
+        "sellerName": (
+            seller_account.get("name")
+            or seller_product.get("sellerName")
+            or seller_product.get("seller_name")
+            or "Member"
+        ).strip(),
+        "seller_id": seller_id,
         "buyerId": order.buyerId,
         "buyerName": order.buyerName,
         "buyerEmail": order.buyerEmail,
@@ -1544,7 +1587,7 @@ async def create_order(order: OrderCreate, user: Optional[dict] = Depends(get_cu
     order_doc.pop("_id", None)
     
     # Send WebSocket notification to seller
-    await manager.broadcast_to_seller(order_doc["sellerName"], {
+    await manager.broadcast_to_seller(order_doc["seller_id"], {
         "type": "new_order",
         "order": order_doc
     })
@@ -1567,16 +1610,23 @@ async def get_orders(user: Optional[dict] = Depends(get_current_user_optional)):
     if user.get("role") in ["admin", "super_admin", "treasurer"]:
         orders = await db.orders.find({"deleted": {"$ne": True}}).sort("created_at", -1).to_list(1000)
     else:
+        seller_conditions = [
+            {"buyerId": user["id"]},
+            {"seller_id": user["id"]},
+        ]
+        legacy_seller = await find_unique_legacy_seller(user.get("name"))
+        if legacy_seller and str(legacy_seller["_id"]) == str(user["id"]):
+            seller_conditions.append({
+                "seller_id": {"$in": [None, ""]},
+                "sellerName": {
+                    "$regex": f"^{re.escape((user.get('name') or '').strip())}$",
+                    "$options": "i",
+                },
+            })
         orders = await db.orders.find({
             "$and": [
                 {"deleted": {"$ne": True}},
-                {
-                    "$or": [
-                        {"buyerId": user["id"]},
-                        {"seller_id": user["id"]},
-                        {"sellerName": {"$regex": f"^{re.escape((user['name'] or '').strip())}$", "$options": "i"}}
-                    ]
-                }
+                {"$or": seller_conditions},
             ]
         }).sort("created_at", -1).to_list(1000)
 
@@ -1595,10 +1645,7 @@ async def update_order_status(order_id: str, data: OrderStatusUpdate, user: Opti
         raise HTTPException(status_code=404, detail="Order not found")
 
     is_admin = user.get("role") in ["admin", "super_admin", "treasurer"]
-    is_seller = (
-        order.get("seller_id") == user.get("id")
-        or (order.get("sellerName") or "").strip().lower() == (user.get("name") or "").strip().lower()
-    )
+    is_seller = await order_belongs_to_seller(order, user)
 
     if not is_admin and not is_seller:
         raise HTTPException(status_code=403, detail="You can only update your own orders")
@@ -1691,14 +1738,13 @@ async def remind_order_seller(order_id: str, user: dict = Depends(get_current_us
     if buyer_id != user["id"]:
         raise HTTPException(status_code=403, detail="You can only remind sellers about your own orders")
 
-    seller = None
     seller_id = order.get("seller_id")
     if seller_id and is_valid_object_id(seller_id):
         seller = await db.users.find_one({"_id": ObjectId(seller_id)})
-    if not seller:
-        seller = await db.users.find_one({
-            "name": {"$regex": f"^{re.escape((order.get('sellerName') or '').strip())}$", "$options": "i"}
-        })
+    elif not seller_id:
+        seller = await find_unique_legacy_seller(order.get("sellerName"))
+    else:
+        seller = None
     if not seller:
         raise HTTPException(status_code=404, detail="Seller account could not be found")
 
@@ -1731,7 +1777,7 @@ async def delete_order(order_id: str, user: Optional[dict] = Depends(get_current
         raise HTTPException(status_code=404, detail="Order not found")
 
     is_admin = user.get("role") in ["admin", "super_admin", "treasurer"]
-    is_seller = (order.get("sellerName") or "").strip().lower() == (user.get("name") or "").strip().lower()
+    is_seller = await order_belongs_to_seller(order, user)
     is_buyer = order.get("buyerId") == user.get("id") or order.get("created_by") == user.get("id")
 
     if not (is_admin or is_seller or is_buyer):
@@ -4558,11 +4604,20 @@ if static_dir.exists():
 
 # ==================== WEBSOCKET ENDPOINT ====================
 
-@app.websocket("/ws/orders/{seller_name}")
-async def websocket_endpoint(websocket: WebSocket, seller_name: str):
-    await manager.connect(websocket, seller_name)
+@app.websocket("/ws/orders/{seller_channel}")
+async def websocket_endpoint(websocket: WebSocket, seller_channel: str):
+    if seller_channel == "__group__" or is_valid_object_id(seller_channel):
+        seller_id = seller_channel
+    else:
+        legacy_seller = await find_unique_legacy_seller(seller_channel)
+        if not legacy_seller:
+            await websocket.close(code=1008)
+            return
+        seller_id = str(legacy_seller["_id"])
+
+    await manager.connect(websocket, seller_id)
     try:
         while True:
             data = await websocket.receive_text()
     except Exception:
-        manager.disconnect(websocket, seller_name)
+        manager.disconnect(websocket, seller_id)

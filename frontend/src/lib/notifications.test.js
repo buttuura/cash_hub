@@ -1,4 +1,25 @@
-import { describeNotificationEvent } from './notifications';
+import { describeNotificationEvent, getLocalNotificationId } from './notifications';
+import { getOrderSoundEnabled } from './notificationSettings';
+
+describe('getOrderSoundEnabled', () => {
+  it('enables order alerts unless the user explicitly opted out', () => {
+    localStorage.removeItem('cashhub-order-sound:seller-123');
+    expect(getOrderSoundEnabled('seller-123')).toBe(true);
+
+    localStorage.setItem('cashhub-order-sound:seller-123', 'false');
+    expect(getOrderSoundEnabled('seller-123')).toBe(false);
+  });
+});
+
+describe('getLocalNotificationId', () => {
+  it('returns a stable positive Android notification id for an event', () => {
+    const id = getLocalNotificationId('order-123');
+
+    expect(id).toBeGreaterThan(0);
+    expect(id).toBeLessThan(2147483647);
+    expect(getLocalNotificationId('order-123')).toBe(id);
+  });
+});
 
 describe('describeNotificationEvent', () => {
   it('describes a product order with its stable event id', () => {
