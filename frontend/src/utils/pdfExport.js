@@ -304,7 +304,7 @@ export const exportLoanAgreementPDF = async (loanData, officer, options = { down
   const isCollateralBacked = !isGuaranteed;
 
   // Collateral-backed / Selling agreement (unchanged)
-  if (isCollateralBacked) {
+  if (isCollateralBacked && options.summary !== true) {
     try {
       doc.addImage('/icons/icon-512.png', 'PNG', pageWidth / 2 - 15, 8, 30, 30);
     } catch (e) {
@@ -474,6 +474,86 @@ export const exportLoanAgreementPDF = async (loanData, officer, options = { down
     doc.text(text, leftMargin, y);
     y += lh + gap;
   };
+
+  if (opt.summary === true) {
+    try {
+      doc.addImage('/icons/icon-512.png', 'PNG', pageWidth / 2 - 12, 8, 24, 24);
+    } catch (e) {
+      // Logo load failed - icon may be missing
+    }
+
+    doc.setFont(undefined, 'bold');
+    doc.setFontSize(14);
+    doc.text(
+      isGuaranteed ? 'LOAN AGREEMENT - SIGNABLE SUMMARY' : 'COLLATERAL-BACKED SALE AGREEMENT',
+      pageWidth / 2,
+      y,
+      { align: 'center' }
+    );
+    y += 9;
+
+    if (isGuaranteed) {
+      writeParagraph(`Borrower: ${borrowerName} | Phone: ${data.loan_phone || data.loanPhone || '________________'}`, { size: 9.5, gap: 1 });
+      writeParagraph(`Principal: ${fmtCurrency(amountNum, currency)} | Interest: ${fmtCurrency(interestAmount, currency)} (${interestRateNum}%) | Total due: ${fmtCurrency(totalDue, currency)}`, { size: 9.5, gap: 1 });
+      writeParagraph(`Term: ${termWords} from disbursement | Purpose: ${data.purpose || data.loan_purpose || 'Not specified'}`, { size: 9.5, gap: 1 });
+      writeParagraph(`Guarantor / officer: ${data.guarantor_name || data.guarantorName || officerName || '________________'}`, { size: 9.5, gap: 2 });
+      writeParagraph(
+        `The Borrower agrees to repay the principal and interest shown above by the end of the stated term. The named guarantor supports repayment. If the Borrower defaults, the Lender may seek recovery through the agreed guarantee in accordance with Ugandan law. Notices may be sent to the contact details above; changes to this agreement must be in writing. This is a concise signing copy; download the full terms PDF for the complete clauses.`,
+        { size: 9, gap: 2 }
+      );
+    } else {
+      const sellerName = data.loan_name || data.user_name || '________________';
+      const sellerAddress = data.loan_phone || data.loan_email || '________________';
+      const buyerName = data.buyer_name || data.buyerName || '________________';
+      const itemName = data.collateral || data.security_description || '________________';
+      const serialNo = data.serial_number || data.serialNumber || '';
+      writeParagraph(`Seller: ${sellerName} | Contact: ${sellerAddress} | Buyer: ${buyerName}`, { size: 9.5, gap: 1 });
+      writeParagraph(`Item: ${itemName}${serialNo ? ` | Serial / IMEI: ${serialNo}` : ''} | Sale price: ${fmtCurrency(amountNum, currency)}`, { size: 9.5, gap: 1 });
+      writeParagraph(
+        `The Seller confirms ownership of the item described above and agrees to sell it to the named Buyer for the stated price. The Seller accepts responsibility for ownership disputes. This is a concise signing copy; download the full terms PDF for the complete clauses.`,
+        { size: 9, gap: 2 }
+      );
+    }
+
+    if (!isGuaranteed && collateralImageData) {
+      ensureSpace(STANDARD_ID_HEIGHT + 12);
+      doc.setFont(undefined, 'bold');
+      doc.setFontSize(9);
+      doc.text('Collateral photo:', leftMargin, y);
+      y += 5;
+      try {
+        doc.addImage(collateralImageData, getImageFormat(collateralImageData), leftMargin, y, STANDARD_ID_WIDTH, STANDARD_ID_HEIGHT);
+      } catch (imgErr) {
+        console.warn('Failed to add collateral image to summary PDF', imgErr);
+      }
+      y += STANDARD_ID_HEIGHT + 4;
+    }
+
+    ensureSpace(31);
+    const signatureY = y + 2;
+    const rightColumn = pageWidth / 2 + 5;
+    doc.setFont(undefined, 'normal');
+    doc.setFontSize(8.5);
+    doc.text(isGuaranteed ? `Lender: ${LENDER.name}` : `Seller: ${data.loan_name || data.user_name || '________________'}`, leftMargin, signatureY);
+    doc.text(isGuaranteed ? `Borrower: ${borrowerName}` : `Buyer: ${data.buyer_name || data.buyerName || '________________'}`, rightColumn, signatureY);
+    doc.text('Signature: ______________________', leftMargin, signatureY + 8);
+    doc.text('Signature: ______________________', rightColumn, signatureY + 8);
+    doc.text('Date: ______________', leftMargin, signatureY + 16);
+    doc.text('Date: ______________', rightColumn, signatureY + 16);
+    if (isGuaranteed) {
+      doc.text(`Guarantor: ${data.guarantor_name || data.guarantorName || officerName || '________________'}`, leftMargin, signatureY + 25);
+      doc.text('Witness: ________________________', rightColumn, signatureY + 25);
+      doc.text('Signature: ______________________', leftMargin, signatureY + 33);
+      doc.text('Signature: ______________________', rightColumn, signatureY + 33);
+    }
+
+    if (opt.download !== false) {
+      const safeFileName = borrowerName.toString().replace(/\s/g, '_').replace(/[^\w-]/g, '') || 'Agreement';
+      const date = new Date().toISOString().split('T')[0];
+      await savePdf(doc, `Loan_Agreement_Summary_${safeFileName}-${date}.pdf`);
+    }
+    return doc;
+  }
 
   // Logo
   try {

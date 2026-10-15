@@ -4,7 +4,7 @@ import os
 import re
 import sys
 from types import SimpleNamespace
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from bson import ObjectId
@@ -184,3 +184,56 @@ def test_get_orders_scopes_members_by_seller_id_and_preserves_admin_access(serve
         "role": "admin",
     }))
     assert len(admin_orders) == 4
+
+
+def test_buyer_can_delete_delivered_order(server_module):
+    buyer_id = str(ObjectId())
+    order_id = ObjectId()
+    update_one = AsyncMock(return_value=SimpleNamespace(modified_count=1))
+    server_module.db = SimpleNamespace(
+        orders=SimpleNamespace(
+            find_one=AsyncMock(return_value={
+                "_id": order_id,
+                "buyerId": buyer_id,
+                "status": "delivered",
+            }),
+            update_one=update_one,
+        ),
+        notifications=SimpleNamespace(update_many=AsyncMock()),
+    )
+
+    response = asyncio.run(server_module.delete_order(str(order_id), {
+        "id": buyer_id,
+        "name": "Buyer",
+        "role": "member",
+    }))
+
+    assert response == {"message": "Order deleted", "id": str(order_id)}
+    assert update_one.await_args.args[1]["$set"]["deleted"] is True
+
+
+def test_buyer_cannot_delete_order_before_delivery(server_module):
+    buyer_id = str(ObjectId())
+    order_id = ObjectId()
+    update_one = AsyncMock()
+    server_module.db = SimpleNamespace(
+        orders=SimpleNamespace(
+            find_one=AsyncMock(return_value={
+                "_id": order_id,
+                "buyerId": buyer_id,
+                "status": "shipped",
+            }),
+            update_one=update_one,
+        ),
+        notifications=SimpleNamespace(update_many=AsyncMock()),
+    )
+
+    with pytest.raises(server_module.HTTPException) as error:
+        asyncio.run(server_module.delete_order(str(order_id), {
+            "id": buyer_id,
+            "name": "Buyer",
+            "role": "member",
+        }))
+
+    assert error.value.status_code == 400
+    assert update_one.await_count == 0

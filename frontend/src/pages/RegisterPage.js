@@ -86,18 +86,16 @@ const RegisterPage = () => {
   };
 
   return (
-    <div className="min-h-screen flex">
+    <div
+      className="relative min-h-screen flex bg-cover bg-center bg-fixed"
+      style={{ backgroundImage: "url('/images/app_icons/membeers_profile_pic/sign_up.jpg')" }}
+    >
+      <div className="absolute inset-0 bg-black/45" aria-hidden="true" />
       {/* Left side - Image */}
       <div 
-        className="hidden lg:flex lg:w-1/2 relative"
-        style={{
-          backgroundImage: 'url(https://images.unsplash.com/photo-1775172990797-dac8556f2669?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NDk1Nzl8MHwxfHNlYXJjaHwxfHxjb21tdW5pdHklMjBncm91cCUyMGNvbGxhYm9yYXRpb258ZW58MHx8fHwxNzc1ODE5OTAzfDA&ixlib=rb-4.1.0&q=85)',
-          backgroundSize: 'cover',
-          backgroundPosition: 'center'
-        }}
+        className="hidden lg:flex lg:w-1/2 relative z-10"
       >
-        <div className="absolute inset-0 bg-[#2C5530]/80" />
-        <div className="relative z-10 flex flex-col justify-center px-12 text-white">
+        <div className="relative z-10 flex flex-col justify-start px-12 pt-12 text-white">
           <div className="flex items-center gap-3 mb-6">
             <img 
               src="/logo.png" 
@@ -116,8 +114,8 @@ const RegisterPage = () => {
       </div>
 
       {/* Right side - Form */}
-      <div className="flex-1 flex items-center justify-center p-8 bg-[#FAFAF8]">
-        <Card className="w-full max-w-md border border-[#E8EBE8] shadow-sm">
+      <div className="relative z-10 flex-1 flex items-center justify-center p-8">
+        <Card className="w-full max-w-md border border-white/25 bg-black/25 shadow-lg backdrop-blur-sm">
           <CardHeader className="space-y-1">
             <div className="lg:hidden flex items-center gap-2 mb-4">
               <img 
@@ -127,10 +125,10 @@ const RegisterPage = () => {
               />
               <span className="sr-only">Class One Savings</span>
             </div>
-            <CardTitle className="text-2xl font-bold font-['Manrope'] text-[#1E231F]">
+            <CardTitle className="text-2xl font-bold font-['Manrope'] text-white">
               Create an account
             </CardTitle>
-            <CardDescription className="text-[#5C665D]">
+            <CardDescription className="text-white/80">
               Join the savings group to start your journey
             </CardDescription>
           </CardHeader>
@@ -144,7 +142,7 @@ const RegisterPage = () => {
               )}
 
               <div className="space-y-2">
-                <Label htmlFor="name" className="text-[#1E231F] font-medium">Full Name</Label>
+                <Label htmlFor="name" className="text-white font-medium">Full Name</Label>
                 <Input
                   id="name"
                   type="text"
@@ -153,12 +151,12 @@ const RegisterPage = () => {
                   onChange={(e) => setName(e.target.value)}
                   required
                   data-testid="register-name-input"
-                  className="h-11 border-[#E8EBE8] focus:ring-[#2C5530] focus:border-[#2C5530]"
+                  className="h-11 border-white/50 !bg-black/40 !text-white caret-white placeholder:!text-white/70 focus:ring-[#2C5530] focus:border-[#2C5530]"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="phone" className="text-[#1E231F] font-medium">Phone Number <span className="text-[#D05A49]">*</span></Label>
+                <Label htmlFor="phone" className="text-white font-medium">Phone Number <span className="text-[#D05A49]">*</span></Label>
                 <Input
                   id="phone"
                   type="tel"
@@ -167,12 +165,12 @@ const RegisterPage = () => {
                   onChange={(e) => setPhone(e.target.value)}
                   required
                   data-testid="register-phone-input"
-                  className="h-11 border-[#E8EBE8] focus:ring-[#2C5530] focus:border-[#2C5530]"
+                  className="h-11 border-white/50 !bg-black/40 !text-white caret-white placeholder:!text-white/70 focus:ring-[#2C5530] focus:border-[#2C5530]"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="nextOfKinName" className="text-[#1E231F] font-medium">Next of kin's name <span className="text-[#D05A49]">*</span></Label>
+                <Label htmlFor="nextOfKinName" className="text-white font-medium">Next of kin's name <span className="text-[#D05A49]">*</span></Label>
                 <Input
                   id="nextOfKinName"
                   type="text"
@@ -181,12 +179,12 @@ const RegisterPage = () => {
                   onChange={(e) => setNextOfKinName(e.target.value)}
                   required
                   data-testid="register-next-of-kin-input"
-                  className="h-11 border-[#E8EBE8] focus:ring-[#2C5530] focus:border-[#2C5530]"
+                  className="h-11 border-white/50 !bg-black/40 !text-white caret-white placeholder:!text-white/70 focus:ring-[#2C5530] focus:border-[#2C5530]"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="nextOfKinPhone" className="text-[#1E231F] font-medium">Next of kin's phone number <span className="text-[#D05A49]">*</span></Label>
+                <Label htmlFor="nextOfKinPhone" className="text-white font-medium">Next of kin's phone number <span className="text-[#D05A49]">*</span></Label>
                 <Input
                   id="nextOfKinPhone"
                   type="tel"
@@ -195,12 +193,12 @@ const RegisterPage = () => {
                   onChange={(e) => setNextOfKinPhone(e.target.value)}
                   required
                   data-testid="register-next-of-kin-phone-input"
-                  className="h-11 border-[#E8EBE8] focus:ring-[#2C5530] focus:border-[#2C5530]"
+                  className="h-11 border-white/50 !bg-black/40 !text-white caret-white placeholder:!text-white/70 focus:ring-[#2C5530] focus:border-[#2C5530]"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="nationalId" className="text-[#1E231F] font-medium">National ID <span className="text-[#5C665D] font-normal text-xs">(optional)</span></Label>
+                <Label htmlFor="nationalId" className="text-white font-medium">National ID <span className="text-white/70 font-normal text-xs">(optional)</span></Label>
                 <Input
                   id="nationalId"
                   type="text"
@@ -208,13 +206,13 @@ const RegisterPage = () => {
                   value={nationalId}
                   onChange={(e) => setNationalId(e.target.value)}
                   data-testid="register-national-id-input"
-                  className="h-11 border-[#E8EBE8] focus:ring-[#2C5530] focus:border-[#2C5530]"
+                  className="h-11 border-white/50 !bg-black/40 !text-white caret-white placeholder:!text-white/70 focus:ring-[#2C5530] focus:border-[#2C5530]"
                 />
-                <p className="text-xs text-[#5C665D]">If provided, National ID must be exactly 14 characters.</p>
+                <p className="text-xs text-white/75">If provided, National ID must be exactly 14 characters.</p>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="email" className="text-[#1E231F] font-medium">Email <span className="text-[#5C665D] font-normal text-xs">(optional)</span></Label>
+                <Label htmlFor="email" className="text-white font-medium">Email <span className="text-white/70 font-normal text-xs">(optional)</span></Label>
                 <Input
                   id="email"
                   type="email"
@@ -222,12 +220,12 @@ const RegisterPage = () => {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   data-testid="register-email-input"
-                  className="h-11 border-[#E8EBE8] focus:ring-[#2C5530] focus:border-[#2C5530]"
+                  className="h-11 border-white/50 !bg-black/40 !text-white caret-white placeholder:!text-white/70 focus:ring-[#2C5530] focus:border-[#2C5530]"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="password" className="text-[#1E231F] font-medium">Password</Label>
+                <Label htmlFor="password" className="text-white font-medium">Password</Label>
                 <div className="relative">
                   <Input
                     id="password"
@@ -237,12 +235,12 @@ const RegisterPage = () => {
                     onChange={(e) => setPassword(e.target.value)}
                     required
                     data-testid="register-password-input"
-                    className="h-11 pr-11 border-[#E8EBE8] focus:ring-[#2C5530] focus:border-[#2C5530]"
+                    className="h-11 pr-11 border-white/50 !bg-black/40 !text-white caret-white placeholder:!text-white/70 focus:ring-[#2C5530] focus:border-[#2C5530]"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword((prev) => !prev)}
-                    className="absolute inset-y-0 right-3 flex items-center text-[#5C665D] hover:text-[#1E231F]"
+                    className="absolute inset-y-0 right-3 flex items-center text-white/70 hover:text-white"
                     aria-label={showPassword ? 'Hide password' : 'Show password'}
                   >
                     {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
@@ -251,7 +249,7 @@ const RegisterPage = () => {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="confirmPassword" className="text-[#1E231F] font-medium">Confirm Password</Label>
+                <Label htmlFor="confirmPassword" className="text-white font-medium">Confirm Password</Label>
                 <div className="relative">
                   <Input
                     id="confirmPassword"
@@ -261,12 +259,12 @@ const RegisterPage = () => {
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     required
                     data-testid="register-confirm-password-input"
-                    className="h-11 pr-11 border-[#E8EBE8] focus:ring-[#2C5530] focus:border-[#2C5530]"
+                    className="h-11 pr-11 border-white/50 !bg-black/40 !text-white caret-white placeholder:!text-white/70 focus:ring-[#2C5530] focus:border-[#2C5530]"
                   />
                   <button
                     type="button"
                     onClick={() => setShowConfirmPassword((prev) => !prev)}
-                    className="absolute inset-y-0 right-3 flex items-center text-[#5C665D] hover:text-[#1E231F]"
+                    className="absolute inset-y-0 right-3 flex items-center text-white/70 hover:text-white"
                     aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
                   >
                     {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
@@ -286,11 +284,11 @@ const RegisterPage = () => {
             </form>
 
             <div className="mt-6 text-center">
-              <p className="text-[#5C665D]">
+              <p className="text-white/80">
                 Already have an account?{' '}
                 <Link 
                   to={`/login${location.search}`}
-                  className="text-[#2C5530] font-semibold hover:underline"
+                  className="text-[#B9E2C3] font-semibold hover:underline"
                   data-testid="login-link"
                 >
                   Sign in

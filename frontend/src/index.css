@@ -83,6 +83,28 @@ code {
     --chart-4: 128 40% 35%;
     --chart-5: 5 59% 55%;
   }
+
+  .dark {
+    --background: 150 8% 9%;
+    --foreground: 120 10% 92%;
+    --card: 150 7% 13%;
+    --card-foreground: 120 10% 92%;
+    --popover: 150 7% 13%;
+    --popover-foreground: 120 10% 92%;
+    --primary: 128 33% 45%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 18 38% 48%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 150 6% 20%;
+    --muted-foreground: 120 6% 68%;
+    --accent: 150 6% 20%;
+    --accent-foreground: 120 10% 92%;
+    --destructive: 5 59% 55%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 150 6% 25%;
+    --input: 150 6% 25%;
+    --ring: 128 33% 45%;
+  }
 }
 
 @layer base {

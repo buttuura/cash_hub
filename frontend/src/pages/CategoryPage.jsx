@@ -97,6 +97,7 @@ const CategoryPage = () => {
   const [validOfficerCodes, setValidOfficerCodes] = useState([]);
   const [loanRequestSubmitted, setLoanRequestSubmitted] = useState(false);
   const [loanRequestData, setLoanRequestData] = useState(null);
+  const [loanTermsAccepted, setLoanTermsAccepted] = useState(false);
   const [orderSubmitting, setOrderSubmitting] = useState(false);
 
   const [purchaseName, setPurchaseName] = useState('');
@@ -229,6 +230,7 @@ const CategoryPage = () => {
     e.preventDefault();
     if (!loanName.trim() || !loanEmail.trim() || !loanAmount.trim()) { toast.error('Please fill your name, email and loan amount'); return; }
     if (Number(loanAmount) <= 0) { toast.error('Loan amount must be greater than 0'); return; }
+    if (!loanTermsAccepted) { toast.error('Please agree to the loan terms and conditions'); return; }
     const validEntry = validOfficerCodes.find(v => v.code === officerCode) || null;
     const staticOfficer = OFFICERS.find(o => o.code === officerCode) || null;
     const officer = validEntry ? { name: extractPersonName(validEntry.label), code: validEntry.code } : staticOfficer ? { name: staticOfficer.name, code: staticOfficer.code } : null;
@@ -263,14 +265,36 @@ const CategoryPage = () => {
     }
   };
 
-  const handleDownloadLoanAgreement = async () => {
-    if (!loanRequestData) return;
-    const officer = OFFICERS.find((o) => o.code === loanRequestData.officerCode) || (loanRequestData.officer_name ? { name: loanRequestData.officer_name, code: loanRequestData.officerCode } : null);
-    await exportLoanAgreementPDF(loanRequestData, officer, { download: true, collateralImage: collateralImagePreview, nationalIdImages: nationalIdPreviews }).catch(() => {});
+  const handleDownloadLoanAgreement = async (summary = false) => {
+    const pdfData = loanRequestData || {
+      loan_name: loanName.trim() || 'Applicant',
+      loan_email: loanEmail.trim(),
+      loan_phone: loanPhone.trim(),
+      amount: Number(loanAmount) || 0,
+      purpose: loanPurpose.trim(),
+      collateral: collateral.trim(),
+      loan_type: loanIsGuaranteed ? 'guaranteed' : 'collateral-backed',
+      is_guaranteed: loanIsGuaranteed,
+      repayment_period: repaymentPeriod,
+      serial_number: serialNumber,
+      buyer_name: buyerName.trim(),
+      officer_code: officerCode,
+      officer_name: (validOfficerCodes.find((entry) => entry.code === officerCode)?.label || '').replace(/\s*\([^)]*\)\s*$/, ''),
+    };
+    const code = pdfData.officer_code || pdfData.officerCode || officerCode;
+    const officer = OFFICERS.find((item) => item.code === code)
+      || (pdfData.officer_name ? { name: pdfData.officer_name, code } : null);
+    await exportLoanAgreementPDF(pdfData, officer, {
+      download: true,
+      summary,
+      collateralImage: collateralImagePreview,
+      nationalIdImages: nationalIdPreviews,
+    }).catch(() => toast.error('Could not create the loan PDF'));
   };
 
   const resetQuickLoanDialogState = () => {
     setLoanRequestSubmitted(false); setLoanRequestData(null); setLoanName(''); setLoanEmail(''); setLoanPhone(''); setLoanAmount(''); setLoanPurpose(''); setCollateral(''); setSerialNumber(''); setBuyerName(''); setCollateralImage(null); setCollateralImagePreview(''); setOfficerCode('');     setNationalIdImages([]);
+    setLoanTermsAccepted(false);
     setNationalIdPreviews([]);
     setRepaymentPeriod('2_weeks');
   };
@@ -519,7 +543,8 @@ return (
                   </div>
                 </div>
                 <div className="flex flex-col gap-3">
-                  <Button type="button" className="bg-[#172B12] text-white hover:bg-[#0f2409]" onClick={handleDownloadLoanAgreement}>Download loan agreement</Button>
+                  <Button type="button" className="bg-[#172B12] text-white hover:bg-[#0f2409]" onClick={() => handleDownloadLoanAgreement(true)}>Download summary to sign</Button>
+                  <Button type="button" variant="outline" onClick={() => handleDownloadLoanAgreement(false)}>Download full terms PDF</Button>
                   <Button type="button" className="border border-slate-300 text-slate-700 hover:bg-slate-100" onClick={() => setQuickLoanOpen(false)}>Close</Button>
                 </div>
               </div>
@@ -558,6 +583,21 @@ return (
                     <div className="space-y-2"><Label htmlFor="collateral-image" className="text-sm font-medium text-slate-700">Item Photo</Label><Input id="collateral-image" type="file" accept="image/*" onChange={(e) => { const file = e.target.files?.[0]; if (file) { setCollateralImage(file); const reader = new FileReader(); reader.onloadend = () => setCollateralImagePreview(reader.result); reader.readAsDataURL(file); } }} required />{collateralImagePreview && <img src={collateralImagePreview} alt="preview" className="mt-2 h-24 w-24 object-cover rounded" />}</div>
                   </>
                 )}
+                <div className="space-y-2 rounded-lg border border-slate-200 p-3">
+                  <label htmlFor="loan-terms-accepted" className="flex items-start gap-2 text-sm text-slate-700">
+                    <input
+                      id="loan-terms-accepted"
+                      type="checkbox"
+                      checked={loanTermsAccepted}
+                      onChange={(event) => setLoanTermsAccepted(event.target.checked)}
+                      className="mt-1 accent-[#172B12]"
+                    />
+                    <span>I have reviewed and agree to the loan terms and conditions.</span>
+                  </label>
+                  <Button type="button" variant="outline" className="w-full" onClick={() => handleDownloadLoanAgreement(false)}>
+                    Download full terms PDF
+                  </Button>
+                </div>
                 <Button type="submit" className="w-full">Submit Request</Button>
               </form>
             )}

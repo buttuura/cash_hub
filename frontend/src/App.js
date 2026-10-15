@@ -1,5 +1,6 @@
 import React, { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { ThemeProvider } from 'next-themes';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { Toaster } from 'sonner';
 import PullToRefresh from './components/PullToRefresh';
@@ -142,11 +143,13 @@ function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <NotificationSound />
-        <PushHandler />
-        <PullToRefresh>
-          <AppRoutes />
-        </PullToRefresh>
+        <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false} storageKey="cashhub-theme">
+          <NotificationSound />
+          <PushHandler />
+          <PullToRefresh>
+            <AppRoutes />
+          </PullToRefresh>
+        </ThemeProvider>
       </AuthProvider>
     </BrowserRouter>
   );

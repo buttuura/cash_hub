@@ -182,6 +182,7 @@ const ShopPage = () => {
   const [repaymentPeriod, setRepaymentPeriod] = useState('2_weeks');
   const [validOfficerCodes, setValidOfficerCodes] = useState([]);
   const [loanRequestSubmitted, setLoanRequestSubmitted] = useState(false);
+  const [loanTermsAccepted, setLoanTermsAccepted] = useState(false);
   const [heroPosterUrls, setHeroPosterUrls] = useState(['/hero_bg_img.jpeg']);
   const [heroPosterIndex, setHeroPosterIndex] = useState(0);
   const shopNavRef = useRef(null);
@@ -531,7 +532,7 @@ const ShopPage = () => {
     }
   };
 
-  const handleDownloadLoanAgreement = async () => {
+  const handleDownloadLoanAgreement = async (summary = false) => {
     if (!loanRequestData) return;
     const officer = OFFICERS.find((o) => o.code === loanRequestData.officerCode)
       || (loanRequestData.officer_name ? { name: loanRequestData.officer_name, code: loanRequestData.officerCode } : null);
@@ -539,6 +540,7 @@ const ShopPage = () => {
       const { exportLoanAgreementPDF } = await import('../utils/pdfExport');
       await exportLoanAgreementPDF(loanRequestData, officer, {
         download: true,
+        summary,
         collateralImage: collateralImagePreview,
         nationalIdImages: nationalIdPreviews,
         borrowerAddress: loanAddress,
@@ -559,6 +561,7 @@ const ShopPage = () => {
   const resetQuickLoanDialogState = () => {
     setLoanRequestSubmitted(false);
     setLoanRequestData(null);
+    setLoanTermsAccepted(false);
     setLoanName('');
     setLoanEmail('');
     setLoanPhone('');
@@ -778,6 +781,11 @@ const ShopPage = () => {
 
   if (Number(loanAmount) <= 0) {
     toast.error('Loan amount must be greater than 0');
+    return;
+  }
+
+  if (!loanTermsAccepted) {
+    toast.error('Please agree to the loan terms and conditions');
     return;
   }
 
@@ -1526,14 +1534,32 @@ const handleOpenPurchase = (product) => {
                   </div>
                 </>
               )}
+              <div className="space-y-2 rounded-lg border border-slate-200 p-3">
+                <label htmlFor="shop-loan-terms-accepted" className="flex items-start gap-2 text-sm text-slate-700">
+                  <input
+                    id="shop-loan-terms-accepted"
+                    type="checkbox"
+                    checked={loanTermsAccepted}
+                    onChange={(event) => setLoanTermsAccepted(event.target.checked)}
+                    className="mt-1 accent-[#172B12]"
+                  />
+                  <span>I have read and agree to the loan terms and conditions.</span>
+                </label>
+                <Button type="button" variant="outline" className="w-full" onClick={() => handleDownloadLoanAgreement(false)}>
+                  Download full terms PDF
+                </Button>
+              </div>
             </form>
           )}
           </div>
           <div className="flex flex-col gap-3 pt-4 border-t border-[#E8EBE8]">
             {loanRequestSubmitted ? (
               <>
-                <Button type="button" className="bg-[#172B12] text-white hover:bg-[#0f2409]" onClick={handleDownloadLoanAgreement}>
-                  Download loan agreement
+                <Button type="button" className="bg-[#172B12] text-white hover:bg-[#0f2409]" onClick={() => handleDownloadLoanAgreement(true)}>
+                  Download summary to sign
+                </Button>
+                <Button type="button" variant="outline" onClick={() => handleDownloadLoanAgreement(false)}>
+                  Download full terms PDF
                 </Button>
                 <Button type="button" className="border border-slate-300 text-slate-700 hover:bg-slate-100" onClick={() => setQuickLoanOpen(false)}>
                   Close

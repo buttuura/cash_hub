@@ -167,17 +167,15 @@ const LoginPage = () => {
   };
 
   return (
-    <div className="min-h-screen flex">
+    <div
+      className="relative min-h-screen flex bg-cover bg-center bg-fixed"
+      style={{ backgroundImage: "url('/images/app_icons/membeers_profile_pic/login_page.jpg')" }}
+    >
+      <div className="absolute inset-0 bg-black/45" aria-hidden="true" />
       {/* Left side - Image */}
       <div 
-        className="hidden lg:flex lg:w-1/2 relative"
-        style={{
-          backgroundImage: 'url(https://images.pexels.com/photos/6109006/pexels-photo-6109006.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940)',
-          backgroundSize: 'cover',
-          backgroundPosition: 'center'
-        }}
+        className="hidden lg:flex lg:w-1/2 relative z-10"
       >
-        <div className="absolute inset-0 bg-[#2C5530]/80" />
         <div className="relative z-10 flex flex-col justify-center px-12 text-white">
           <div className="flex items-center gap-3 mb-6">
             <img 
@@ -197,8 +195,8 @@ const LoginPage = () => {
       </div>
 
       {/* Right side - Form */}
-      <div className="flex-1 flex items-center justify-center p-8 bg-[#FAFAF8]">
-        <Card className="w-full max-w-md border border-[#E8EBE8] shadow-sm">
+      <div className="relative z-10 flex-1 flex items-center justify-center p-8">
+        <Card className="w-full max-w-md border border-white/25 bg-black/25 shadow-lg backdrop-blur-sm">
           <CardHeader className="space-y-1">
             <div className="lg:hidden flex items-center gap-2 mb-4">
               <img 
@@ -208,10 +206,10 @@ const LoginPage = () => {
               />
               <span className="sr-only">Class One Savings</span>
             </div>
-            <CardTitle className="text-2xl font-bold font-['Manrope'] text-[#1E231F]">
+            <CardTitle className="text-2xl font-bold font-['Manrope'] text-white">
               Welcome back
             </CardTitle>
-            <CardDescription className="text-[#5C665D]">
+            <CardDescription className="text-white/80">
               Enter your credentials to access your account
             </CardDescription>
           </CardHeader>
@@ -225,7 +223,7 @@ const LoginPage = () => {
               )}
 
               <div className="space-y-2">
-                <Label htmlFor="identifier" className="text-[#1E231F] font-medium">Phone Number <span className="text-[#5C665D] font-normal text-xs">(or email)</span></Label>
+                <Label htmlFor="identifier" className="text-white font-medium">Phone Number <span className="text-white/70 font-normal text-xs">(or email)</span></Label>
                 <Input
                   id="identifier"
                   type="text"
@@ -234,12 +232,12 @@ const LoginPage = () => {
                   onChange={(e) => setIdentifier(e.target.value)}
                   required
                   data-testid="login-identifier-input"
-                  className="h-11 border-[#E8EBE8] focus:ring-[#2C5530] focus:border-[#2C5530]"
+                  className="h-11 border-white/50 !bg-black/40 !text-white caret-white placeholder:!text-white/70 focus:ring-[#2C5530] focus:border-[#2C5530]"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="password" className="text-[#1E231F] font-medium">Password</Label>
+                <Label htmlFor="password" className="text-white font-medium">Password</Label>
                 <div className="relative">
                   <Input
                     id="password"
@@ -249,7 +247,7 @@ const LoginPage = () => {
                     onChange={(e) => setPassword(e.target.value)}
                     required
                     data-testid="login-password-input"
-                    className="h-11 pr-11 border-[#E8EBE8] focus:ring-[#2C5530] focus:border-[#2C5530]"
+                    className="h-11 pr-11 border-white/50 !bg-black/40 !text-white caret-white placeholder:!text-white/70 focus:ring-[#2C5530] focus:border-[#2C5530]"
                   />
                   <button
                     type="button"
@@ -311,11 +309,11 @@ const LoginPage = () => {
             </div>
 
             <div className="mt-6 text-center">
-              <p className="text-[#5C665D]">
+              <p className="text-white/80">
                 Don't have an account?{' '}
                 <Link 
                   to={`/register${location.search}`}
-                  className="text-[#2C5530] font-semibold hover:underline"
+                  className="text-[#B9E2C3] font-semibold hover:underline"
                   data-testid="register-link"
                 >
                   Sign up

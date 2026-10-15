@@ -570,7 +570,7 @@ useEffect(() => {
             </div>
 
             <div className="hidden md:flex items-center gap-1 flex-wrap">
-              {SERVICES_TABS.map((tab) => (
+              {SERVICES_TABS.filter((tab) => tab.id !== 'deleted' || isTreasurer).map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
@@ -610,7 +610,7 @@ useEffect(() => {
 
         {/* Mobile Navigation */}
         <div className="md:hidden border-t border-[#E8EBE8] bg-white px-4 py-2 flex gap-2 overflow-x-auto">
-          {SERVICES_TABS.map((tab) => (
+          {SERVICES_TABS.filter((tab) => tab.id !== 'deleted' || isTreasurer).map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
@@ -638,7 +638,7 @@ useEffect(() => {
                  <p className="text-sm text-[#5C665D]">Track buyers, sellers, and order statuses.</p>
                </div>
                <div className="flex items-center gap-2">
-                 {selectedOrders.size > 0 && (
+                 {isTreasurer && selectedOrders.size > 0 && (
                    <Button
                      variant="outline"
                      className="border-[#D05A49] text-[#D05A49] rounded-full"
@@ -667,18 +667,20 @@ useEffect(() => {
 <table className="w-full">
                      <thead>
                        <tr className="border-b border-[#E8EBE8] bg-[#FAFAF8]">
-                         <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap w-10">
-                           <Checkbox
-                             checked={orders.length > 0 && orders.every((o) => selectedOrders.has(o.id))}
-                             onCheckedChange={(checked) => {
-                               if (checked) {
-                                 setSelectedOrders(new Set(orders.map((o) => o.id)));
-                               } else {
-                                 setSelectedOrders(new Set());
-                               }
-                             }}
-                           />
-                         </th>
+                         {isTreasurer && (
+                           <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap w-10">
+                             <Checkbox
+                               checked={orders.length > 0 && orders.every((o) => selectedOrders.has(o.id))}
+                               onCheckedChange={(checked) => {
+                                 if (checked) {
+                                   setSelectedOrders(new Set(orders.map((o) => o.id)));
+                                 } else {
+                                   setSelectedOrders(new Set());
+                                 }
+                               }}
+                             />
+                           </th>
+                         )}
                          <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Date</th>
                          <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Seller</th>
                          <th className="text-left py-3 px-3 text-xs font-semibold text-[#5C665D] whitespace-nowrap">Customer</th>
@@ -699,22 +701,24 @@ useEffect(() => {
                            : null;
                          return (
                            <tr key={order.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5]">
-                             <td className="py-3 px-3 text-xs text-[#1E231F] whitespace-nowrap">
-                               <Checkbox
-                                 checked={selectedOrders.has(order.id)}
-                                 onCheckedChange={(checked) => {
-                                   setSelectedOrders((prev) => {
-                                     const next = new Set(prev);
-                                     if (checked) {
-                                       next.add(order.id);
-                                     } else {
-                                       next.delete(order.id);
-                                     }
-                                     return next;
-                                   });
-                                 }}
-                               />
-</td>
+                             {isTreasurer && (
+                               <td className="py-3 px-3 text-xs text-[#1E231F] whitespace-nowrap">
+                                 <Checkbox
+                                   checked={selectedOrders.has(order.id)}
+                                   onCheckedChange={(checked) => {
+                                     setSelectedOrders((prev) => {
+                                       const next = new Set(prev);
+                                       if (checked) {
+                                         next.add(order.id);
+                                       } else {
+                                         next.delete(order.id);
+                                       }
+                                       return next;
+                                     });
+                                   }}
+                                 />
+                               </td>
+                             )}
                              <td className="py-3 px-3 text-xs text-[#1E231F] whitespace-nowrap">
                                {new Date(order.createdAt || order.created_at).toLocaleDateString()}
                              </td>

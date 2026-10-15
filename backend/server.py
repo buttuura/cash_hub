@@ -1772,7 +1772,7 @@ async def delete_order(order_id: str, user: Optional[dict] = Depends(get_current
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid order id")
 
-    order = await db.orders.find_one({"_id": oid})
+    order = await db.orders.find_one({"_id": oid, "deleted": {"$ne": True}})
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
 
@@ -1782,6 +1782,10 @@ async def delete_order(order_id: str, user: Optional[dict] = Depends(get_current
 
     if not (is_admin or is_seller or is_buyer):
         raise HTTPException(status_code=403, detail="You can only delete your own orders")
+
+    if is_buyer and not is_admin:
+        if str(order.get("status") or "").lower() != "delivered":
+            raise HTTPException(status_code=400, detail="You can delete an order after it has been delivered")
 
     result = await db.orders.update_one(
         {"_id": oid},
@@ -2568,12 +2572,8 @@ async def request_deposit(deposit: DepositRequest, user: dict = Depends(get_curr
         target_user["id"] = str(target_user["_id"])
         target_user.pop("_id", None)
 
-    if deposit.deposit_type == "development_fee" and user.get("role") in ["super_admin", "treasurer"]:
-        deposit_type = "development_fee"
-        allowed_deposit_types = ["savings", "loan_payment", "interest_payment", "development_fee"]
-    else:
-        deposit_type = "savings" if deposit.deposit_type == "development_fee" else deposit.deposit_type
-        allowed_deposit_types = ["savings", "loan_payment", "interest_payment"]
+    deposit_type = deposit.deposit_type
+    allowed_deposit_types = ["savings", "loan_payment", "interest_payment", "development_fee"]
     
     if deposit_type not in allowed_deposit_types:
         raise HTTPException(status_code=400, detail="Invalid deposit type")
@@ -2629,6 +2629,24 @@ async def request_deposit(deposit: DepositRequest, user: dict = Depends(get_curr
     deposit_doc["id"] = str(result.inserted_id)
     deposit_doc.pop("_id", None)
 
+    if deposit.target_user_id and user.get("role") in ["super_admin", "treasurer"]:
+        await _process_deposit_approval(
+            TransactionApproval(
+                transaction_id=deposit_doc["id"],
+                approved=True,
+                deduct_late_fee=deposit.deduct_late_fee,
+            ),
+            user,
+        )
+        approved_deposit = await db.deposits.find_one(
+            {"_id": ObjectId(deposit_doc["id"])}
+        )
+        if not approved_deposit:
+            raise HTTPException(status_code=500, detail="Approved deposit could not be loaded")
+        approved_deposit["id"] = str(approved_deposit["_id"])
+        approved_deposit.pop("_id", None)
+        return approved_deposit
+
     await manager.broadcast_to_seller("__group__", {
         "type": "new_deposit",
         "deposit": deposit_doc,
@@ -2662,6 +2680,10 @@ async def get_deposits(user: dict = Depends(get_current_user), month: Optional[s
 
 @api_router.post("/deposits/approve")
 async def approve_deposit(approval: TransactionApproval, user: dict = Depends(require_admin)):
+    return await _process_deposit_approval(approval, user)
+
+
+async def _process_deposit_approval(approval: TransactionApproval, user: dict):
     deposit = await db.deposits.find_one({"_id": ObjectId(approval.transaction_id)})
     if not deposit:
         raise HTTPException(status_code=404, detail="Deposit not found")
@@ -3783,21 +3805,60 @@ async def request_withdrawal(withdrawal: WithdrawalRequest, user: dict = Depends
         raise HTTPException(status_code=400, detail="Amount must be positive")
     
     user_data = await db.users.find_one({"_id": ObjectId(user["id"])})
-    
+    if not user_data:
+        raise HTTPException(status_code=404, detail="User not found")
+
     if withdrawal.withdrawal_type == "leaving_group":
-        # Check if can leave
-        leave_check = await check_can_leave_group(user["id"])
-        if not leave_check["can_leave"]:
-            raise HTTPException(status_code=400, detail=leave_check["reason"])
-        
-        # Can withdraw savings + development fund
-        max_amount = user_data.get("total_savings", 0) + user_data.get("development_fund", 0)
-        if withdrawal.amount > max_amount:
-            raise HTTPException(status_code=400, detail="Insufficient funds")
+        active_withdrawal = await db.withdrawals.find_one({
+            "user_id": user["id"],
+            "status": {"$in": ["waiting_period", "pending"]}
+        })
+        if active_withdrawal:
+            raise HTTPException(status_code=400, detail="You already have a withdrawal request in progress")
+
+        active_loan = await db.loans.find_one({
+            "user_id": user["id"],
+            "status": "approved",
+            "repaid": False
+        })
+        if active_loan:
+            raise HTTPException(status_code=400, detail="Clear your loan before requesting to withdraw all funds")
+
+        guaranteeing = await db.loans.find_one({
+            "guarantor_id": user["id"],
+            "status": {"$in": ["pending_guarantor", "pending_admin", "approved"]},
+            "repaid": False
+        })
+        if guaranteeing:
+            raise HTTPException(status_code=400, detail="You are guaranteeing a loan. Wait for it to be repaid.")
+
+        savings_amount = float(user_data.get("total_savings", 0) or 0)
+        development_fund_amount = float(user_data.get("development_fund", 0) or 0)
+        max_amount = savings_amount + development_fund_amount
+        if abs(withdrawal.amount - max_amount) > 0.01:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Leaving-group withdrawals must include your full balance of UGX {max_amount:,.0f}"
+            )
+
+        created_at = datetime.now(timezone.utc)
+        approval_available_at = created_at + timedelta(days=60)
+        withdrawal_status = "waiting_period"
     else:
+        if await db.withdrawals.find_one({
+            "user_id": user["id"],
+            "withdrawal_type": "leaving_group",
+            "status": {"$in": ["waiting_period", "pending"]}
+        }):
+            raise HTTPException(status_code=400, detail="A full withdrawal request is in progress")
         # Regular withdrawal - only from savings, not development fund
         if withdrawal.amount > user_data.get("total_savings", 0):
             raise HTTPException(status_code=400, detail="Insufficient savings (development fund cannot be withdrawn)")
+        savings_amount = withdrawal.amount
+        development_fund_amount = 0
+        created_at = datetime.now(timezone.utc)
+        approval_available_at = None
+        withdrawal_status = "pending"
     
     withdrawal_doc = {
         "user_id": user["id"],
@@ -3805,9 +3866,12 @@ async def request_withdrawal(withdrawal: WithdrawalRequest, user: dict = Depends
         "user_email": user.get("email"),
         "amount": withdrawal.amount,
         "withdrawal_type": withdrawal.withdrawal_type,
+        "savings_amount": savings_amount,
+        "development_fund_amount": development_fund_amount,
         "reason": withdrawal.reason,
-        "status": "pending",
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "status": withdrawal_status,
+        "created_at": created_at.isoformat(),
+        "approval_available_at": approval_available_at.isoformat() if approval_available_at else None,
         "approved_at": None,
         "approved_by": None
     }
@@ -3815,6 +3879,27 @@ async def request_withdrawal(withdrawal: WithdrawalRequest, user: dict = Depends
     result = await db.withdrawals.insert_one(withdrawal_doc)
     withdrawal_doc["id"] = str(result.inserted_id)
     withdrawal_doc.pop("_id", None)
+
+    if withdrawal_status == "waiting_period":
+        await send_push_to_roles(["treasurer"], {
+            "id": f"withdrawal-notice-treasurer-{withdrawal_doc['id']}",
+            "type": "new_withdrawal",
+            "title": "Full withdrawal notice started",
+            "body": (
+                f"{withdrawal_doc.get('user_name') or 'A member'} started a 60-day notice "
+                f"to withdraw UGX {float(withdrawal_doc.get('amount') or 0):,.0f}. "
+                f"It will be ready for approval on {approval_available_at:%d %b %Y}."
+            ),
+            "url": "/dashboard",
+        })
+        await send_push_to_users([withdrawal_doc["user_id"]], {
+            "id": f"withdrawal-notice-{withdrawal_doc['id']}",
+            "type": "transaction_update",
+            "title": "Two-month withdrawal notice started",
+            "body": "Your full-balance withdrawal will be sent to the treasurer for approval after the 60-day notice period.",
+            "url": "/dashboard",
+        })
+        return withdrawal_doc
 
     await manager.broadcast_to_seller("__group__", {
         "type": "new_withdrawal",
@@ -3836,6 +3921,53 @@ async def request_withdrawal(withdrawal: WithdrawalRequest, user: dict = Depends
     })
 
     return withdrawal_doc
+
+
+async def activate_matured_full_withdrawals():
+    now = datetime.now(timezone.utc)
+    matured_withdrawals = await db.withdrawals.find({
+        "status": "waiting_period",
+        "approval_available_at": {"$lte": now.isoformat()},
+    }).to_list(1000)
+
+    for withdrawal in matured_withdrawals:
+        result = await db.withdrawals.update_one(
+            {
+                "_id": withdrawal["_id"],
+                "status": "waiting_period",
+                "approval_available_at": withdrawal["approval_available_at"],
+            },
+            {"$set": {"status": "pending", "notice_period_completed_at": now.isoformat()}}
+        )
+        if result.modified_count != 1:
+            continue
+
+        notification_withdrawal = {
+            **withdrawal,
+            "id": str(withdrawal["_id"]),
+            "status": "pending",
+            "notice_period_completed_at": now.isoformat(),
+        }
+        notification_withdrawal.pop("_id", None)
+        await manager.broadcast_to_seller("__group__", {
+            "type": "new_withdrawal",
+            "withdrawal": notification_withdrawal,
+        })
+        await send_push_to_roles(["admin", "super_admin", "treasurer"], {
+            "id": f"withdrawal-{withdrawal['_id']}",
+            "type": "new_withdrawal",
+            "title": "Full withdrawal ready for approval",
+            "body": f"{withdrawal.get('user_name') or 'A member'} completed the 60-day notice and requested UGX {float(withdrawal.get('amount') or 0):,.0f}",
+            "url": "/dashboard",
+        })
+        await send_push_to_users([withdrawal["user_id"]], {
+            "id": f"withdrawal-ready-{withdrawal['_id']}",
+            "type": "transaction_update",
+            "title": "Withdrawal sent for approval",
+            "body": "Your 60-day notice period is complete. Your full-balance withdrawal is now awaiting treasurer approval.",
+            "url": "/dashboard",
+        })
+
 
 @api_router.get("/withdrawals")
 async def get_withdrawals(user: dict = Depends(get_current_user)):
@@ -3859,6 +3991,15 @@ async def approve_withdrawal(approval: TransactionApproval, user: dict = Depends
     
     if withdrawal["status"] != "pending":
         raise HTTPException(status_code=400, detail="Withdrawal already processed")
+
+    if (
+        withdrawal.get("withdrawal_type") == "leaving_group"
+        and withdrawal.get("approval_available_at")
+        and datetime.now(timezone.utc) < datetime.fromisoformat(
+            withdrawal["approval_available_at"].replace("Z", "+00:00")
+        )
+    ):
+        raise HTTPException(status_code=400, detail="The 60-day notice period is not complete")
     
     new_status = "approved" if approval.approved else "rejected"
     
@@ -3866,14 +4007,38 @@ async def approve_withdrawal(approval: TransactionApproval, user: dict = Depends
         user_data = await db.users.find_one({"_id": ObjectId(withdrawal["user_id"])})
         
         if withdrawal.get("withdrawal_type") == "leaving_group":
-            # Deduct from both savings and development fund
-            total_available = user_data.get("total_savings", 0) + user_data.get("development_fund", 0)
-            if total_available < withdrawal["amount"]:
+            active_loan = await db.loans.find_one({
+                "user_id": withdrawal["user_id"],
+                "status": "approved",
+                "repaid": False
+            })
+            if active_loan:
+                raise HTTPException(status_code=400, detail="Member has an active loan")
+
+            guaranteeing = await db.loans.find_one({
+                "guarantor_id": withdrawal["user_id"],
+                "status": {"$in": ["pending_guarantor", "pending_admin", "approved"]},
+                "repaid": False
+            })
+            if guaranteeing:
+                raise HTTPException(status_code=400, detail="Member is guaranteeing an active loan")
+
+            savings_amount = float(withdrawal.get("savings_amount", user_data.get("total_savings", 0)) or 0)
+            development_fund_amount = float(
+                withdrawal.get("development_fund_amount", user_data.get("development_fund", 0)) or 0
+            )
+            if (
+                float(user_data.get("total_savings", 0) or 0) < savings_amount
+                or float(user_data.get("development_fund", 0) or 0) < development_fund_amount
+            ):
                 raise HTTPException(status_code=400, detail="Insufficient funds")
             
             await db.users.update_one(
                 {"_id": ObjectId(withdrawal["user_id"])},
-                {"$set": {"total_savings": 0, "development_fund": 0}}
+                {"$inc": {
+                    "total_savings": -savings_amount,
+                    "development_fund": -development_fund_amount,
+                }}
             )
         else:
             if user_data.get("total_savings", 0) < withdrawal["amount"]:
@@ -4433,6 +4598,13 @@ async def startup_event():
         scheduler.add_job(accrue_interest_for_all_loans, 'cron', hour=0, minute=0, timezone='UTC')
         scheduler.add_job(
             resend_unread_order_notifications,
+            'interval',
+            seconds=60,
+            max_instances=1,
+            coalesce=True,
+        )
+        scheduler.add_job(
+            activate_matured_full_withdrawals,
             'interval',
             seconds=60,
             max_instances=1,

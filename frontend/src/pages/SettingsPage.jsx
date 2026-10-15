@@ -1,17 +1,19 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, BellRing, ShoppingCart } from 'lucide-react';
+import { ArrowLeft, BellRing, Moon, ShoppingCart, Sun } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { Switch } from '../components/ui/switch';
+import { useTheme } from 'next-themes';
 import { useAuth } from '../contexts/AuthContext';
 import { API_URL } from '../lib/api';
 import { getOrderSoundEnabled, saveOrderSoundEnabled } from '../lib/notificationSettings';
 
 const SettingsPage = () => {
   const navigate = useNavigate();
+  const { resolvedTheme, setTheme } = useTheme();
   const { user, getAuthHeaders } = useAuth();
   const userId = user?.id || user?._id;
   const [orderSoundEnabled, setOrderSoundEnabled] = useState(() => getOrderSoundEnabled(userId));
@@ -84,6 +86,33 @@ const SettingsPage = () => {
           <h1 className="mt-1 text-3xl font-bold text-[#1E231F]">Settings</h1>
           <p className="mt-2 text-sm text-[#5C665D]">Manage preferences for your Cash Hub account.</p>
         </div>
+
+        <Card className="border-[#E8EBE8] shadow-sm">
+          <CardHeader>
+            <CardTitle>Appearance</CardTitle>
+            <CardDescription>Choose the theme used throughout Cash Hub.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between gap-5 rounded-xl border border-[#E8EBE8] bg-white p-4">
+              <div className="flex items-center gap-3">
+                {resolvedTheme === 'dark' ? (
+                  <Moon className="h-5 w-5 text-[#5C665D]" aria-hidden="true" />
+                ) : (
+                  <Sun className="h-5 w-5 text-[#5C665D]" aria-hidden="true" />
+                )}
+                <div className="space-y-1">
+                  <h2 className="font-semibold text-[#1E231F]">Dark theme</h2>
+                  <p className="text-sm text-[#5C665D]">Use a darker appearance across the app.</p>
+                </div>
+              </div>
+              <Switch
+                aria-label="Dark theme"
+                checked={resolvedTheme === 'dark'}
+                onCheckedChange={(enabled) => setTheme(enabled ? 'dark' : 'light')}
+              />
+            </div>
+          </CardContent>
+        </Card>
 
         <Card className="border-[#E8EBE8] shadow-sm">
           <CardHeader>

@@ -52,6 +52,7 @@ import {
   ShoppingCart,
   Copy,
   Check,
+  Store,
   Settings,
   Package,
   Image as ImageIcon,
@@ -100,24 +101,33 @@ const PRODUCT_CATEGORIES = [
 const PROJECT_CARD_STYLES = [
   {
     card: 'border-[#92B28A] bg-[#D5E6CE] shadow-[0_10px_30px_-18px_rgba(44,85,48,0.45)]',
+    darkCard: 'dark:border-[#425B45] dark:bg-[#202C23]',
     header: 'from-[#E7F3DE] via-[#F4FAEE] to-[#DCEED5]',
+    darkHeader: 'dark:from-[#263B2B] dark:via-[#2B3D2D] dark:to-[#26372A]',
     accent: 'bg-[#2C5530] text-white',
+    darkAccent: 'dark:bg-[#496D4D] dark:text-[#F1F8F1]',
     eyebrow: 'text-[#347242]',
     icon: Sparkles,
     label: 'Fresh idea',
   },
   {
     card: 'border-[#C88D76] bg-[#EBC9B8] shadow-[0_10px_30px_-18px_rgba(176,91,64,0.5)]',
+    darkCard: 'dark:border-[#65483E] dark:bg-[#302521]',
     header: 'from-[#F9E3D6] via-[#FFF5EE] to-[#F3D2C3]',
+    darkHeader: 'dark:from-[#432E28] dark:via-[#49332B] dark:to-[#3B2924]',
     accent: 'bg-[#B05B40] text-white',
+    darkAccent: 'dark:bg-[#80513F] dark:text-[#FFF4ED]',
     eyebrow: 'text-[#A34E36]',
     icon: Lightbulb,
     label: 'Member spotlight',
   },
   {
     card: 'border-[#A99B78] bg-[#DCD4B9] shadow-[0_10px_30px_-18px_rgba(31,35,31,0.45)]',
+    darkCard: 'dark:border-[#5E5845] dark:bg-[#2D2B24]',
     header: 'from-[#E9E6D9] via-[#F8F5E9] to-[#DCD5BF]',
+    darkHeader: 'dark:from-[#39372D] dark:via-[#403C30] dark:to-[#353329]',
     accent: 'bg-[#8B6B2E] text-white',
+    darkAccent: 'dark:bg-[#705C36] dark:text-[#FFF7E7]',
     eyebrow: 'text-[#806126]',
     icon: Rocket,
     label: 'Big ambition',
@@ -158,6 +168,7 @@ const Dashboard = () => {
   const [loanMonthFilter, setLoanMonthFilter] = useState('all');
   const [withdrawals, setWithdrawals] = useState([]);
   const [withdrawalMonthFilter, setWithdrawalMonthFilter] = useState('all');
+  const [countdownNow, setCountdownNow] = useState(Date.now());
   const [pettyCashMonthFilter, setPettyCashMonthFilter] = useState('all');
   const [quickLoans, setQuickLoans] = useState([]);
   const [userQuickLoans, setUserQuickLoans] = useState([]);
@@ -210,6 +221,7 @@ const Dashboard = () => {
   // Dialog states
   const [depositDialogOpen, setDepositDialogOpen] = useState(false);
   const [depositPaymentChoiceOpen, setDepositPaymentChoiceOpen] = useState(false);
+  const [depositPhoneInstructionsOpen, setDepositPhoneInstructionsOpen] = useState(false);
   const [loanDialogOpen, setLoanDialogOpen] = useState(false);
   const [adminLoanDialogOpen, setAdminLoanDialogOpen] = useState(false);
   const [withdrawalDialogOpen, setWithdrawalDialogOpen] = useState(false);
@@ -223,6 +235,11 @@ const Dashboard = () => {
   const [shopHeroPosterUrls, setShopHeroPosterUrls] = useState(['/hero_bg_img.jpeg']);
   const [shopHeroPosterUploading, setShopHeroPosterUploading] = useState(false);
   const [shopHeroPosterDeletingUrl, setShopHeroPosterDeletingUrl] = useState(null);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setCountdownNow(Date.now()), 60 * 1000);
+    return () => window.clearInterval(timer);
+  }, []);
   const shopHeroPosterInputRef = useRef(null);
   const dashboardNavRef = useRef(null);
   const [guarantorLoanPopupDismissed, setGuarantorLoanPopupDismissed] = useState(false);
@@ -600,6 +617,11 @@ const Dashboard = () => {
   const buyerOrders = orders.filter((order) =>
     String(order.buyerId || order.buyer_id || order.created_by || '') === String(user?.id || '')
   );
+  const activeWithdrawalNotice = withdrawals.find((withdrawal) => (
+    withdrawal.user_id === user?.id
+    && withdrawal.withdrawal_type === 'leaving_group'
+    && withdrawal.status === 'waiting_period'
+  ));
 
   const pendingOrdersCount = sellerOrders?.filter((o) => o.status === 'pending').length || 0;
   const isSellerMember = Boolean(isSeller || String(user?.membership_type || '').toLowerCase() === 'seller');
@@ -744,6 +766,20 @@ useEffect(() => {
     }
   };
 
+  const handleDeleteBuyerOrder = async (orderId) => {
+    if (!window.confirm('Remove this delivered order from your order history?')) return;
+    try {
+      await axios.delete(`${API_URL}/api/orders/${orderId}`, {
+        headers: getAuthHeaders(),
+      });
+      setOrders((prev) => prev.filter((order) => order.id !== orderId));
+      toast.success('Delivered order removed from your history.');
+    } catch (err) {
+      console.error('Failed to delete delivered order:', err);
+      toast.error(err.response?.data?.detail || 'Failed to delete order');
+    }
+  };
+
   const handleDownloadOrderReceipt = async (order) => {
     try {
       await exportOrderReceiptPDF(order, user?.name, user?.phone, user?.email);
@@ -863,6 +899,7 @@ useEffect(() => {
   const targetDepositMember = depositTargetUserId
     ? members.find((m) => m.id === depositTargetUserId)
     : null;
+  const isDirectMemberDeposit = isTreasurer && activeTab === 'members' && Boolean(targetDepositMember);
   const targetMembershipType = targetDepositMember?.membership_type || user?.membership_type || 'ordinary';
   const targetDepositSlots = targetDepositMember?.max_guarantees ?? user?.max_guarantees ?? 1;
   const savingsMinAmount = targetMembershipType === 'premium' ? 52000 * targetDepositSlots : 500;
@@ -898,9 +935,10 @@ useEffect(() => {
       setRepayLoanId('');
       setLoanRepaymentAmount('');
       fetchData();
+      toast.success(depositTargetUserId ? 'Deposit recorded directly to member account' : 'Deposit submitted successfully');
 
       if (openPhoneAfterSubmit) {
-        window.location.href = 'tel:*165*1#';
+        setDepositPhoneInstructionsOpen(true);
       }
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Failed to submit deposit');
@@ -1156,6 +1194,39 @@ useEffect(() => {
     } catch (err) {
       toast.error(err.response?.data?.detail || 'Failed to submit withdrawal');
     }
+  };
+
+  const handleCancelWithdrawalNotice = async (withdrawalId) => {
+    if (!window.confirm('Cancel your full-balance withdrawal notice? Your funds will remain in your account.')) return;
+    try {
+      await axios.delete(`${API_URL}/api/withdrawals/${withdrawalId}`, {
+        headers: getAuthHeaders(),
+      });
+      fetchData._cache = null;
+      setWithdrawals((previous) => previous.filter((withdrawal) => withdrawal.id !== withdrawalId));
+      toast.success('Withdrawal notice cancelled. Your funds remain in your account.');
+      fetchData();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Failed to cancel withdrawal notice');
+    }
+  };
+
+  const selectWithdrawalType = (type) => {
+    setWithdrawalType(type);
+    if (type === 'leaving_group') {
+      setWithdrawalAmount(String(
+        Number(user?.total_savings || 0) + Number(user?.development_fund || 0)
+      ));
+    }
+  };
+
+  const getWithdrawalNoticeText = (withdrawal) => {
+    if (withdrawal.status !== 'waiting_period' || !withdrawal.approval_available_at) return null;
+    const dueDate = new Date(withdrawal.approval_available_at);
+    const daysRemaining = Math.max(0, Math.ceil((dueDate.getTime() - countdownNow) / (24 * 60 * 60 * 1000)));
+    return daysRemaining > 0
+      ? `Admin approval in ${daysRemaining} day${daysRemaining === 1 ? '' : 's'} (${dueDate.toLocaleDateString()})`
+      : 'Notice complete; awaiting admin approval queue';
   };
 
   const handleUpdateGroupBalance = async (e) => {
@@ -1552,6 +1623,7 @@ useEffect(() => {
     const styles = {
       pending_guarantor: 'bg-[#E8B25C]/20 text-[#E8B25C] border-[#E8B25C]/30',
       pending_admin: 'bg-[#D48C70]/20 text-[#D48C70] border-[#D48C70]/30',
+      waiting_period: 'bg-[#D48C70]/20 text-[#D48C70] border-[#D48C70]/30',
       pending: 'bg-[#E8B25C]/20 text-[#E8B25C] border-[#E8B25C]/30',
       approved: 'bg-[#347242]/20 text-[#347242] border-[#347242]/30',
       rejected: 'bg-[#D05A49]/20 text-[#D05A49] border-[#D05A49]/30',
@@ -1561,6 +1633,7 @@ useEffect(() => {
     const icons = {
       pending_guarantor: <Clock className="w-3 h-3" />,
       pending_admin: <Clock className="w-3 h-3" />,
+      waiting_period: <Clock className="w-3 h-3" />,
       pending: <Clock className="w-3 h-3" />,
       approved: <CheckCircle className="w-3 h-3" />,
       rejected: <XCircle className="w-3 h-3" />,
@@ -1570,6 +1643,7 @@ useEffect(() => {
     const labels = {
       pending_guarantor: 'Awaiting Guarantor',
       pending_admin: 'Awaiting Admin',
+      waiting_period: '2-Month Notice',
       rejected_by_guarantor: 'Rejected by Guarantor',
     };
     const label = labels[status] || (status ? status.charAt(0).toUpperCase() + status.slice(1) : '');
@@ -1694,13 +1768,13 @@ return (
       ];
 
   if (!isSellerMember && (isAdmin || isTreasurer)) {
-    navItems.push({ id: 'services', label: 'Services', icon: Settings });
+    navItems.push({ id: 'services', label: 'Services', icon: Store });
   }
 
   if (!isSellerMember && isAdmin) {
     navItems.push({ id: 'admin', label: 'Admin', icon: Shield });
   }
-  navItems.push({ id: 'settings', label: 'Settings' });
+  navItems.push({ id: 'settings', label: 'Settings', icon: Settings });
 
   const loanAmountValue = parseFloat(loanAmount) || 0;
 
@@ -1879,13 +1953,13 @@ return (
       <nav ref={dashboardNavRef} className="sticky top-0 z-50 backdrop-blur-xl bg-white/90 border-b border-[#E8EBE8]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-3">
+            <div className="dashboard-brand flex min-w-12 items-center gap-3">
               <img 
                 src="/logo.png" 
                 alt="Class One Logo"
-                className="w-12 h-12 rounded-full object-cover"
+                className="w-12 h-12 shrink-0 rounded-full object-cover"
               />
-              <span className="hidden md:inline-block text-xl font-bold font-['Manrope'] text-[#1E231F]">Class One Savings</span>
+              <span className="dashboard-brand-name hidden whitespace-nowrap text-xl font-bold font-['Manrope'] text-[#1E231F] md:inline-block">Class One Savings</span>
             </div>
 
             {/* Desktop Navigation */}
@@ -1905,7 +1979,10 @@ return (
                       : 'text-[#5C665D] hover:bg-[#E8EBE8]'
                   }`}
                 >
-                  {item.label}
+                  <span className="inline-flex items-center gap-2">
+                    {item.icon && <item.icon className="h-4 w-4" />}
+                    {item.label}
+                  </span>
                 </button>
               ))}
             </div>
@@ -2014,10 +2091,66 @@ return (
       </nav>
 
 {/* Main Content */}
-  <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-16 pb-8">
+  <main className={`${activeTab === 'admin' ? 'w-full' : 'max-w-7xl mx-auto'} px-4 sm:px-6 lg:px-8 pt-16 pb-8`}>
          {/* Overview Tab */}
          {activeTab === 'overview' && (
            <div className="space-y-6 animate-fade-in">
+             {activeWithdrawalNotice && (
+               <Card className="overflow-hidden border border-[#D48C70]/35 bg-[#FFF7F2] shadow-sm dark:border-[#80513F]/60 dark:bg-[#302521]">
+                 <CardContent className="space-y-4 p-5 sm:p-6">
+                   <div className="flex flex-wrap items-start justify-between gap-4">
+                     <div className="flex items-start gap-3">
+                       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#D48C70]/15 text-[#A34E36] dark:bg-[#80513F]/30 dark:text-[#F0C5A9]">
+                         <Clock className="h-5 w-5" />
+                       </div>
+                       <div>
+                         <h2 className="font-['Manrope'] text-lg font-bold text-[#1E231F]">Your withdrawal notice is in progress</h2>
+                         <p className="mt-1 text-sm text-[#5C665D]">
+                           Full balance of {formatCurrency(activeWithdrawalNotice.amount)} including development fund
+                         </p>
+                         <p className="mt-1 text-sm font-semibold text-[#A34E36] dark:text-[#F0C5A9]">
+                           {getWithdrawalNoticeText(activeWithdrawalNotice)}
+                         </p>
+                       </div>
+                     </div>
+                     <Button
+                       type="button"
+                       variant="outline"
+                       className="border-[#D05A49]/50 text-[#A34E36] hover:bg-[#D05A49]/10 dark:border-[#A34E36] dark:text-[#F0C5A9]"
+                       onClick={() => handleCancelWithdrawalNotice(activeWithdrawalNotice.id)}
+                     >
+                       <XCircle className="mr-2 h-4 w-4" />
+                       Cancel notice
+                     </Button>
+                   </div>
+                   <div>
+                     <div
+                       className="h-2.5 overflow-hidden rounded-full bg-[#E8DCD5] dark:bg-[#493A35]"
+                       role="progressbar"
+                       aria-label="Two-month withdrawal notice progress"
+                       aria-valuemin={0}
+                       aria-valuemax={60}
+                       aria-valuenow={Math.min(60, Math.max(0, 60 - Math.ceil(
+                         (new Date(activeWithdrawalNotice.approval_available_at).getTime() - countdownNow)
+                         / (24 * 60 * 60 * 1000)
+                       )))}
+                     >
+                       <div
+                         className="h-full rounded-full bg-gradient-to-r from-[#D48C70] to-[#A34E36] transition-[width] duration-500"
+                         style={{
+                           width: `${Math.min(100, Math.max(0, (
+                             (countdownNow - new Date(activeWithdrawalNotice.created_at).getTime())
+                             / (new Date(activeWithdrawalNotice.approval_available_at).getTime()
+                               - new Date(activeWithdrawalNotice.created_at).getTime())
+                           ) * 100))}%`,
+                         }}
+                       />
+                     </div>
+                     <p className="mt-1.5 text-xs text-[#5C665D]">Once the 60-day notice ends, your request is sent to the treasurer for approval.</p>
+                   </div>
+                 </CardContent>
+               </Card>
+             )}
 {isSellerMember ? (
                 <div className="space-y-4">
                 <Card className="bg-white border border-[#E8EBE8] shadow-sm">
@@ -2232,7 +2365,7 @@ return (
             </div>
 
             {/* My order tracking - shows buyers how their shop orders are progressing */}
-            {isSellerMember && buyerOrders.length > 0 && (
+            {buyerOrders.length > 0 && (
               <Card className="bg-white border border-[#E8EBE8] shadow-sm" data-testid="my-orders-tracking">
                 <CardHeader>
                   <CardTitle className="text-lg flex items-center gap-2">
@@ -2339,7 +2472,8 @@ return (
             )}
 
             {/* Quick Actions */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className={`grid grid-cols-1 gap-4 ${isTreasurer ? 'md:grid-cols-2' : 'md:grid-cols-3'}`}>
+              {!isTreasurer && (
               <Dialog open={depositDialogOpen} onOpenChange={setDepositDialogOpen}>
                 <DialogTrigger asChild>
                   <Button className="h-full bg-[#347242] hover:bg-[#2C5530] rounded-xl flex items-center justify-center gap-2 py-6">
@@ -2361,7 +2495,7 @@ return (
                           </SelectTrigger>
                            <SelectContent>
                              <SelectItem value="savings">Savings</SelectItem>
-                             {isTreasurer && <SelectItem value="development_fee">Development Fee</SelectItem>}
+                             <SelectItem value="development_fee">Development Fee</SelectItem>
                              <SelectItem value="loan_payment">Pay Back Loan</SelectItem>
                            </SelectContent>
                         </Select>
@@ -2372,10 +2506,13 @@ return (
                         type="number"
                         value={depositAmount}
                         onChange={(e) => setDepositAmount(e.target.value)}
-                        placeholder="500"
+                        placeholder={depositType === 'development_fee' ? '3000' : '500'}
                         required
-                        min="1"
+                        min={depositType === 'development_fee' ? '3000' : '1'}
                       />
+                      {depositType === 'development_fee' && (
+                        <p className="text-xs text-[#5C665D]">Minimum UGX 3,000. Pay missed months together; this request needs treasurer approval.</p>
+                      )}
                     </div>
                     <div className="space-y-2">
                       <Label>Description</Label>
@@ -2443,31 +2580,32 @@ return (
                       </div>
                       )}
                       <div className="flex flex-col sm:flex-row gap-2">
-                        <Button
-                          type="button"
-                          className="flex-1 bg-[#2C5530] hover:bg-[#214024] rounded-full"
-                          onClick={() => setDepositPaymentChoiceOpen(true)}
-                        >
-                          Submit & Pay
-                        </Button>
-                        <Button
-                          type="button"
-                          className="flex-1 bg-[#D48C70] hover:bg-[#BD7B60] rounded-full"
-                          onClick={() => toast.info('MTN payment coming soon')}
-                        >
-                          MTN
-                        </Button>
-                        <Button
-                          type="button"
-                          className="flex-1 bg-[#5C665D] hover:bg-[#4A584A] rounded-full text-white"
-                          onClick={() => toast.info('Airtel payment coming soon')}
-                        >
-                          Airtel
-                        </Button>
-                      </div>
+                          <Button
+                            type="button"
+                            className="flex-1 bg-[#2C5530] hover:bg-[#214024] rounded-full"
+                            onClick={() => setDepositPaymentChoiceOpen(true)}
+                          >
+                            Submit & Pay
+                          </Button>
+                          <Button
+                            type="button"
+                            className="flex-1 bg-[#D48C70] hover:bg-[#BD7B60] rounded-full"
+                            onClick={() => setDepositPhoneInstructionsOpen(true)}
+                          >
+                            MTN
+                          </Button>
+                          <Button
+                            type="button"
+                            className="flex-1 bg-[#5C665D] hover:bg-[#4A584A] rounded-full text-white"
+                            onClick={() => toast.info('Airtel payment coming soon')}
+                          >
+                            Airtel
+                          </Button>
+                        </div>
                     </form>
                 </DialogContent>
               </Dialog>
+              )}
 
               <Dialog open={loanDialogOpen} onOpenChange={setLoanDialogOpen}>
                 <DialogTrigger asChild>
@@ -2614,6 +2752,74 @@ return (
                 </DialogContent>
               </Dialog>
 
+              <Dialog open={depositPhoneInstructionsOpen} onOpenChange={setDepositPhoneInstructionsOpen}>
+                <DialogContent className="sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle className="font-['Manrope'] text-[#1E231F]">Pay by MTN Mobile Money</DialogTitle>
+                    <DialogDescription className="text-[#5C665D]">
+                      Send your deposit to the MTN number below.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4 mt-4">
+                    <div className="rounded-xl border border-[#E8EBE8] bg-[#F5F7F5] p-4 text-sm text-[#1E231F]">
+                      <div className="text-xs font-medium uppercase text-[#5C665D]">MTN Mobile Money number</div>
+                      <div className="mt-1 flex items-center justify-between gap-3">
+                        <div className="text-xl font-semibold">0776944322</div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="shrink-0"
+                          onClick={async () => {
+                            try {
+                              await navigator.clipboard.writeText('0776944322');
+                              toast.success('MTN number copied');
+                            } catch {
+                              toast.error('Could not copy the MTN number');
+                            }
+                          }}
+                        >
+                          <Copy className="mr-2 h-4 w-4" />
+                          Copy number
+                        </Button>
+                      </div>
+                      <div className="mt-2 text-[#5C665D]">Account name: <span className="font-medium text-[#1E231F]">Buttura Isaiah</span></div>
+                    </div>
+                    <p className="text-sm text-[#5C665D]">
+                      Don’t have MTN? Contact the treasurer on WhatsApp to request another way to deposit.
+                    </p>
+                    <div className="flex flex-col gap-2">
+                      <Button
+                        type="button"
+                        className="w-full rounded-full bg-[#2C5530] hover:bg-[#214024]"
+                        onClick={() => {
+                          window.location.href = 'tel:*165*1#';
+                        }}
+                      >
+                        Continue on phone (*165*1#)
+                      </Button>
+                      <a
+                        href={buildWhatsAppUrl(CONTACT_ADMIN_PHONE, "Hello Treasurer, I don't have MTN. Please give me another option to deposit.")}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex h-10 items-center justify-center gap-2 rounded-full bg-[#25D366] px-4 text-sm font-medium text-white hover:bg-[#1EA852]"
+                      >
+                        <MessageCircle className="h-4 w-4" />
+                        Contact treasurer on WhatsApp
+                      </a>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full rounded-full"
+                        onClick={() => setDepositPhoneInstructionsOpen(false)}
+                      >
+                        Close
+                      </Button>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
+
               <Dialog open={adminLoanDialogOpen} onOpenChange={setAdminLoanDialogOpen}>
                 <DialogContent className="sm:max-w-md">
                   <DialogHeader>
@@ -2685,13 +2891,15 @@ return (
                   <DialogHeader>
                     <DialogTitle className="font-['Manrope'] text-[#1E231F]">Request Withdrawal</DialogTitle>
                     <DialogDescription className="text-[#5C665D]">
-                      Available savings: {formatCurrency(user?.total_savings)}
+                      {withdrawalType === 'leaving_group'
+                        ? `Full balance including development fund: ${formatCurrency((user?.total_savings || 0) + (user?.development_fund || 0))}`
+                        : `Available savings: ${formatCurrency(user?.total_savings)}`}
                     </DialogDescription>
                   </DialogHeader>
                   <form onSubmit={handleWithdrawal} className="space-y-4 mt-4">
                     <div className="space-y-2">
                       <Label>Withdrawal Type</Label>
-                      <Select value={withdrawalType} onValueChange={setWithdrawalType}>
+                      <Select value={withdrawalType} onValueChange={selectWithdrawalType}>
                         <SelectTrigger>
                           <SelectValue />
                         </SelectTrigger>
@@ -2702,14 +2910,17 @@ return (
                       </Select>
                     </div>
                     <div className="space-y-2">
-                      <Label>Amount (UGX)</Label>
+                      <Label>{withdrawalType === 'leaving_group' ? 'Full Balance (Savings + Development Fund)' : 'Amount (UGX)'}</Label>
                       <Input
                         type="number"
                         value={withdrawalAmount}
                         onChange={(e) => setWithdrawalAmount(e.target.value)}
-                        placeholder="50000"
+                        placeholder={withdrawalType === 'leaving_group'
+                          ? String(Number(user?.total_savings || 0) + Number(user?.development_fund || 0))
+                          : '50000'}
                         required
                         min="1"
+                        readOnly={withdrawalType === 'leaving_group'}
                         max={withdrawalType === 'leaving_group'
                           ? (user?.total_savings || 0) + (user?.development_fund || 0)
                           : user?.total_savings || 0}
@@ -2726,7 +2937,7 @@ return (
                     {withdrawalType === 'leaving_group' && (
                       <div className="p-3 bg-[#D05A49]/10 rounded-lg text-sm text-[#D05A49]">
                         <DoorOpen className="w-4 h-4 inline mr-2" />
-                        Leaving requires 2 months notice, no active loans, and not being a guarantor
+                        Your full balance, including development fund, will be sent to the treasurer for approval after a 60-day notice. You must have no active loans and cannot be guaranteeing another member.
                       </div>
                     )}
                     <Button type="submit" className="w-full bg-[#2C5530] hover:bg-[#214024] rounded-full">
@@ -2830,6 +3041,7 @@ return (
                     Export PDF
                   </Button>
                 )}
+                {!isTreasurer && (
                  <Dialog open={depositDialogOpen} onOpenChange={setDepositDialogOpen}>
                    <DialogTrigger asChild>
                      <Button className="bg-[#2C5530] hover:bg-[#214024] rounded-full">
@@ -2851,7 +3063,7 @@ return (
                            </SelectTrigger>
                            <SelectContent>
                              <SelectItem value="savings">Savings</SelectItem>
-                             {isTreasurer && <SelectItem value="development_fee">Development Fee</SelectItem>}
+                             <SelectItem value="development_fee">Development Fee</SelectItem>
                            </SelectContent>
                          </Select>
                       </div>
@@ -2861,10 +3073,13 @@ return (
                           type="number"
                           value={depositAmount}
                           onChange={(e) => setDepositAmount(e.target.value)}
-                          placeholder="500"
+                          placeholder={depositType === 'development_fee' ? '3000' : '500'}
                           required
-                          min="1"
+                          min={depositType === 'development_fee' ? '3000' : '1'}
                         />
+                        {depositType === 'development_fee' && (
+                          <p className="text-xs text-[#5C665D]">Minimum UGX 3,000. Pay missed months together; this request needs treasurer approval.</p>
+                        )}
                       </div>
                       <div className="space-y-2">
                         <Label>Description</Label>
@@ -2940,7 +3155,7 @@ return (
                         <Button
                           type="button"
                           className="flex-1 bg-[#D48C70] hover:bg-[#BD7B60] rounded-full"
-                          onClick={() => toast.info('MTN payment coming soon')}
+                          onClick={() => setDepositPhoneInstructionsOpen(true)}
                         >
                           MTN
                         </Button>
@@ -2955,6 +3170,7 @@ return (
                     </form>
                   </DialogContent>
                 </Dialog>
+                )}
               </div>
             </div>
             
@@ -3321,13 +3537,15 @@ return (
                     <DialogHeader>
                       <DialogTitle className="font-['Manrope'] text-[#1E231F]">Request Withdrawal</DialogTitle>
                       <DialogDescription className="text-[#5C665D]">
-                        Available savings: {formatCurrency(user?.total_savings)}
+                        {withdrawalType === 'leaving_group'
+                          ? `Full balance including development fund: ${formatCurrency((user?.total_savings || 0) + (user?.development_fund || 0))}`
+                          : `Available savings: ${formatCurrency(user?.total_savings)}`}
                       </DialogDescription>
                     </DialogHeader>
                     <form onSubmit={handleWithdrawal} className="space-y-4 mt-4">
                       <div className="space-y-2">
                         <Label>Withdrawal Type</Label>
-                        <Select value={withdrawalType} onValueChange={setWithdrawalType}>
+                        <Select value={withdrawalType} onValueChange={selectWithdrawalType}>
                           <SelectTrigger>
                             <SelectValue />
                           </SelectTrigger>
@@ -3338,14 +3556,17 @@ return (
                         </Select>
                       </div>
                       <div className="space-y-2">
-                        <Label>Amount (UGX)</Label>
+                        <Label>{withdrawalType === 'leaving_group' ? 'Full Balance (Savings + Development Fund)' : 'Amount (UGX)'}</Label>
                         <Input
                           type="number"
                           value={withdrawalAmount}
                           onChange={(e) => setWithdrawalAmount(e.target.value)}
-                          placeholder="50000"
+                          placeholder={withdrawalType === 'leaving_group'
+                            ? String(Number(user?.total_savings || 0) + Number(user?.development_fund || 0))
+                            : '50000'}
                           required
                           min="1"
+                          readOnly={withdrawalType === 'leaving_group'}
                           max={withdrawalType === 'leaving_group'
                             ? (user?.total_savings || 0) + (user?.development_fund || 0)
                             : user?.total_savings || 0}
@@ -3362,7 +3583,7 @@ return (
                       {withdrawalType === 'leaving_group' && (
                         <div className="p-3 bg-[#D05A49]/10 rounded-lg text-sm text-[#D05A49]">
                           <DoorOpen className="w-4 h-4 inline mr-2" />
-                          Leaving requires 2 months notice, no active loans, and not being a guarantor
+                          Your full balance, including development fund, will be sent to the treasurer for approval after a 60-day notice. You must have no active loans and cannot be guaranteeing another member.
                         </div>
                       )}
                       <Button type="submit" className="w-full bg-[#2C5530] hover:bg-[#214024] rounded-full">
@@ -3403,9 +3624,24 @@ return (
                             {w.withdrawal_type === 'leaving_group' ? 'Leaving Group' : 'Regular'}
                           </td>
                           <td className="py-4 px-6 text-[#5C665D]">{w.reason || '-'}</td>
-                          <td className="py-4 px-6">{getStatusBadge(w.status)}</td>
                           <td className="py-4 px-6">
-                            {canDelete ? (
+                            {getStatusBadge(w.status)}
+                            {getWithdrawalNoticeText(w) && (
+                              <p className="mt-1 text-xs text-[#5C665D]">{getWithdrawalNoticeText(w)}</p>
+                            )}
+                          </td>
+                          <td className="py-4 px-6">
+                            {w.status === 'waiting_period' && w.user_id === user?.id ? (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleCancelWithdrawalNotice(w.id)}
+                                className="border-[#D05A49]/50 text-[#A34E36] hover:bg-[#D05A49]/10"
+                              >
+                                Cancel
+                              </Button>
+                            ) : canDelete ? (
                               <button
                                 onClick={() => handleDeleteRecord('withdrawals', w.id)}
                                 data-testid={`delete-withdrawal-${w.id}`}
@@ -3482,14 +3718,17 @@ return (
                     </div>
                     {(isAdmin || isTreasurer) && m.id !== user?.id && (
                       <div className="space-y-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="w-full"
-                          onClick={() => handleOpenDepositForMember(m.id)}
-                        >
-                          Deposit for Member
-                        </Button>
+                        {isTreasurer && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="w-full border-[#2C5530]/30 text-[#2C5530] hover:bg-[#2C5530]/10"
+                            onClick={() => handleOpenDepositForMember(m.id)}
+                          >
+                            <ArrowUpRight className="mr-2 h-4 w-4" />
+                            Record Deposit
+                          </Button>
+                        )}
                         <Button
                           size="sm"
                           variant="outline"
@@ -3508,8 +3747,14 @@ return (
             <Dialog open={depositDialogOpen} onOpenChange={setDepositDialogOpen}>
               <DialogContent className="sm:max-w-md">
                 <DialogHeader>
-                  <DialogTitle className="font-['Manrope'] text-[#1E231F]">New Deposit</DialogTitle>
-                  <DialogDescription className="text-[#5C665D]">{isTreasurer ? 'Submit a deposit request. Development fees can be added manually or applied automatically on savings approval.' : 'Submit a savings deposit request; development fees are applied automatically on approval'}</DialogDescription>
+                  <DialogTitle className="font-['Manrope'] text-[#1E231F]">
+                    {targetDepositMember ? `Record deposit for ${targetDepositMember.name}` : 'New Deposit'}
+                  </DialogTitle>
+                  <DialogDescription className="text-[#5C665D]">
+                    {targetDepositMember
+                      ? "The deposit will be credited directly to this member's account without approval."
+                      : 'Submit a savings deposit request; development fees are applied automatically on approval.'}
+                  </DialogDescription>
                 </DialogHeader>
                 <form onSubmit={handleDeposit} className="space-y-4 mt-4">
                   <div className="space-y-2">
@@ -3520,7 +3765,7 @@ return (
                         </SelectTrigger>
                          <SelectContent>
                            <SelectItem value="savings">Savings</SelectItem>
-                           {isTreasurer && <SelectItem value="development_fee">Development Fee</SelectItem>}
+                           <SelectItem value="development_fee">Development Fee</SelectItem>
                            <SelectItem value="loan_payment">Pay Back Loan</SelectItem>
                          </SelectContent>
                       </Select>
@@ -3531,10 +3776,13 @@ return (
                       type="number"
                       value={depositAmount}
                       onChange={(e) => setDepositAmount(e.target.value)}
-                      placeholder="500"
+                      placeholder={depositType === 'development_fee' ? '3000' : '500'}
                       required
-                      min="1"
+                      min={depositType === 'development_fee' ? '3000' : '1'}
                     />
+                    {depositType === 'development_fee' && (
+                      <p className="text-xs text-[#5C665D]">Minimum UGX 3,000. Pay missed months together; this request needs treasurer approval.</p>
+                    )}
                   </div>
                   <div className="space-y-2">
                     <Label>Description</Label>
@@ -3601,32 +3849,39 @@ return (
                         )}
                       </div>
                     )}
-                    <div className="flex flex-col sm:flex-row gap-2">
-                      <Button
-                        type="button"
-                        className="flex-1 bg-[#2C5530] hover:bg-[#214024] rounded-full"
-                        onClick={() => setDepositPaymentChoiceOpen(true)}
-                      >
-                        Submit & Pay
+                    {isDirectMemberDeposit ? (
+                      <Button type="submit" className="w-full bg-[#2C5530] hover:bg-[#214024] rounded-full">
+                        Record Deposit
                       </Button>
-                      <Button
-                        type="button"
-                        className="flex-1 bg-[#D48C70] hover:bg-[#BD7B60] rounded-full"
-                        onClick={() => toast.info('MTN payment coming soon')}
-                      >
-                        MTN
-                      </Button>
-                      <Button
-                        type="button"
-                        className="flex-1 bg-[#5C665D] hover:bg-[#4A584A] rounded-full text-white"
-                        onClick={() => toast.info('Airtel payment coming soon')}
-                      >
-                        Airtel
-                      </Button>
-                    </div>
+                    ) : (
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <Button
+                          type="button"
+                          className="flex-1 bg-[#2C5530] hover:bg-[#214024] rounded-full"
+                          onClick={() => setDepositPaymentChoiceOpen(true)}
+                        >
+                          Submit & Pay
+                        </Button>
+                        <Button
+                          type="button"
+                          className="flex-1 bg-[#D48C70] hover:bg-[#BD7B60] rounded-full"
+                          onClick={() => setDepositPhoneInstructionsOpen(true)}
+                        >
+                          MTN
+                        </Button>
+                        <Button
+                          type="button"
+                          className="flex-1 bg-[#5C665D] hover:bg-[#4A584A] rounded-full text-white"
+                          onClick={() => toast.info('Airtel payment coming soon')}
+                        >
+                          Airtel
+                        </Button>
+                      </div>
+                    )}
                 </form>
               </DialogContent>
             </Dialog>
+            )}
 
             <Dialog open={adminLoanDialogOpen} onOpenChange={setAdminLoanDialogOpen}>
               <DialogContent className="sm:max-w-md">
@@ -3763,141 +4018,169 @@ return (
                   const ProjectIcon = projectStyle.icon;
 
                   return (
-                  <Card key={project.id} className={`group relative overflow-hidden border shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-lg ${projectStyle.card}`}>
-                    <div className={`relative overflow-hidden bg-gradient-to-br px-4 py-3 ${projectStyle.header}`}>
-                      <div className="absolute -right-5 -top-8 h-24 w-24 rounded-full border-[10px] border-white/30" />
-                      <div className="absolute -bottom-10 right-20 h-20 w-20 rounded-full bg-white/25" />
-                      <div className="relative flex items-center justify-between gap-4">
-                        <div className="flex items-center gap-3">
-                          <div className={`flex h-9 w-9 items-center justify-center rounded-xl shadow-sm ${projectStyle.accent}`}>
-                            <ProjectIcon className="h-4 w-4" aria-hidden="true" />
-                          </div>
-                          <div>
-                            <p className={`text-[11px] font-bold uppercase tracking-[0.18em] ${projectStyle.eyebrow}`}>{projectStyle.label}</p>
-                            <p className="mt-0.5 text-[11px] font-medium text-[#5C665D]">A member-submitted vision</p>
-                          </div>
-                        </div>
-                        <span className="rounded-full bg-white/70 px-3 py-1 text-xs font-semibold text-[#1E231F] shadow-sm">
-                          Idea #{String(project.id).slice(-4)}
-                        </span>
-                      </div>
-                    </div>
-                    <CardContent className="p-4 space-y-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <h3 className="text-xl font-semibold text-[#1E231F]">{project.title}</h3>
-                          <p className="text-sm text-[#5C665D]">
-                            {project.category ? `${project.category} • ` : ''}
-                            by {project.author_name}
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-sm text-[#5C665D]">Rating</p>
-                          <p className={`text-lg font-bold ${projectStyle.eyebrow}`}>
-                            {project.average_rating?.toFixed(1) || '0.0'} / 5
-                          </p>
-                          <p className="text-xs text-[#5C665D]">{project.rating_count || 0} reviews</p>
-                          {isAdmin && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleDeleteProject(project.id)}
-                              className="mt-2 border-[#D05A49] text-[#D05A49] hover:bg-[#D05A49]/10"
-                            >
-                              Delete
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                      <p className="text-sm text-[#5C665D] whitespace-pre-line">{project.description || 'No description provided.'}</p>
-
-                      <div className="space-y-3">
-                        <div className="grid grid-cols-2 gap-3">
-                          <div className="rounded-2xl bg-[#F7FCF4] p-3">
-                            <p className="text-xs text-[#5C665D]">Created</p>
-                            <p className="text-sm font-semibold text-[#1E231F]">{new Date(project.created_at).toLocaleDateString()}</p>
-                          </div>
-                          <div className="rounded-2xl bg-[#F4F0E8] p-3">
-                            <p className="text-xs text-[#5C665D]">Comments</p>
-                            <p className="text-sm font-semibold text-[#1E231F]">{project.comments?.length || 0}</p>
-                          </div>
-                        </div>
-
-                        <div className="space-y-2">
-                          <p className="text-sm font-semibold text-[#1E231F]">Rate this project</p>
-                          <div className="flex items-center gap-2">
-                            {[5, 4, 3, 2, 1].map((value) => (
-                              <button
-                                key={value}
-                                type="button"
-                                onClick={() => handleRateProject(project.id, value)}
-                                disabled={Boolean(projectRatingSubmitting[project.id])}
-                                className={`text-2xl transition-colors ${
-                                  value <= (project.average_rating || 0)
-                                    ? 'text-[#E8B25C]'
-                                    : 'text-[#E8EBE8]'
-                                } hover:text-[#E8B25C] disabled:opacity-50`}
-                                title={`Rate ${value} star${value === 1 ? '' : 's'}`}
-                              >
-                                ★
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div className="space-y-3">
-                          <p className="text-sm font-semibold text-[#1E231F]">Comments</p>
-                          {(project.comments || []).slice(0, 5).map((comment) => (
-                            <div key={comment.id} className="rounded-2xl bg-[#FAFAF8] p-3 border border-[#E8EBE8]">
-                              <div className="flex items-center justify-between gap-2">
-                                <p className="text-sm font-semibold text-[#1E231F]">{comment.user_name}</p>
-                                <div className="flex items-center gap-2">
-                                  <p className="text-xs text-[#5C665D]">{new Date(comment.created_at).toLocaleDateString()}</p>
-                                  {isAdmin && (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleDeleteProjectComment(project.id, comment.id)}
-                                      className="rounded-full p-1 text-[#D05A49] transition-colors hover:bg-[#D05A49]/10"
-                                      aria-label={`Delete comment by ${comment.user_name}`}
-                                      title="Delete comment"
-                                    >
-                                      <Trash2 className="h-3.5 w-3.5" />
-                                    </button>
-                                  )}
-                                </div>
-                              </div>
-                              <p className="text-sm text-[#5C665D] mt-2">{comment.comment || 'No comment provided.'}</p>
+                    <Card
+                      key={project.id}
+                      className={`group relative overflow-hidden rounded-2xl border shadow-[0_10px_30px_-18px_rgba(44,85,48,0.35)] transition-all duration-300 hover:-translate-y-1 hover:shadow-lg ${projectStyle.card} ${projectStyle.darkCard}`}
+                    >
+                      <div className={`relative overflow-hidden bg-gradient-to-br px-4 py-3.5 ${projectStyle.header} ${projectStyle.darkHeader}`}>
+                        <div className="absolute -right-5 -top-8 h-24 w-24 rounded-full border-[10px] border-[#2C5530]/10 dark:border-[#B9D9BB]/10" />
+                        <div className="absolute -bottom-10 right-20 h-20 w-20 rounded-full bg-[#2C5530]/10 dark:bg-[#B9D9BB]/10" />
+                        <div className="relative flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            <div className={`flex h-10 w-10 items-center justify-center rounded-xl shadow-sm ${projectStyle.accent} ${projectStyle.darkAccent}`}>
+                              <ProjectIcon className="h-5 w-5" aria-hidden="true" />
                             </div>
-                          ))}
-                          {project.comments?.length > 5 && (
-                            <p className="text-xs text-[#5C665D]">Showing latest 5 comments.</p>
+                            <div>
+                              <p className={`text-[11px] font-bold uppercase tracking-[0.16em] ${projectStyle.eyebrow}`}>{projectStyle.label}</p>
+                              <p className="mt-0.5 text-xs font-medium text-[#4B554C] dark:text-[#D1DDD2]">A vision shared by our community</p>
+                            </div>
+                          </div>
+                          <span className="shrink-0 rounded-full border border-[#2C5530]/10 bg-[#F7FAF4]/80 px-3 py-1 text-xs font-bold text-[#1E231F] dark:border-[#B9D9BB]/15 dark:bg-[#202C23]/80 dark:text-[#E7F0E8]">
+                            Idea #{String(project.id).slice(-4)}
+                          </span>
+                        </div>
+                      </div>
+                      <CardContent className="space-y-4 p-4 sm:p-5">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex min-w-0 items-start gap-3">
+                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#2C5530]/10 text-[#2C5530] dark:bg-[#2C5530]/25 dark:text-[#A8D5A6]">
+                              <Lightbulb className="h-5 w-5" aria-hidden="true" />
+                            </div>
+                            <div className="min-w-0">
+                              {project.category && (
+                                <span className="mb-1 inline-block rounded-full bg-[#F0F6F2] px-2.5 py-1 text-xs font-semibold text-[#2C5530] dark:bg-[#2C5530]/25 dark:text-[#A8D5A6]">
+                                  {project.category}
+                                </span>
+                              )}
+                              <h3 className="break-words text-lg font-bold leading-snug text-[#1E231F] sm:text-xl">{project.title}</h3>
+                              <p className="mt-1 text-sm text-[#5C665D]">Proposed by {project.author_name}</p>
+                            </div>
+                          </div>
+                          <div className="flex shrink-0 flex-col items-end gap-1">
+                            <div className="flex items-center gap-1.5 rounded-xl bg-[#FFF7E8] px-2.5 py-1.5 text-[#805B16] dark:bg-[#493A20] dark:text-[#F5C572]">
+                              <span className="text-base leading-none" aria-hidden="true">★</span>
+                              <span className="text-sm font-bold">{project.average_rating?.toFixed(1) || '0.0'}</span>
+                              <span className="text-xs text-[#806126] dark:text-[#F5C572]">/ 5</span>
+                            </div>
+                            <span className="text-xs text-[#5C665D]">
+                              {project.rating_count || 0} {(project.rating_count || 0) === 1 ? 'review' : 'reviews'}
+                            </span>
+                            {isAdmin && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleDeleteProject(project.id)}
+                                className="mt-1 h-8 border-[#D05A49] px-2.5 text-xs text-[#D05A49] hover:bg-[#D05A49]/10"
+                              >
+                                <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                                Delete
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+
+                        <p className="min-h-12 whitespace-pre-line break-words rounded-xl bg-[#F7FAF7] p-3.5 text-sm leading-relaxed text-[#4B554C] dark:bg-[#262D28] dark:text-[#C3CCC4]">
+                          {project.description || 'No description provided.'}
+                        </p>
+
+                        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-[#5C665D]">
+                          <span className="inline-flex items-center gap-1.5">
+                            <Calendar className="h-3.5 w-3.5" aria-hidden="true" />
+                            {new Date(project.created_at).toLocaleDateString()}
+                          </span>
+                          <span className="inline-flex items-center gap-1.5">
+                            <MessageCircle className="h-3.5 w-3.5" aria-hidden="true" />
+                            {project.comments?.length || 0} comments
+                          </span>
+                        </div>
+
+                        <div className="rounded-xl border border-[#2C5530]/10 bg-[#F7FCF4]/70 p-3 dark:border-[#B9D9BB]/10 dark:bg-[#18231B]/60">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-sm font-semibold text-[#1E231F]">Rate this project</p>
+                            <div className="flex items-center" role="group" aria-label={`Rate ${project.title}`}>
+                              {[1, 2, 3, 4, 5].map((value) => (
+                                <button
+                                  key={value}
+                                  type="button"
+                                  onClick={() => handleRateProject(project.id, value)}
+                                  disabled={Boolean(projectRatingSubmitting[project.id])}
+                                  className={`flex h-9 w-9 items-center justify-center rounded-lg text-2xl transition-colors hover:bg-[#FFF7E8] hover:text-[#D49B34] disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-[#493A20] ${
+                                    value <= (project.average_rating || 0)
+                                      ? 'text-[#D49B34]'
+                                      : 'text-[#D8DED8] dark:text-[#59635A]'
+                                  }`}
+                                  aria-label={`Rate ${value} star${value === 1 ? '' : 's'}`}
+                                  title={`Rate ${value} star${value === 1 ? '' : 's'}`}
+                                >
+                                  ★
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="space-y-3 border-t border-[#2C5530]/15 pt-4 dark:border-[#B9D9BB]/15">
+                          <div className="flex items-center justify-between">
+                            <p className="text-sm font-semibold text-[#1E231F]">Discussion</p>
+                            {project.comments?.length > 5 && (
+                              <p className="text-xs text-[#5C665D]">Latest 5 comments</p>
+                            )}
+                          </div>
+                          {(project.comments || []).slice(0, 5).length > 0 ? (
+                            <div className="space-y-2">
+                              {(project.comments || []).slice(0, 5).map((comment) => (
+                                <div key={comment.id} className="rounded-xl border border-[#E8EBE8] bg-[#FAFAF8] p-3 dark:border-[#343B36] dark:bg-[#262D28]">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <p className="truncate text-sm font-semibold text-[#1E231F]">{comment.user_name}</p>
+                                    <div className="flex shrink-0 items-center gap-2">
+                                      <p className="text-xs text-[#5C665D]">{new Date(comment.created_at).toLocaleDateString()}</p>
+                                      {isAdmin && (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleDeleteProjectComment(project.id, comment.id)}
+                                          className="rounded-full p-1 text-[#D05A49] transition-colors hover:bg-[#D05A49]/10"
+                                          aria-label={`Delete comment by ${comment.user_name}`}
+                                          title="Delete comment"
+                                        >
+                                          <Trash2 className="h-3.5 w-3.5" />
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <p className="mt-1.5 whitespace-pre-line break-words text-sm leading-relaxed text-[#5C665D]">{comment.comment || 'No comment provided.'}</p>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="rounded-xl bg-[#F7FAF7] px-3 py-2.5 text-sm text-[#5C665D] dark:bg-[#262D28]">
+                              No comments yet. Start the discussion.
+                            </p>
                           )}
                         </div>
 
                         <div className="space-y-2">
                           <Label htmlFor={`comment-${project.id}`}>Add your comment</Label>
-                          <div className="flex gap-2">
+                          <div className="flex items-end gap-2">
                             <Textarea
                               id={`comment-${project.id}`}
                               value={projectCommentText[project.id] || ''}
                               onChange={(e) => setProjectCommentText((prev) => ({ ...prev, [project.id]: e.target.value }))}
                               rows={2}
                               placeholder="Share feedback or suggestions..."
-                              className="flex-1"
+                              className="min-h-11 flex-1 resize-y"
                             />
                             <Button
                               type="button"
-                              className="bg-[#2C5530] hover:bg-[#214024] rounded-full self-end"
+                              className="shrink-0 rounded-full bg-[#2C5530] hover:bg-[#214024]"
                               onClick={() => handleSubmitProjectComment(project.id)}
                               disabled={Boolean(projectCommentSubmitting[project.id])}
                             >
-                              {projectCommentSubmitting[project.id] ? '...' : 'Post'}
+                              {projectCommentSubmitting[project.id] ? 'Posting...' : 'Post'}
                             </Button>
                           </div>
                         </div>
-                      </div>
-                    </CardContent>
-                  </Card>
+                      </CardContent>
+                    </Card>
                   );
                 })}
               </div>
@@ -4030,6 +4313,17 @@ return (
                                   >
                                     <MessageCircle className="mr-1.5 h-4 w-4" />
                                     {remindingOrderId === order.id ? 'Sending...' : 'Remind seller'}
+                                  </Button>
+                                )}
+                                {String(order.status || '').toLowerCase() === 'delivered' && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="border-[#D05A49] text-[#D05A49] hover:bg-[#FDE8E7]"
+                                    onClick={() => handleDeleteBuyerOrder(order.id)}
+                                  >
+                                    <Trash2 className="mr-1.5 h-4 w-4" />
+                                    Delete
                                   </Button>
                                 )}
                               </div>
@@ -5006,9 +5300,24 @@ return (
                                {w.withdrawal_type === 'leaving_group' ? 'Leaving Group' : 'Regular'}
                              </td>
                              <td className="py-4 px-6 text-[#5C665D]">{w.reason || '-'}</td>
-                             <td className="py-4 px-6">{getStatusBadge(w.status)}</td>
                              <td className="py-4 px-6">
-                               {canDelete ? (
+                               {getStatusBadge(w.status)}
+                               {getWithdrawalNoticeText(w) && (
+                                 <p className="mt-1 text-xs text-[#5C665D]">{getWithdrawalNoticeText(w)}</p>
+                               )}
+                             </td>
+                             <td className="py-4 px-6">
+                               {w.status === 'waiting_period' && w.user_id === user?.id ? (
+                                 <Button
+                                   type="button"
+                                   size="sm"
+                                   variant="outline"
+                                   onClick={() => handleCancelWithdrawalNotice(w.id)}
+                                   className="border-[#D05A49]/50 text-[#A34E36] hover:bg-[#D05A49]/10"
+                                 >
+                                   Cancel
+                                 </Button>
+                               ) : canDelete ? (
                                  <button
                                    type="button"
                                    onClick={() => handleDeleteRecord('withdrawals', w.id)}
@@ -5603,8 +5912,46 @@ return (
                     <ArrowDownRight className="w-5 h-5 text-[#D05A49]" />
                     Pending Withdrawals ({stats?.pending_withdrawals || 0})
                   </CardTitle>
+                  <p className="text-xs text-[#5C665D]">Full-withdrawal notices are visible below while the 60-day period runs; approval actions unlock only after it ends.</p>
                 </CardHeader>
                 <CardContent className="space-y-3">
+                  {withdrawals.some(w => w.status === 'waiting_period' && w.withdrawal_type === 'leaving_group') && (
+                    <div className="space-y-2 border-b border-[#E8EBE8] pb-3">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-[#5C665D]">
+                        Full Withdrawal Notices ({withdrawals.filter(w => w.status === 'waiting_period' && w.withdrawal_type === 'leaving_group').length})
+                      </p>
+                      {withdrawals
+                        .filter(w => w.status === 'waiting_period' && w.withdrawal_type === 'leaving_group')
+                        .map((w) => {
+                          const approvalDate = w.approval_available_at ? new Date(w.approval_available_at) : null;
+                          const daysRemaining = approvalDate && !Number.isNaN(approvalDate.getTime())
+                            ? Math.max(0, Math.ceil((approvalDate.getTime() - countdownNow) / (24 * 60 * 60 * 1000)))
+                            : null;
+                          return (
+                            <div key={w.id} className="p-3 bg-[#FFF8EC] border border-[#F0D9A8] rounded-xl">
+                              <div className="flex items-start justify-between gap-3 mb-2">
+                                <span className="font-medium text-[#1E231F]">{w.user_name || 'Member'}</span>
+                                <span className="font-semibold text-[#D48C70] font-numbers">{formatCurrency(w.amount)}</span>
+                              </div>
+                              <p className="text-xs text-[#5C665D]">
+                                Savings: {formatCurrency(w.savings_amount)} · Development fee: {formatCurrency(w.development_fund_amount)}
+                              </p>
+                              {w.reason && <p className="text-xs text-[#5C665D] mt-1">Reason: {w.reason}</p>}
+                              <p className="text-xs font-medium text-[#806126] mt-2">
+                                {daysRemaining === null
+                                  ? 'Waiting for the 60-day notice period'
+                                  : daysRemaining > 0
+                                    ? `Approval available in ${daysRemaining} day${daysRemaining === 1 ? '' : 's'} (${approvalDate.toLocaleDateString()})`
+                                    : 'Notice complete; approval request is being prepared'}
+                              </p>
+                              <p className="text-[11px] text-[#5C665D] mt-1">
+                                Requested {w.created_at ? new Date(w.created_at).toLocaleDateString() : 'date unavailable'} · No action is available during the notice period.
+                              </p>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  )}
                   {withdrawals.filter(w => w.status === 'pending').map((w) => (
                     <div key={w.id} className="p-3 bg-[#FAFAF8] rounded-xl">
                       <div className="flex items-center justify-between mb-2">
@@ -5641,16 +5988,7 @@ return (
             )}
 
             {activeAdminPage === 'active-loans' && (
-            <div id="active-loans" className="space-y-4 rounded-2xl border border-[#E8EBE8] bg-white p-6 shadow-sm">
-              <div>
-                <h3 className="text-xl font-semibold text-[#1E231F]">Active Loans</h3>
-                <p className="text-sm text-[#5C665D]">Record payments for approved loans.</p>
-              </div>
-            <Card className="bg-white border border-[#E8EBE8] shadow-sm">
-              <CardHeader>
-                <CardTitle className="font-['Manrope'] text-[#1E231F]">Active Loans (Record Payments)</CardTitle>
-              </CardHeader>
-              <CardContent>
+              <div id="active-loans" className="w-full">
                 <div className="space-y-3">
                   {loans.filter(l => l.status === 'approved' && !l.repaid).map((l) => (
                     <div key={l.id} className="flex items-center justify-between p-4 bg-[#FAFAF8] rounded-xl">
@@ -5679,27 +6017,13 @@ return (
                     <p className="text-center text-[#5C665D] py-4">No active loans</p>
                   )}
                 </div>
-              </CardContent>
-            </Card>
-            </div>
+              </div>
             )}
 
             {/* Member Management (Treasurer only) */}
             {isTreasurer && activeAdminPage === 'member-management' && (
-              <div id="member-management" className="space-y-4 rounded-2xl border border-[#E8EBE8] bg-white p-6 shadow-sm">
-                <div>
-                  <h3 className="text-xl font-semibold text-[#1E231F]">Member Management</h3>
-                  <p className="text-sm text-[#5C665D]">Manage members and treasurer controls.</p>
-                </div>
-              <Card className="bg-white border border-[#E8EBE8] shadow-sm">
-                <CardHeader>
-                  <CardTitle className="font-['Manrope'] text-[#1E231F] flex items-center gap-2">
-                    <Shield className="w-5 h-5 text-[#D48C70]" />
-                    Member Management (Treasurer)
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="overflow-x-auto">
+              <div id="member-management" className="w-full">
+                <div className="overflow-x-auto rounded-xl border border-[#E8EBE8] bg-white shadow-sm">
                     <table className="w-full">
                       <thead>
                         <tr className="border-b border-[#E8EBE8] bg-[#FAFAF8]">
@@ -5795,9 +6119,7 @@ return (
                         })}
                       </tbody>
                     </table>
-                  </div>
-                </CardContent>
-              </Card>
+                </div>
               </div>
             )}
           </div>

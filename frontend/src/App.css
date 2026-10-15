@@ -66,6 +66,14 @@ html {
   background: #ecf8e9;
 }
 
+html.dark .hero-rgb-button::after {
+  background: #202522;
+}
+
+html.dark .hero-rgb-button:hover::after {
+  background: #2a332d;
+}
+
 .hero-rgb-button:focus-visible {
   outline-offset: 4px;
 }
@@ -93,6 +101,139 @@ body {
   min-height: 100dvh;
 }
 
+.dashboard-brand {
+  container-type: inline-size;
+}
+
+@container (max-width: 270px) {
+  .dashboard-brand-name {
+    display: none;
+  }
+}
+
+html.dark body {
+  background-color: #171a18;
+  color: #e7ebe7;
+}
+
+html.dark [class~="bg-white"],
+html.dark [class~="bg-[#FAFAF8]"],
+html.dark [class~="bg-[#F7FAF3]"],
+html.dark [class~="bg-[#F0F6F2]"],
+html.dark [class~="bg-[#ECF8E9]"],
+html.dark [class~="bg-[#E8EBE8]"],
+html.dark [class~="bg-[#CBD5E1]"],
+html.dark [class~="bg-[#D5E6CE]"],
+html.dark [class~="bg-[#D8E4D3]"],
+html.dark [class~="bg-[#DCD4B9]"],
+html.dark [class~="bg-[#DEF2DD]"],
+html.dark [class~="bg-[#E8F0E3]"],
+html.dark [class~="bg-[#EBC9B8]"],
+html.dark [class~="bg-[#F1F1F1]"],
+html.dark [class~="bg-[#F4F0E8]"],
+html.dark [class~="bg-[#F4F8EF]"],
+html.dark [class~="bg-[#F5F7F5]"],
+html.dark [class~="bg-[#F5FBF2]"],
+html.dark [class~="bg-[#F7FCF4]"],
+html.dark [class~="bg-[#FBD7D4]"],
+html.dark [class~="bg-[#FDE8E7]"],
+html.dark [class~="bg-[#FEF6E8]"],
+html.dark [class~="bg-[#FFF3D6]"],
+html.dark [class~="bg-[#FFF7F4]"],
+html.dark [class~="bg-[#FFFDFC]"] {
+  background-color: #202522 !important;
+}
+
+html.dark [class*="bg-white/"] {
+  background-color: rgb(32 37 34 / 0.92) !important;
+}
+
+html.dark [class~="hover:bg-[#E8EBE8]"]:hover,
+html.dark [class~="hover:bg-[#ECF8E9]"]:hover,
+html.dark [class~="hover:bg-[#F1F1F1]"]:hover,
+html.dark [class~="hover:bg-[#F5F7F5]"]:hover,
+html.dark [class~="hover:bg-[#FDE8E7]"]:hover,
+html.dark [class~="hover:bg-[#FEF6E8]"]:hover {
+  background-color: #2a332d !important;
+}
+
+html.dark [class~="bg-gray-50"],
+html.dark [class~="bg-gray-100"],
+html.dark [class~="bg-slate-50"],
+html.dark [class~="bg-slate-100"],
+html.dark [class~="bg-slate-200"] {
+  background-color: #202522 !important;
+}
+
+html.dark [class~="text-[#1E231F]"] {
+  color: #e7ebe7 !important;
+}
+
+html.dark [class~="text-[#5C665D]"] {
+  color: #b2bdb4 !important;
+}
+
+html.dark [class~="text-[#172B12]"],
+html.dark [class~="text-[#1B3A16]"],
+html.dark [class~="text-[#1A3B20]"],
+html.dark [class~="text-[#214024]"],
+html.dark [class~="text-[#2B6F38]"],
+html.dark [class~="text-[#2C5530]"],
+html.dark [class~="text-[#347242]"],
+html.dark [class~="text-[#4A584A]"],
+html.dark [class~="text-[#4B5A45]"],
+html.dark [class~="text-[#6B7C61]"] {
+  color: #d4ded5 !important;
+}
+
+html.dark [class~="text-[#128C7E]"] {
+  color: #75d6cc !important;
+}
+
+html.dark [class~="text-[#BD7B60]"] {
+  color: #f0c5a9 !important;
+}
+
+html.dark [class~="text-[#C57A17]"],
+html.dark [class~="text-[#704A00]"],
+html.dark [class~="text-[#806126]"] {
+  color: #f5c572 !important;
+}
+
+html.dark [class~="text-[#D05A49]"],
+html.dark [class~="text-[#7A4A42]"],
+html.dark [class~="text-[#A34E36]"] {
+  color: #ffaaa0 !important;
+}
+
+html.dark [class~="text-gray-900"],
+html.dark [class~="text-gray-800"],
+html.dark [class~="text-slate-900"],
+html.dark [class~="text-slate-800"] {
+  color: #e7ebe7 !important;
+}
+
+html.dark [class~="text-gray-700"],
+html.dark [class~="text-gray-600"],
+html.dark [class~="text-slate-700"],
+html.dark [class~="text-slate-600"] {
+  color: #b2bdb4 !important;
+}
+
+html.dark [class~="border-[#E8EBE8]"],
+html.dark [class~="border-slate-200"],
+html.dark [class~="border-slate-300"],
+html.dark [class~="border-gray-200"],
+html.dark [class~="border-gray-300"] {
+  border-color: #3b443e !important;
+}
+
+html.dark input,
+html.dark textarea,
+html.dark select {
+  color-scheme: dark;
+}
+
 /* * FIX FOR SEARCH BAR GOING INTO CAMERA *
    Pages already render <nav className="sticky top-0">. Keep it sticky so it
    stays in flow and content is never hidden underneath, while the
@@ -109,6 +250,10 @@ nav {
   padding-bottom: 12px;
   padding-left: max(env(safe-area-inset-left), 16px);
   padding-right: max(env(safe-area-inset-right), 16px);
+}
+
+html.dark nav {
+  background-color: #202522 !important;
 }
 
 .dialog-viewport-fit {
