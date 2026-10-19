@@ -484,6 +484,7 @@ async def send_push_to_users(user_ids: list[str], payload: dict):
                         priority="high",
                         notification=messaging.AndroidNotification(
                             channel_id="cashhub-orders-v2" if is_order and sound_enabled else "cashhub-silent-v2",
+                            icon="ic_stat_notification",
                             tag=notification_id if is_order else None,
                             sound="order_ring_tone" if is_order and sound_enabled else None,
                         ),
@@ -1272,6 +1273,32 @@ async def get_me(user: dict = Depends(get_current_user)):
     data["member_code"] = code
     return data
 
+@api_router.post("/auth/profile-picture")
+async def upload_profile_picture(
+    file: UploadFile = File(...),
+    user: dict = Depends(get_current_user),
+):
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="No file provided")
+    if file.content_type not in {"image/jpeg", "image/png", "image/webp"}:
+        raise HTTPException(status_code=400, detail="Profile picture must be a JPEG, PNG, or WebP image")
+
+    image_contents = await file.read(5 * 1024 * 1024 + 1)
+    if len(image_contents) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Profile picture must be 5 MB or smaller")
+    await file.seek(0)
+
+    upload_result = await upload_to_cloudinary(file, folder="cash_hub/profile-pictures")
+    image_url = upload_result.get("secure_url") or upload_result.get("url")
+    if not image_url:
+        raise HTTPException(status_code=500, detail="Profile picture upload returned no URL")
+
+    await db.users.update_one(
+        {"_id": ObjectId(user["id"])},
+        {"$set": {"profile_picture_url": image_url}},
+    )
+    return {"profile_picture_url": image_url}
+
 @api_router.post("/auth/logout")
 async def logout():
     return {"message": "Logged out successfully"}
@@ -1599,6 +1626,15 @@ async def create_order(order: OrderCreate, user: Optional[dict] = Depends(get_cu
         "url": "/dashboard",
         "order": order_doc,
     }, order_doc.get("seller_id"))
+    if user:
+        await send_push_to_users([user["id"]], {
+            "id": f"order-placed-{order_doc['id']}",
+            "type": "transaction_update",
+            "title": "Order placed",
+            "body": f"Your order for {order_doc.get('productTitle') or 'a product'} was sent to the seller.",
+            "url": "/dashboard",
+            "order_id": order_doc["id"],
+        })
     
     return order_doc
 
@@ -2647,15 +2683,18 @@ async def request_deposit(deposit: DepositRequest, user: dict = Depends(get_curr
         approved_deposit.pop("_id", None)
         return approved_deposit
 
-    await manager.broadcast_to_seller("__group__", {
-        "type": "new_deposit",
-        "deposit": deposit_doc,
-    })
     await send_push_to_roles(["admin", "super_admin", "treasurer"], {
         "id": f"deposit-{deposit_doc['id']}",
         "type": "new_deposit",
         "title": "Deposit received",
         "body": f"{deposit_doc.get('user_name') or 'A member'} deposited UGX {float(deposit_doc.get('amount') or 0):,.0f}",
+        "url": "/dashboard",
+    })
+    await send_push_to_users([deposit_doc["user_id"]], {
+        "id": f"deposit-request-{deposit_doc['id']}",
+        "type": "transaction_update",
+        "title": "Deposit request submitted",
+        "body": f"Your UGX {float(deposit_doc.get('amount') or 0):,.0f} deposit is awaiting treasurer approval.",
         "url": "/dashboard",
     })
 
@@ -2974,11 +3013,7 @@ async def request_loan(loan: LoanRequest, user: dict = Depends(get_current_user)
     loan_doc["id"] = str(result.inserted_id)
     loan_doc.pop("_id", None)
 
-    await manager.broadcast_to_seller("__group__", {
-        "type": "new_loan",
-        "loan": loan_doc,
-    })
-    await send_push_to_roles(["admin", "super_admin", "treasurer"], {
+    await send_push_to_roles(["treasurer"], {
         "id": f"loan-{loan_doc['id']}",
         "type": "new_loan",
         "title": "Loan request",
@@ -3291,7 +3326,7 @@ async def request_quick_loan(
     result = await db.quick_loans.insert_one(loan_doc)
     loan_doc["id"] = str(result.inserted_id)
     loan_doc.pop("_id", None)
-    await send_push_to_roles(["admin", "super_admin", "treasurer"], {
+    await send_push_to_roles(["treasurer"], {
         "id": f"quick-loan-{loan_doc['id']}",
         "type": "new_loan",
         "title": "Quick loan request",
@@ -3901,11 +3936,7 @@ async def request_withdrawal(withdrawal: WithdrawalRequest, user: dict = Depends
         })
         return withdrawal_doc
 
-    await manager.broadcast_to_seller("__group__", {
-        "type": "new_withdrawal",
-        "withdrawal": withdrawal_doc,
-    })
-    await send_push_to_roles(["admin", "super_admin", "treasurer"], {
+    await send_push_to_roles(["treasurer"], {
         "id": f"withdrawal-{withdrawal_doc['id']}",
         "type": "new_withdrawal",
         "title": "Withdrawal requested",
@@ -3949,11 +3980,7 @@ async def activate_matured_full_withdrawals():
             "notice_period_completed_at": now.isoformat(),
         }
         notification_withdrawal.pop("_id", None)
-        await manager.broadcast_to_seller("__group__", {
-            "type": "new_withdrawal",
-            "withdrawal": notification_withdrawal,
-        })
-        await send_push_to_roles(["admin", "super_admin", "treasurer"], {
+        await send_push_to_roles(["treasurer"], {
             "id": f"withdrawal-{withdrawal['_id']}",
             "type": "new_withdrawal",
             "title": "Full withdrawal ready for approval",

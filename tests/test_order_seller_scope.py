@@ -116,6 +116,7 @@ def test_create_order_uses_the_product_seller_account(server_module, monkeypatch
     )
     broadcasts = []
     pushes = []
+    buyer_pushes = []
 
     async def capture_broadcast(target, _message):
         broadcasts.append(target)
@@ -123,8 +124,12 @@ def test_create_order_uses_the_product_seller_account(server_module, monkeypatch
     async def capture_push(name, _payload, target_id=None):
         pushes.append((name, target_id))
 
+    async def capture_buyer_push(user_ids, payload):
+        buyer_pushes.append((user_ids, payload))
+
     monkeypatch.setattr(server_module.manager, "broadcast_to_seller", capture_broadcast)
     monkeypatch.setattr(server_module, "send_push_to_seller", capture_push)
+    monkeypatch.setattr(server_module, "send_push_to_users", capture_buyer_push)
     request = server_module.OrderCreate(
         productId=str(product_id),
         sellerName="Client supplied wrong seller",
@@ -142,6 +147,9 @@ def test_create_order_uses_the_product_seller_account(server_module, monkeypatch
     assert created["seller_id"] == str(seller_id)
     assert broadcasts == [str(seller_id)]
     assert pushes == [("Actual seller", str(seller_id))]
+    assert buyer_pushes[0][0] == [str(buyer_id)]
+    assert buyer_pushes[0][1]["type"] == "transaction_update"
+    assert buyer_pushes[0][1]["title"] == "Order placed"
 
 
 def test_get_orders_scopes_members_by_seller_id_and_preserves_admin_access(server_module):

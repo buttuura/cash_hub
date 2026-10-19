@@ -274,9 +274,11 @@ def test_group_push_targets_all_privileged_user_subscriptions(server_module):
     ]
     subscription_collection = FakeCollection(subscriptions)
     server_module.db.users = user_collection
+    server_module.db.notifications = SimpleNamespace(insert_many=AsyncMock())
     server_module.db.push_subscriptions = subscription_collection
     server_module.VAPID_PUBLIC_KEY = "test-public-key"
     server_module.VAPID_PRIVATE_KEY = "test-private-key"
+    server_module.firebase_app = None
 
     with (
         patch.object(server_module, "webpush") as webpush,

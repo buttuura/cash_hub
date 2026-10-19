@@ -29,6 +29,9 @@ class FakeDatabase:
         self.notification_documents.extend(documents)
         return Mock(inserted_ids=[])
 
+    def find(self, *_args, **_kwargs):
+        return FakeCursor([])
+
     def __getitem__(self, key):
         return self
 
@@ -47,6 +50,7 @@ def server_module():
     with patch("motor.motor_asyncio.AsyncIOMotorClient", return_value=FakeMongoClient()):
         module = importlib.import_module("backend.server")
         module.db.notifications = module.db
+        module.db.users = module.db
         module.firebase_app = None
         yield module
 
@@ -377,8 +381,9 @@ def test_member_can_submit_development_fee_deposit(server_module):
     }
 
     with (
-        patch.object(server_module.manager, "broadcast_to_seller", new=AsyncMock()),
-        patch.object(server_module, "send_push_to_roles", new=AsyncMock()),
+        patch.object(server_module.manager, "broadcast_to_seller", new=AsyncMock()) as broadcast,
+        patch.object(server_module, "send_push_to_roles", new=AsyncMock()) as role_push,
+        patch.object(server_module, "send_push_to_users", new=AsyncMock()) as user_push,
     ):
         response = asyncio.run(server_module.request_deposit(
             server_module.DepositRequest(amount=3000, deposit_type="development_fee"),
@@ -390,6 +395,11 @@ def test_member_can_submit_development_fee_deposit(server_module):
     assert response["amount"] == 3000
     assert response["status"] == "pending"
     assert deposits.deposit["user_id"] == user["id"]
+    broadcast.assert_not_awaited()
+    role_push.assert_awaited_once()
+    assert role_push.await_args.args[0] == ["admin", "super_admin", "treasurer"]
+    user_push.assert_awaited_once()
+    assert user_push.await_args.args[0] == [user["id"]]
 
 
 def test_full_withdrawal_starts_60_day_notice_and_notifies_treasurer(server_module):
@@ -505,7 +515,7 @@ def test_matured_full_withdrawal_is_sent_to_admin_queue(server_module):
 
     assert withdrawal["status"] == "pending"
     assert "notice_period_completed_at" in withdrawal
-    broadcast.assert_awaited_once()
+    broadcast.assert_not_awaited()
     role_push.assert_awaited_once()
     user_push.assert_awaited_once()
 

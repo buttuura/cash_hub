@@ -61,6 +61,8 @@ import {
   Sparkles,
   Lightbulb,
   Rocket,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
 import {
@@ -175,6 +177,7 @@ const Dashboard = () => {
   const [members, setMembers] = useState([]);
   const [dataLoading, setDataLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
+  const [accountBalanceVisible, setAccountBalanceVisible] = useState(false);
   const [activeAdminPage, setActiveAdminPage] = useState('admin-panel');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -1989,6 +1992,17 @@ return (
 
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-2">
+                <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-[#347242]/10 text-sm font-bold text-[#347242]">
+                  {user?.profile_picture_url ? (
+                    <img
+                      src={resolveImageUrl(user.profile_picture_url, API_URL)}
+                      alt={`${user.name || 'Your'} profile`}
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    user?.name?.charAt(0)?.toUpperCase() || '?'
+                  )}
+                </div>
                 <div className="text-right">
                   <p className="text-sm font-semibold text-[#1E231F] leading-tight">{user?.name}</p>
                   {user?.member_code && (
@@ -2155,8 +2169,16 @@ return (
                 <div className="space-y-4">
                 <Card className="bg-white border border-[#E8EBE8] shadow-sm">
                   <CardContent className="p-8 space-y-4">
-                    <div className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-[#347242]/10 text-[#347242]">
-                      <User className="w-6 h-6" />
+                    <div className="inline-flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-[#347242]/10 text-xl font-bold text-[#347242]">
+                      {user?.profile_picture_url ? (
+                        <img
+                          src={resolveImageUrl(user.profile_picture_url, API_URL)}
+                          alt={`${user.name || 'Your'} profile`}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        user?.name?.charAt(0)?.toUpperCase() || <User className="h-6 w-6" />
+                      )}
                     </div>
                     <div className="space-y-2">
                       <h2 className="text-2xl font-bold font-['Manrope'] text-[#1E231F]">Seller overview</h2>
@@ -2238,9 +2260,20 @@ return (
                    <div className="flex items-center justify-between">
                      <div>
                        <p className="text-white/70 text-sm font-medium uppercase tracking-wide">Total Group Balance</p>
-                       <p className="text-4xl font-extrabold text-white font-numbers mt-2">
-                         {stats ? formatCurrency(stats.total_group_balance) : '—'}
-                       </p>
+                       <div className="flex items-center gap-2 mt-2">
+                         <p className="text-4xl font-extrabold text-white font-numbers">
+                           {accountBalanceVisible ? (stats ? formatCurrency(stats.total_group_balance) : '—') : '*****'}
+                         </p>
+                         <button
+                           type="button"
+                           onClick={() => setAccountBalanceVisible((visible) => !visible)}
+                           aria-label={accountBalanceVisible ? 'Hide account balance' : 'Show account balance'}
+                           aria-pressed={accountBalanceVisible}
+                           className="rounded-full p-2 text-white/80 hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+                         >
+                           {accountBalanceVisible ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                         </button>
+                       </div>
                        <p className="text-white/70 text-sm mt-2">
                          {stats ? `${stats.total_members} members • Year ends ${stats.year_end_date}` : 'Loading...'}
                        </p>
@@ -2314,9 +2347,11 @@ return (
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-[#5C665D] text-sm font-medium uppercase tracking-wide">My Savings</p>
-                      <p className="text-2xl font-bold text-[#1E231F] font-numbers mt-2">
-                        {formatCurrency(user?.total_savings)}
-                      </p>
+                      <div className="mt-2">
+                        <p className="text-2xl font-bold text-[#1E231F] font-numbers">
+                          {accountBalanceVisible ? formatCurrency(user?.total_savings) : '*****'}
+                        </p>
+                      </div>
                     </div>
                     <div className="w-12 h-12 bg-[#347242]/10 rounded-full flex items-center justify-center">
                       <PiggyBank className="w-6 h-6 text-[#347242]" />
@@ -2331,9 +2366,11 @@ return (
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-[#5C665D] text-sm font-medium uppercase tracking-wide">Development Fund</p>
-                      <p className="text-2xl font-bold text-[#1E231F] font-numbers mt-2">
-                        {formatCurrency(user?.development_fund)}
-                      </p>
+                      <div className="mt-2">
+                        <p className="text-2xl font-bold text-[#1E231F] font-numbers">
+                          {accountBalanceVisible ? formatCurrency(user?.development_fund) : '*****'}
+                        </p>
+                      </div>
                       <p className="text-xs text-[#5C665D] mt-1">Non-withdrawable</p>
                     </div>
                     <div className="w-12 h-12 bg-[#D48C70]/10 rounded-full flex items-center justify-center">
@@ -2349,9 +2386,11 @@ return (
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-[#5C665D] text-sm font-medium uppercase tracking-wide">Outstanding Loan</p>
-                      <p className={`text-2xl font-bold font-numbers mt-2 ${userLoanBalance > 0 ? 'text-[#D05A49]' : 'text-[#347242]'}`}>
-                        {formatCurrency(userLoanBalance)}
-                      </p>
+                      <div className="mt-2">
+                        <p className={`text-2xl font-bold font-numbers ${userLoanBalance > 0 ? 'text-[#D05A49]' : 'text-[#347242]'}`}>
+                          {accountBalanceVisible ? formatCurrency(userLoanBalance) : '*****'}
+                        </p>
+                      </div>
                       <p className="text-xs text-[#5C665D] mt-1">
                         {userLoanBalance > 0 ? 'Due for repayment' : 'No active loans'}
                       </p>
@@ -3684,9 +3723,17 @@ return (
                   <CardContent className="p-6">
                     <div className="flex items-start justify-between mb-4">
                       <div className="w-12 h-12 bg-[#2C5530]/10 rounded-full flex items-center justify-center">
-                        <span className="text-lg font-bold text-[#2C5530]">
-                          {m.name?.charAt(0)?.toUpperCase() || '?'}
-                        </span>
+                        {m.profile_picture_url ? (
+                          <img
+                            src={resolveImageUrl(m.profile_picture_url, API_URL)}
+                            alt={`${m.name || 'Member'} profile`}
+                            className="h-full w-full rounded-full object-cover"
+                          />
+                        ) : (
+                          <span className="text-lg font-bold text-[#2C5530]">
+                            {m.name?.charAt(0)?.toUpperCase() || '?'}
+                          </span>
+                        )}
                       </div>
                       <Badge
                         className={
@@ -4737,9 +4784,20 @@ return (
               <CardContent className="p-6">
                 <div className="text-center">
                   <p className="text-white/70 text-sm font-medium uppercase tracking-wide">Total Group Balance</p>
-                  <p className="text-5xl font-extrabold text-white font-numbers mt-2">
-                    {formatCurrency(financials?.total_group_balance)}
-                  </p>
+                  <div className="flex items-center justify-center gap-2 mt-2">
+                    <p className="text-5xl font-extrabold text-white font-numbers">
+                      {accountBalanceVisible ? formatCurrency(financials?.total_group_balance) : '*****'}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setAccountBalanceVisible((visible) => !visible)}
+                      aria-label={accountBalanceVisible ? 'Hide account balance' : 'Show account balance'}
+                      aria-pressed={accountBalanceVisible}
+                      className="rounded-full p-2 text-white/80 hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+                    >
+                      {accountBalanceVisible ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                    </button>
+                  </div>
                   <p className="text-white/70 text-sm mt-2">
                     Auto-calculated from all sources
                   </p>
@@ -4758,7 +4816,7 @@ return (
                     <div>
                       <p className="text-xs text-[#5C665D]">Member Savings</p>
                       <p className="text-lg font-bold text-[#347242] font-numbers">
-                        {formatCurrency(financials?.total_savings)}
+                        {accountBalanceVisible ? formatCurrency(financials?.total_savings) : '*****'}
                       </p>
                     </div>
                   </div>
@@ -4774,7 +4832,9 @@ return (
                     <div>
                       <p className="text-xs text-[#5C665D]">Net Member Savings</p>
                       <p className="text-lg font-bold text-[#347242] font-numbers">
-                        {formatCurrency(Math.max(0, (financials?.total_savings || 0) - (financials?.active_loans_amount || 0)))}
+                        {accountBalanceVisible
+                          ? formatCurrency(Math.max(0, (financials?.total_savings || 0) - (financials?.active_loans_amount || 0)))
+                          : '*****'}
                       </p>
                       <p className="text-xs text-[#5C665D]">Member savings after active loans</p>
                     </div>
@@ -4791,7 +4851,7 @@ return (
                     <div>
                       <p className="text-xs text-[#5C665D]">Development Fund</p>
                       <p className="text-lg font-bold text-[#2C5530] font-numbers">
-                        {formatCurrency(financials?.total_development_fund)}
+                        {accountBalanceVisible ? formatCurrency(financials?.total_development_fund) : '*****'}
                       </p>
                     </div>
                   </div>
@@ -4807,7 +4867,7 @@ return (
                     <div>
                       <p className="text-xs text-[#5C665D]">Loan Interest</p>
                       <p className="text-lg font-bold text-[#D48C70] font-numbers">
-                        {formatCurrency(financials?.total_interest_earned)}
+                        {accountBalanceVisible ? formatCurrency(financials?.total_interest_earned) : '*****'}
                       </p>
                     </div>
                   </div>
@@ -4823,7 +4883,7 @@ return (
                     <div>
                       <p className="text-xs text-[#5C665D]">Late Fees</p>
                       <p className="text-lg font-bold text-[#E8B25C] font-numbers">
-                        {formatCurrency(financials?.total_late_fees)}
+                        {accountBalanceVisible ? formatCurrency(financials?.total_late_fees) : '*****'}
                       </p>
                     </div>
                   </div>
