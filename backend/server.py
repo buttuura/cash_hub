@@ -26,7 +26,7 @@ from email.mime.multipart import MIMEMultipart
 import bcrypt
 import jwt
 from uuid import uuid4
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, Field, EmailStr, field_validator
 from typing import List, Optional
 from datetime import datetime, timezone, timedelta
 import anyio
@@ -36,6 +36,7 @@ from pywebpush import webpush, WebPushException
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import firebase_admin
 from firebase_admin import credentials, messaging
+from email_validator import EmailNotValidError, validate_email
 
 # Configure logging
 logging.basicConfig(
@@ -178,11 +179,22 @@ class UserCreate(BaseModel):
     phone: str
     password: str
     name: str
-    email: Optional[EmailStr] = None
+    email: Optional[str] = None
     next_of_kin_name: Optional[str] = None
     next_of_kin_phone: Optional[str] = None
     national_id: Optional[str] = None
     membership_type: str = "seller"
+
+    @field_validator("email")
+    @classmethod
+    def validate_email_without_changing_case(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        try:
+            validate_email(value, check_deliverability=False)
+        except EmailNotValidError as error:
+            raise ValueError(str(error)) from error
+        return value
 
 class UserLogin(BaseModel):
     identifier: str  # phone or email
@@ -1160,7 +1172,8 @@ async def register(user_data: UserCreate):
     if not normalized_phone:
         raise HTTPException(status_code=400, detail="Invalid phone number format")
     
-    email = user_data.email.lower() if user_data.email else None
+    email = user_data.email if user_data.email else None
+    normalized_email = email.lower() if email else None
     next_of_kin_name = user_data.next_of_kin_name.strip() if user_data.next_of_kin_name else None
     next_of_kin_phone = user_data.next_of_kin_phone.strip() if user_data.next_of_kin_phone else None
     national_id = user_data.national_id.strip() if user_data.national_id else None
@@ -1178,8 +1191,13 @@ async def register(user_data: UserCreate):
         raise HTTPException(status_code=400, detail="Phone number already registered")
     
     # Check email uniqueness (if provided)
-    if email:
-        existing_email = await db.users.find_one({"email": email})
+    if normalized_email:
+        existing_email = await db.users.find_one({
+            "$or": [
+                {"normalized_email": normalized_email},
+                {"email": normalized_email},
+            ]
+        })
         if existing_email:
             raise HTTPException(status_code=400, detail="Email already registered")
     
@@ -1205,6 +1223,7 @@ async def register(user_data: UserCreate):
     }
     if email:
         user_doc["email"] = email
+        user_doc["normalized_email"] = normalized_email
     user_doc["next_of_kin_name"] = next_of_kin_name
     user_doc["next_of_kin_phone"] = next_of_kin_phone
     if national_id:
@@ -1240,7 +1259,10 @@ async def login(credentials: UserLogin):
     if normalized_identifier:
         user = await db.users.find_one({"normalized_phone": normalized_identifier})
     if not user:
-        user = await db.users.find_one({"email": identifier.lower()})
+        normalized_email = identifier.lower()
+        user = await db.users.find_one({"normalized_email": normalized_email})
+        if not user:
+            user = await db.users.find_one({"email": normalized_email})
     
     if not user:
         raise HTTPException(status_code=401, detail="Invalid phone/email or password")

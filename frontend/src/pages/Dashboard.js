@@ -58,6 +58,7 @@ import {
   Image as ImageIcon,
   ImagePlus,
   Search,
+  ChevronDown,
   Sparkles,
   Lightbulb,
   Rocket,
@@ -80,6 +81,12 @@ import { buildWhatsAppUrl as buildNormalizedWhatsAppUrl } from '../utils/whatsap
 import { SellProductsCard } from '../components/AddProductDialog';
 import { API_URL } from '../lib/api';
 import { registerRefreshHandler } from '../lib/refreshBus';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '../components/ui/dropdown-menu';
 
 const DialogContent = (props) => <BaseDialogContent belowStickyNav {...props} />;
 
@@ -180,6 +187,7 @@ const Dashboard = () => {
   const [accountBalanceVisible, setAccountBalanceVisible] = useState(false);
   const [activeAdminPage, setActiveAdminPage] = useState('admin-panel');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [mobileMoreMenuOpen, setMobileMoreMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [copiedMemberCode, setCopiedMemberCode] = useState(false);
   const [activeFinancialTab, setActiveFinancialTab] = useState('overview');
@@ -1779,6 +1787,18 @@ return (
   }
   navItems.push({ id: 'settings', label: 'Settings', icon: Settings });
 
+  const moreNavItemIds = new Set(['financials', 'members', 'services', 'admin', 'settings']);
+  const primaryNavItems = navItems.filter((item) => !moreNavItemIds.has(item.id));
+  const moreNavItems = navItems.filter((item) => moreNavItemIds.has(item.id));
+  const isMoreNavItemActive = moreNavItems.some((item) => activeTab === item.id);
+  const handleNavItemClick = (item) => {
+    if (item.id === 'services') navigate('/services-management');
+    else if (item.id === 'settings') navigate('/settings');
+    else setActiveTab(item.id);
+    setMobileMoreMenuOpen(false);
+    setMobileMenuOpen(false);
+  };
+
   const loanAmountValue = parseFloat(loanAmount) || 0;
 
   const getRemainingGuaranteeSlots = (member) => {
@@ -1955,28 +1975,26 @@ return (
       {/* Navigation */}
       <nav ref={dashboardNavRef} className="sticky top-0 z-50 backdrop-blur-xl bg-white/90 border-b border-[#E8EBE8]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="dashboard-brand flex min-w-12 items-center gap-3">
+          <div className="flex h-16 items-center justify-between gap-2">
+            <div className="dashboard-brand flex min-w-9 shrink-0 items-center gap-2">
               <img 
                 src="/logo.png" 
                 alt="Class One Logo"
-                className="w-12 h-12 shrink-0 rounded-full object-cover"
+                className="h-9 w-9 shrink-0 rounded-full object-cover"
               />
-              <span className="dashboard-brand-name hidden whitespace-nowrap text-xl font-bold font-['Manrope'] text-[#1E231F] md:inline-block">Class One Savings</span>
+              <span className="dashboard-brand-name hidden whitespace-nowrap text-lg font-bold font-['Manrope'] text-[#1E231F] xl:inline-block">Class One Savings</span>
             </div>
 
             {/* Desktop Navigation */}
-            <div className="hidden md:flex items-center gap-1">
-              {navItems.map((item) => (
+            <div className="hidden min-w-0 flex-1 items-center justify-center gap-0 md:flex lg:gap-1">
+              {primaryNavItems.map((item) => (
                 <button
                   key={item.id}
-                  onClick={() => {
-                    if (item.id === 'services') navigate('/services-management');
-                    else if (item.id === 'settings') navigate('/settings');
-                    else setActiveTab(item.id);
-                  }}
+                  onClick={() => handleNavItemClick(item)}
+                  aria-label={item.label}
+                  title={item.label}
                   data-testid={`nav-${item.id}`}
-                  className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
+                  className={`whitespace-nowrap rounded-full px-2 py-2 text-sm font-medium transition-all lg:px-3 ${
                     activeTab === item.id
                       ? 'bg-[#2C5530] text-white'
                       : 'text-[#5C665D] hover:bg-[#E8EBE8]'
@@ -1984,47 +2002,59 @@ return (
                 >
                   <span className="inline-flex items-center gap-2">
                     {item.icon && <item.icon className="h-4 w-4" />}
-                    {item.label}
+                    <span>{item.label}</span>
                   </span>
                 </button>
               ))}
-            </div>
-
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2">
-                <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-[#347242]/10 text-sm font-bold text-[#347242]">
-                  {user?.profile_picture_url ? (
-                    <img
-                      src={resolveImageUrl(user.profile_picture_url, API_URL)}
-                      alt={`${user.name || 'Your'} profile`}
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    user?.name?.charAt(0)?.toUpperCase() || '?'
-                  )}
-                </div>
-                <div className="text-right">
-                  <p className="text-sm font-semibold text-[#1E231F] leading-tight">{user?.name}</p>
-                  {user?.member_code && (
+              {moreNavItems.length > 0 && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
                     <button
                       type="button"
-                      onClick={async () => {
-                        try {
-                          await navigator.clipboard.writeText(user.member_code);
-                          setCopiedMemberCode(true);
-                          setTimeout(() => setCopiedMemberCode(false), 1500);
-                        } catch {
-                          toast.error('Failed to copy member code');
-                        }
-                      }}
-                      className="inline-flex items-center gap-1 text-[10px] font-mono font-semibold text-[#2C5530] bg-[#ECF8E9] border border-[#2C5530]/20 rounded-full px-1.5 py-0.5 hover:bg-[#2C5530]/10 leading-none"
-                      title="Copy member code"
+                      data-testid="nav-see-more"
+                      aria-label="See more navigation options"
+                      className={`inline-flex items-center gap-1 rounded-full px-2 py-2 text-sm font-medium transition-all xl:px-3 ${
+                        isMoreNavItemActive
+                          ? 'bg-[#2C5530] text-white'
+                          : 'text-[#5C665D] hover:bg-[#E8EBE8]'
+                      }`}
                     >
-                      {user.member_code}
-                      {copiedMemberCode ? <Check className="w-2.5 h-2.5" /> : <Copy className="w-2.5 h-2.5" />}
+                      See more
+                      <ChevronDown className="h-4 w-4" />
                     </button>
-                  )}
-                </div>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="z-[10000] min-w-44 rounded-xl border-[#E8EBE8] bg-white p-1.5 shadow-lg">
+                    {moreNavItems.map((item) => (
+                      <DropdownMenuItem
+                        key={item.id}
+                        onSelect={() => handleNavItemClick(item)}
+                        data-testid={`nav-${item.id}`}
+                        className={`cursor-pointer rounded-lg px-3 py-2 ${
+                          activeTab === item.id
+                            ? 'bg-[#2C5530] text-white focus:bg-[#2C5530] focus:text-white'
+                            : 'text-[#5C665D] focus:bg-[#E8EBE8] focus:text-[#1E231F]'
+                        }`}
+                      >
+                        {item.icon && <item.icon className="h-4 w-4" />}
+                        {item.label}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+            </div>
+
+            <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#347242]/10 text-sm font-bold text-[#347242]">
+                {user?.profile_picture_url ? (
+                  <img
+                    src={resolveImageUrl(user.profile_picture_url, API_URL)}
+                    alt="Your profile"
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  user?.name?.charAt(0)?.toUpperCase() || '?'
+                )}
               </div>
               <Button
                 variant="ghost"
@@ -2076,19 +2106,10 @@ return (
         {mobileMenuOpen && (
           <div className="md:hidden border-t border-[#E8EBE8] bg-white p-4">
             <div className="flex flex-col gap-2">
-              {navItems.map((item) => (
+              {primaryNavItems.map((item) => (
                 <button
                   key={item.id}
-                  onClick={() => {
-                    if (item.id === 'services') {
-                      navigate('/services-management');
-                    } else if (item.id === 'settings') {
-                      navigate('/settings');
-                    } else {
-                      setActiveTab(item.id);
-                    }
-                    setMobileMenuOpen(false);
-                  }}
+                  onClick={() => handleNavItemClick(item)}
                   className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
                     activeTab === item.id
                       ? 'bg-[#2C5530] text-white'
@@ -2099,6 +2120,44 @@ return (
                   {item.label}
                 </button>
               ))}
+              {moreNavItems.length > 0 && (
+                <div>
+                  <button
+                    type="button"
+                    aria-expanded={mobileMoreMenuOpen}
+                    aria-controls="mobile-more-navigation"
+                    data-testid="mobile-nav-see-more"
+                    onClick={() => setMobileMoreMenuOpen((open) => !open)}
+                    className={`flex w-full items-center justify-between rounded-xl px-4 py-3 text-sm font-medium transition-all ${
+                      isMoreNavItemActive
+                        ? 'bg-[#2C5530] text-white'
+                        : 'text-[#5C665D] hover:bg-[#E8EBE8]'
+                    }`}
+                  >
+                    <span>See more</span>
+                    <ChevronDown className={`h-4 w-4 transition-transform ${mobileMoreMenuOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                  {mobileMoreMenuOpen && (
+                    <div id="mobile-more-navigation" className="mt-2 flex flex-col gap-2 pl-4">
+                      {moreNavItems.map((item) => (
+                        <button
+                          key={item.id}
+                          onClick={() => handleNavItemClick(item)}
+                          data-testid={`mobile-nav-${item.id}`}
+                          className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all ${
+                            activeTab === item.id
+                              ? 'bg-[#2C5530] text-white'
+                              : 'text-[#5C665D] hover:bg-[#E8EBE8]'
+                          }`}
+                        >
+                          {item.icon && <item.icon className="h-5 w-5" />}
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -2257,11 +2316,11 @@ return (
                {/* Total Group Balance - Only Treasurer can edit */}
                <Card className="md:col-span-2 lg:col-span-2 bg-[#2C5530] border-none shadow-lg" data-testid="total-balance-card">
                  <CardContent className="p-6">
-                   <div className="flex items-center justify-between">
-                     <div>
+                   <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
+                     <div className="min-w-0 w-full flex-1">
                        <p className="text-white/70 text-sm font-medium uppercase tracking-wide">Total Group Balance</p>
-                       <div className="flex items-center gap-2 mt-2">
-                         <p className="text-4xl font-extrabold text-white font-numbers">
+                       <div className="mt-2 flex min-w-0 flex-wrap items-center gap-2">
+                         <p className="min-w-0 break-words text-2xl font-extrabold text-white font-numbers sm:text-4xl">
                            {accountBalanceVisible ? (stats ? formatCurrency(stats.total_group_balance) : '—') : '*****'}
                          </p>
                          <button
@@ -2269,7 +2328,7 @@ return (
                            onClick={() => setAccountBalanceVisible((visible) => !visible)}
                            aria-label={accountBalanceVisible ? 'Hide account balance' : 'Show account balance'}
                            aria-pressed={accountBalanceVisible}
-                           className="rounded-full p-2 text-white/80 hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+                           className="shrink-0 rounded-full p-2 text-white/80 hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
                          >
                            {accountBalanceVisible ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                          </button>
@@ -2278,12 +2337,12 @@ return (
                          {stats ? `${stats.total_members} members • Year ends ${stats.year_end_date}` : 'Loading...'}
                        </p>
                      </div>
-                     <div className="flex flex-col items-end gap-2">
-                       <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center">
+                     <div className="flex w-full flex-row flex-wrap items-center justify-between gap-2 sm:w-auto sm:flex-col sm:items-end">
+                       <div className="hidden h-16 w-16 items-center justify-center rounded-full bg-white/20 sm:flex">
                          <Wallet className="w-8 h-8 text-white" />
                        </div>
                        {isAdmin && (
-                         <div className="flex flex-col gap-2 items-end">
+                         <div className="flex flex-wrap items-center gap-2 sm:flex-col sm:items-end">
                            {isTreasurer && (
                              <Dialog open={balanceDialogOpen} onOpenChange={setBalanceDialogOpen}>
                                <DialogTrigger asChild>
@@ -4782,10 +4841,10 @@ return (
             {/* Total Group Balance Card */}
             <Card className="bg-[#2C5530] border-none shadow-lg">
               <CardContent className="p-6">
-                <div className="text-center">
+                <div className="min-w-0 text-center">
                   <p className="text-white/70 text-sm font-medium uppercase tracking-wide">Total Group Balance</p>
-                  <div className="flex items-center justify-center gap-2 mt-2">
-                    <p className="text-5xl font-extrabold text-white font-numbers">
+                  <div className="mt-2 flex min-w-0 flex-wrap items-center justify-center gap-2">
+                    <p className="min-w-0 break-words text-2xl font-extrabold text-white font-numbers sm:text-5xl">
                       {accountBalanceVisible ? formatCurrency(financials?.total_group_balance) : '*****'}
                     </p>
                     <button
@@ -4793,7 +4852,7 @@ return (
                       onClick={() => setAccountBalanceVisible((visible) => !visible)}
                       aria-label={accountBalanceVisible ? 'Hide account balance' : 'Show account balance'}
                       aria-pressed={accountBalanceVisible}
-                      className="rounded-full p-2 text-white/80 hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+                      className="shrink-0 rounded-full p-2 text-white/80 hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
                     >
                       {accountBalanceVisible ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                     </button>

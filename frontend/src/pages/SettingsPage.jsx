@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, BellRing, Camera, Moon, ShoppingCart, Sun, UserRound } from 'lucide-react';
+import { ArrowLeft, BellRing, Camera, Check, Copy, Moon, ShoppingCart, Sun, UserRound } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
@@ -22,6 +22,7 @@ const SettingsPage = () => {
   const [profile, setProfile] = useState(user);
   const [profileLoading, setProfileLoading] = useState(true);
   const [profilePictureUploading, setProfilePictureUploading] = useState(false);
+  const [copiedMemberCode, setCopiedMemberCode] = useState(false);
   const [orderSoundEnabled, setOrderSoundEnabled] = useState(() => getOrderSoundEnabled(userId));
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -92,6 +93,17 @@ const SettingsPage = () => {
     } finally {
       setProfilePictureUploading(false);
       event.target.value = '';
+    }
+  };
+
+  const handleCopyMemberCode = async () => {
+    try {
+      await navigator.clipboard.writeText(profile.member_code);
+      setCopiedMemberCode(true);
+      window.setTimeout(() => setCopiedMemberCode(false), 1500);
+      toast.success('Member code copied');
+    } catch {
+      toast.error('Failed to copy member code');
     }
   };
 
@@ -205,7 +217,28 @@ const SettingsPage = () => {
                   {profileDetails.map(([label, value]) => (
                     <div key={label} className="rounded-lg bg-[#FAFAF8] p-3">
                       <dt className="text-xs font-medium uppercase tracking-wide text-[#5C665D]">{label}</dt>
-                      <dd className="mt-1 break-words text-sm font-medium capitalize text-[#1E231F]">{value}</dd>
+                      <dd className={`mt-1 break-words text-sm font-medium text-[#1E231F] ${label === 'Email address' || label === 'Member code' ? 'normal-case' : 'capitalize'}`}>
+                        {label === 'Member code' ? (
+                          <span className="inline-flex max-w-full items-center gap-1.5">
+                            <span className="break-all">{value}</span>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              aria-label={copiedMemberCode ? 'Member code copied' : 'Copy member code'}
+                              title="Copy member code"
+                              className="h-8 w-8 shrink-0 text-[#2C5530] hover:bg-[#ECF8E9]"
+                              onClick={handleCopyMemberCode}
+                            >
+                              {copiedMemberCode ? (
+                                <Check className="h-4 w-4" aria-hidden="true" />
+                              ) : (
+                                <Copy className="h-4 w-4" aria-hidden="true" />
+                              )}
+                            </Button>
+                          </span>
+                        ) : value}
+                      </dd>
                     </div>
                   ))}
                 </dl>

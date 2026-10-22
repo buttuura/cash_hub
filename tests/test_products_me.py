@@ -240,6 +240,7 @@ def test_register_defaults_new_users_to_seller_membership(server_module):
         server_module.register(
             server_module.UserCreate(
                 name="Alice",
+                email="Alice.Example@Example.COM",
                 phone="0771234567",
                 password="secret123",
                 next_of_kin_name="Jane",
@@ -250,6 +251,42 @@ def test_register_defaults_new_users_to_seller_membership(server_module):
 
     assert response["membership_type"] == "seller"
     assert fake_users.inserted["membership_type"] == "seller"
+    assert response["email"] == "Alice.Example@Example.COM"
+    assert fake_users.inserted["email"] == "Alice.Example@Example.COM"
+    assert fake_users.inserted["normalized_email"] == "alice.example@example.com"
+
+
+def test_login_finds_preserved_email_case_insensitively(server_module):
+    user = {
+        "_id": ObjectId("507f1f77bcf86cd799439011"),
+        "email": "Alice.Example@Example.COM",
+        "password_hash": "hashed-password",
+        "name": "Alice",
+        "role": "seller",
+    }
+    queries = []
+
+    class FakeUsersCollection:
+        async def find_one(self, query):
+            queries.append(query)
+            if query == {"normalized_email": "alice.example@example.com"}:
+                return user
+            return None
+
+    server_module.db.users = FakeUsersCollection()
+    server_module.verify_password = lambda password, _password_hash: password == "test-password"
+
+    response = asyncio.run(
+        server_module.login(
+            server_module.UserLogin(
+                identifier="ALICE.EXAMPLE@EXAMPLE.COM",
+                password="test-password",
+            )
+        )
+    )
+
+    assert response["email"] == "Alice.Example@Example.COM"
+    assert {"normalized_email": "alice.example@example.com"} in queries
 
 
 def test_group_push_targets_all_privileged_user_subscriptions(server_module):
