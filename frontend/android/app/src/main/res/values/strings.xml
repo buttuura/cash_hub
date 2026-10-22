@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">C1Sgroup</string>
-    <string name="title_activity_main">C1Sgroup</string>
+    <string name="app_name">c1sGroup</string>
+    <string name="title_activity_main">c1sGroup</string>
     <string name="package_name">com.classone.cashhub</string>
     <string name="custom_url_scheme">com.classone.cashhub</string>
     <string name="default_notification_channel_id">cashhub-silent-v2</string>

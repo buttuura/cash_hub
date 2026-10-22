@@ -9,7 +9,7 @@ import { Textarea } from '../components/ui/textarea';
 import { Label } from '../components/ui/label';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '../components/ui/dialog';
 import { Toaster, toast } from 'sonner';
-import { ShoppingCart, FastForward, Cpu, Sparkles, ShoppingBag, HardHat, PenTool, Shirt, HeartPulse, Home, BookOpen, Dumbbell, Gamepad2, Briefcase, Menu, X, Search, Phone, MessageCircle } from 'lucide-react';
+import { ShoppingCart, FastForward, Cpu, Sparkles, ShoppingBag, HardHat, PenTool, Shirt, HeartPulse, Home, BookOpen, Dumbbell, Gamepad2, Briefcase, Menu, X, Search, Phone, MessageCircle, Download } from 'lucide-react';
 import ProductCard from '../components/ProductCard';
 import ProductShareButton from '../components/ProductShareButton';
 import { OFFICERS } from '../data/officers';
@@ -1087,6 +1087,14 @@ const handleOpenPurchase = (product) => {
                 <FastForward className="mr-2 h-5 w-5" />
                 Quick Loan
               </Button>
+              <a
+                href="/downloads/c1sGroup.apk"
+                download="c1sGroup.apk"
+                className="inline-flex h-auto w-fit items-center rounded-full border border-white/80 bg-white/95 px-5 py-3 text-lg font-semibold text-[#172B12] shadow-sm transition-colors hover:bg-white"
+              >
+                <Download className="mr-2 h-5 w-5" aria-hidden="true" />
+                Download Android App
+              </a>
             </div>
           </div>
           <div className="pointer-events-none absolute right-6 top-6 hidden h-32 w-32 rounded-full bg-[#D8E4D3]/60 blur-2xl md:block" />
