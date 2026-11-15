@@ -196,10 +196,15 @@ useEffect(() => {
   const handleDownloadQuickLoanPDF = async (loan) => {
     const officer = OFFICERS.find((o) => o.code === loan.officer_code)
       || (loan.officer_name ? { name: loan.officer_name, code: loan.officer_code } : null);
-    await exportLoanAgreementPDF(loan, officer, {
-      download: true,
-      collateralImage: loan.collateral_image,
-    }).catch(() => {});
+    try {
+      await exportLoanAgreementPDF(loan, officer, {
+        download: true,
+        collateralImage: loan.collateral_image,
+      });
+    } catch (error) {
+      console.error('Failed to download quick loan agreement:', error);
+      toast.error(error?.message || 'Failed to download quick loan agreement');
+    }
   };
 
   const handlePermanentDeleteOrder = async (orderId) => {
@@ -1127,6 +1132,7 @@ useEffect(() => {
                                 Delete
                               </Button>
                               <Button
+                                type="button"
                                 size="sm"
                                 variant="ghost"
                                 className="text-[#5C665D] hover:text-[#2C5530] h-7 w-7 p-0"

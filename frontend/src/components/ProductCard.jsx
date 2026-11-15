@@ -41,6 +41,8 @@ function ProductCard({ product, onAddToCart, onBuyNow, getImageUrl }) {
             <img
               src={getImageUrl(allImages[currentImgIndex])}
               alt={product.title}
+              loading="lazy"
+              decoding="async"
               className="h-28 w-full object-cover transition-opacity duration-300"
             />
             {hasMultipleImages && (

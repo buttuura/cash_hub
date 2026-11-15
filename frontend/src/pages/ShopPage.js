@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import { Capacitor } from '@capacitor/core';
 import axios from 'axios';
 import { renderMatches, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
@@ -9,7 +10,7 @@ import { Textarea } from '../components/ui/textarea';
 import { Label } from '../components/ui/label';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '../components/ui/dialog';
 import { Toaster, toast } from 'sonner';
-import { ShoppingCart, FastForward, Cpu, Sparkles, ShoppingBag, HardHat, PenTool, Shirt, HeartPulse, Home, BookOpen, Dumbbell, Gamepad2, Briefcase, Menu, X, Search, Phone, MessageCircle, Download } from 'lucide-react';
+import { ShoppingCart, FastForward, Cpu, Sparkles, ShoppingBag, HardHat, PenTool, Shirt, HeartPulse, Home, BookOpen, Dumbbell, Gamepad2, Briefcase, Menu, X, Search, Phone, MessageCircle, Download, Users, Store, Crown, ArrowRight } from 'lucide-react';
 import ProductCard from '../components/ProductCard';
 import ProductShareButton from '../components/ProductShareButton';
 import { OFFICERS } from '../data/officers';
@@ -143,12 +144,24 @@ const extractPersonName = (label) => {
 };
 
 const ShopPage = () => {
+  const showAndroidAppDownload = !Capacitor.isNativePlatform();
   const navigate = useNavigate();
   const location = useLocation();
   const { user, isAuthenticated, isAdmin, isSeller } = useAuth();
   const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
   const [selectedCategory, setSelectedCategory] = useState('food');
-  const [products, setProducts] = useState(DEFAULT_PRODUCTS);
+  const [products, setProducts] = useState(() => {
+    try {
+      const cachedProducts = window.localStorage.getItem('shopProducts');
+      if (cachedProducts) {
+        const parsed = JSON.parse(cachedProducts);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (error) {
+      console.warn('Failed to read cached shop products', error);
+    }
+    return DEFAULT_PRODUCTS;
+  });
   const [orders, setOrders] = useState([]);
   const [addCategoryOpen, setAddCategoryOpen] = useState(false);
   const [quickLoanOpen, setQuickLoanOpen] = useState(false);
@@ -186,6 +199,12 @@ const ShopPage = () => {
   const [heroPosterUrls, setHeroPosterUrls] = useState(['/hero_bg_img.jpeg']);
   const [heroPosterIndex, setHeroPosterIndex] = useState(0);
   const shopNavRef = useRef(null);
+  const loanPreviewUrlsRef = useRef(new Set());
+  useEffect(() => () => {
+    loanPreviewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    loanPreviewUrlsRef.current.clear();
+  }, []);
+
   useLayoutEffect(() => {
     const nav = shopNavRef.current;
     if (!nav) return undefined;
@@ -533,24 +552,47 @@ const ShopPage = () => {
   };
 
   const handleDownloadLoanAgreement = async (summary = false) => {
-    if (!loanRequestData) return;
-    const officer = OFFICERS.find((o) => o.code === loanRequestData.officerCode)
-      || (loanRequestData.officer_name ? { name: loanRequestData.officer_name, code: loanRequestData.officerCode } : null);
+    const pdfData = loanRequestData || {
+      loan_name: loanName.trim() || 'Applicant',
+      loan_email: loanEmail.trim(),
+      loan_phone: loanPhone.trim(),
+      borrower_address: loanAddress.trim(),
+      borrower_city: loanCity.trim(),
+      currency: loanCurrency,
+      amount: Number(loanAmount) || 0,
+      purpose: loanPurpose.trim(),
+      collateral: collateral.trim(),
+      loan_type: loanType,
+      is_guaranteed: loanType === 'guaranteed',
+      repayment_period: repaymentPeriod,
+      serial_number: serialNumber,
+      buyer_name: buyerName.trim(),
+      officer_code: officerCode,
+      officer_name: (validOfficerCodes.find((entry) => entry.code === officerCode)?.label || '').replace(/\s*\([^)]*\)\s*$/, ''),
+      security_description: loanSecurity.trim(),
+      guarantor_name: loanGuarantorName.trim(),
+      guarantor_address: loanGuarantorAddress.trim(),
+      jurisdiction: loanJurisdiction.trim(),
+      witness_name: loanWitnessName.trim(),
+    };
+    const code = pdfData.officer_code || pdfData.officerCode || officerCode;
+    const officer = OFFICERS.find((o) => o.code === code)
+      || (pdfData.officer_name ? { name: pdfData.officer_name, code } : null);
     try {
       const { exportLoanAgreementPDF } = await import('../utils/pdfExport');
-      await exportLoanAgreementPDF(loanRequestData, officer, {
+      await exportLoanAgreementPDF(pdfData, officer, {
         download: true,
         summary,
-        collateralImage: collateralImagePreview,
-        nationalIdImages: nationalIdPreviews,
-        borrowerAddress: loanAddress,
-        borrowerCity: loanCity,
+        collateralImage,
+        nationalIdImages,
+        borrowerAddress: loanAddress.trim(),
+        borrowerCity: loanCity.trim(),
         currency: loanCurrency,
-        security: loanSecurity,
-        guarantorName: loanGuarantorName,
-        guarantorAddress: loanGuarantorAddress,
-        jurisdiction: loanJurisdiction,
-        witnessName: loanWitnessName,
+        security: loanSecurity.trim(),
+        guarantorName: loanGuarantorName.trim(),
+        guarantorAddress: loanGuarantorAddress.trim(),
+        jurisdiction: loanJurisdiction.trim(),
+        witnessName: loanWitnessName.trim(),
       });
     } catch (error) {
       console.error('Failed to generate loan agreement PDF:', error);
@@ -559,6 +601,8 @@ const ShopPage = () => {
   };
 
   const resetQuickLoanDialogState = () => {
+    loanPreviewUrlsRef.current.forEach((url) => URL.revokeObjectURL(url));
+    loanPreviewUrlsRef.current.clear();
     setLoanRequestSubmitted(false);
     setLoanRequestData(null);
     setLoanTermsAccepted(false);
@@ -651,22 +695,6 @@ const ShopPage = () => {
   }, [categories]);
 
   useEffect(() => {
-    const cachedProducts = window.localStorage.getItem('shopProducts');
-    if (cachedProducts) {
-      try {
-        const parsed = JSON.parse(cachedProducts);
-        if (Array.isArray(parsed)) {
-          setProducts(parsed);
-          return;
-        }
-      } catch (error) {
-        console.warn('Invalid shop products in localStorage', error);
-      }
-    }
-    setProducts(DEFAULT_PRODUCTS);
-  }, []);
-
-  useEffect(() => {
     const fetchBackendProducts = async () => {
       try {
         const response = await axios.get(`${API_URL}/api/products`);
@@ -712,28 +740,25 @@ const ShopPage = () => {
     }
   }, [user?.name]);
 
-  const categoryMap = categories.reduce((acc, category) => {
-    acc[category.id] = category;
-    return acc;
-  }, {});
-
-  const recentProducts = products
-    .sort((a, b) => new Date(b.createdAt || b.created_at) - new Date(a.createdAt || a.created_at))
-    .slice(0, 100);
-
-  const visibleProducts = products
-    .sort((a, b) => new Date(b.createdAt || b.created_at) - new Date(a.createdAt || a.created_at))
-    .slice(0, 100)
-    .filter((product) => {
-      const matchesCategory = selectedCategory === 'all' || product.category === selectedCategory;
-      const normalizedSearch = searchQuery.trim().toLowerCase();
-      const matchesSearch =
-        !normalizedSearch ||
-        product.title.toLowerCase().includes(normalizedSearch) ||
-        product.description?.toLowerCase().includes(normalizedSearch) ||
-        (product.sellerName || product.seller_name || '').toLowerCase().includes(normalizedSearch);
-      return matchesCategory && matchesSearch;
-    });
+  const sortedProducts = useMemo(
+    () => [...products].sort((a, b) => {
+      const dateA = Date.parse(a.createdAt || a.created_at || '') || 0;
+      const dateB = Date.parse(b.createdAt || b.created_at || '') || 0;
+      return dateB - dateA;
+    }),
+    [products]
+  );
+  const recentProducts = sortedProducts.slice(0, 100);
+  const popularCategories = useMemo(
+    () => categories
+      .map((category) => ({
+        category,
+        categoryProducts: sortedProducts.filter((product) => product.category === category.id),
+      }))
+      .sort((a, b) => b.categoryProducts.length - a.categoryProducts.length)
+      .slice(0, 5),
+    [categories, sortedProducts]
+  );
 
   const applyCategoryFilter = (categoryId) => {
     setSelectedCategory(categoryId);
@@ -1087,14 +1112,16 @@ const handleOpenPurchase = (product) => {
                 <FastForward className="mr-2 h-5 w-5" />
                 Quick Loan
               </Button>
-              <a
-                href="/downloads/c1sGroup.apk"
-                download="c1sGroup.apk"
-                className="inline-flex h-auto w-fit items-center rounded-full border border-white/80 bg-white/95 px-5 py-3 text-lg font-semibold text-[#172B12] shadow-sm transition-colors hover:bg-white"
-              >
-                <Download className="mr-2 h-5 w-5" aria-hidden="true" />
-                Download Android App
-              </a>
+              {showAndroidAppDownload && (
+                <a
+                  href="/downloads/c1sGroup.apk"
+                  download="c1sGroup.apk"
+                  className="inline-flex h-auto w-fit items-center rounded-full border border-white/80 bg-white/95 px-5 py-3 text-lg font-semibold text-[#172B12] shadow-sm transition-colors hover:bg-white"
+                >
+                  <Download className="mr-2 h-5 w-5" aria-hidden="true" />
+                  Download Android App
+                </a>
+              )}
             </div>
           </div>
           <div className="pointer-events-none absolute right-6 top-6 hidden h-32 w-32 rounded-full bg-[#D8E4D3]/60 blur-2xl md:block" />
@@ -1104,14 +1131,7 @@ const handleOpenPurchase = (product) => {
 <Card className="rounded-none border-0 bg-transparent p-0 shadow-none">
           <CardContent className="p-0">
             <div className="space-y-5">
-              {categories
-                .map((category) => {
-                  const categoryProducts = products.filter((product) => product.category === category.id);
-                  return { category, categoryProducts };
-                })
-                .sort((a, b) => b.categoryProducts.length - a.categoryProducts.length)
-.slice(0, 5)
-.map(({ category, categoryProducts }, index) => {
+              {popularCategories.map(({ category, categoryProducts }, index) => {
                     const Icon = ICON_MAP[category.id] || Sparkles;
                     const categoryHeading = (
                       <div className="flex w-fit items-center justify-between gap-3">
@@ -1172,7 +1192,7 @@ const handleOpenPurchase = (product) => {
                               data-popular-row={category.id}
                                className="flex gap-4 overflow-x-auto pb-2 px-10 hide-scrollbar overscroll-x-contain"
                             >
-{categoryProducts.map((product) => {
+{categoryProducts.slice(0, 6).map((product) => {
                                 const displayImage = product.image_urls?.[0] || product.image_url;
                                 return (
                                   <div key={product.id} className="relative w-44 shrink-0">
@@ -1186,6 +1206,8 @@ const handleOpenPurchase = (product) => {
                                         <img
                                           src={getImageUrl(displayImage)}
                                           alt={product.title}
+                                          loading="lazy"
+                                          decoding="async"
                                           className="h-28 w-full object-cover transition-transform duration-300 group-hover:scale-105"
                                         />
                                       </div>
@@ -1194,7 +1216,7 @@ const handleOpenPurchase = (product) => {
                                         <span className="text-xs text-[#4B5A45]">No image</span>
                                       </div>
                                     )}
-                                    <div className={`rounded-b-2xl p-3 ${index === 0 ? 'bg-white/90 backdrop-blur-sm' : ''}`}>
+                                    <div className={`rounded-b-2xl p-3 ${index === 0 ? 'bg-white/90' : ''}`}>
                                       <p className="line-clamp-2 text-xs font-semibold leading-4 text-[#172B12] mb-1">{product.title}</p>
                                       {product.price !== null && product.price !== undefined && Number(product.price) > 0 ? (
                                         <p className="text-xs font-bold text-[#2B6F38] mb-2">UGX {Number(product.price).toLocaleString()}</p>
@@ -1290,6 +1312,64 @@ const handleOpenPurchase = (product) => {
               </CardContent>
               <CardFooter>
                 <Button onClick={() => setQuickLoanOpen(true)} className="bg-[#172B12] text-white hover:bg-[#0f2409] rounded-full">Request quick loan</Button>
+              </CardFooter>
+            </Card>
+
+            <Card className="relative overflow-hidden rounded-[32px] border border-[#B9D2B2] bg-gradient-to-br from-[#F5FAF2] via-white to-[#E8F3E4] p-6 shadow-md dark:border-[#49634D] dark:from-[#17231A] dark:via-[#202C23] dark:to-[#26392A]">
+              <div aria-hidden="true" className="pointer-events-none absolute -right-10 -top-14 h-48 w-48 rounded-full border-[18px] border-[#2B6F38]/[0.07] dark:border-[#A8D5A6]/[0.08]" />
+              <div aria-hidden="true" className="pointer-events-none absolute -bottom-16 right-1/3 h-36 w-36 rounded-full bg-[#2B6F38]/[0.06] blur-2xl dark:bg-[#A8D5A6]/[0.07]" />
+              <CardHeader className="relative z-10">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-[#2B6F38]/10 text-[#2B6F38] dark:bg-[#A8D5A6]/15 dark:text-[#A8D5A6]">
+                      <Users className="h-6 w-6" aria-hidden="true" />
+                    </span>
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#2B6F38] dark:text-[#A8D5A6]">Grow stronger together</p>
+                      <CardTitle className="mt-1 text-xl text-[#172B12] dark:text-[#EEF7EE]">Class One Savings Group (C1SGroup)</CardTitle>
+                    </div>
+                  </div>
+                  <span className="rounded-full border border-[#A8C9A2] bg-[#E4F2DF] px-4 py-2 text-sm font-bold text-[#22592D] dark:border-[#648269] dark:bg-[#304A35] dark:text-[#C3E8BD]">
+                    Joining is free
+                  </span>
+                </div>
+                <CardDescription className="mt-3 max-w-3xl text-[#4B5A45] dark:text-[#C7D5C9]">
+                  We save together as a group. Members contribute to shared savings and receive their share at the end of the year. We also help one another make money and grow our businesses.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="relative z-10 space-y-5">
+                <div className="grid gap-3 md:grid-cols-3">
+                  <div className="rounded-2xl border border-[#DCE8D8] bg-white/80 p-4 shadow-sm transition-transform hover:-translate-y-0.5 dark:border-[#3D5141] dark:bg-[#26342A]/90">
+                    <span className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-[#E8F3E4] text-[#2B6F38] dark:bg-[#354D39] dark:text-[#B7DDB2]">
+                      <Users className="h-5 w-5" aria-hidden="true" />
+                    </span>
+                    <h3 className="font-semibold text-[#172B12] dark:text-[#EEF7EE]">Ordinary Member</h3>
+                    <p className="mt-1 text-sm leading-relaxed text-[#4B5A45] dark:text-[#C7D5C9]">Save with the group and share in the profits at year-end.</p>
+                  </div>
+                  <div className="rounded-2xl border border-[#DCE8D8] bg-white/80 p-4 shadow-sm transition-transform hover:-translate-y-0.5 dark:border-[#3D5141] dark:bg-[#26342A]/90">
+                    <span className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-[#E8F3E4] text-[#2B6F38] dark:bg-[#354D39] dark:text-[#B7DDB2]">
+                      <Store className="h-5 w-5" aria-hidden="true" />
+                    </span>
+                    <h3 className="font-semibold text-[#172B12] dark:text-[#EEF7EE]">Seller Member</h3>
+                    <p className="mt-1 text-sm leading-relaxed text-[#4B5A45] dark:text-[#C7D5C9]">Sell products in our community and reach more customers.</p>
+                  </div>
+                  <div className="rounded-2xl border border-[#DCE8D8] bg-white/80 p-4 shadow-sm transition-transform hover:-translate-y-0.5 dark:border-[#3D5141] dark:bg-[#26342A]/90">
+                    <span className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-[#E8F3E4] text-[#2B6F38] dark:bg-[#354D39] dark:text-[#B7DDB2]">
+                      <Crown className="h-5 w-5" aria-hidden="true" />
+                    </span>
+                    <h3 className="font-semibold text-[#172B12] dark:text-[#EEF7EE]">Premium Member</h3>
+                    <p className="mt-1 text-sm leading-relaxed text-[#4B5A45] dark:text-[#C7D5C9]">Get more benefits, opportunities, and support to grow your business.</p>
+                  </div>
+                </div>
+              </CardContent>
+              <CardFooter className="relative z-10 flex-col items-start gap-4 border-t border-[#DCE8D8] pt-5 dark:border-[#425B45] sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#2B6F38] dark:text-[#A8D5A6]">Our common goal</p>
+                  <p className="mt-1 text-sm font-medium text-[#4B5A45] dark:text-[#C7D5C9]">Save together, sell together, and make more profit.</p>
+                </div>
+                <Button onClick={() => navigate('/register')} className="rounded-full bg-[#2B6F38] px-5 text-white hover:bg-[#22592D] dark:bg-[#A8D5A6] dark:text-[#17231A] dark:hover:bg-[#C3E8BD]">
+                  Join for free <ArrowRight className="ml-2 h-4 w-4" aria-hidden="true" />
+                </Button>
               </CardFooter>
             </Card>
 
@@ -1461,7 +1541,21 @@ const handleOpenPurchase = (product) => {
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm font-medium text-slate-700">Security / Pledged Property image</Label>
-                  <Input type="file" accept="image/*" multiple onChange={(e) => { const files = Array.from(e.target.files || []); setNationalIdImages(prev => [...prev, ...files]); const readers = files.map(f => new Promise(res => { const r = new FileReader(); r.onloadend = () => res(r.result); r.readAsDataURL(f); })); Promise.all(readers).then(results => setNationalIdPreviews(prev => [...prev, ...results])); }} />
+                  <Input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={(e) => {
+                      const files = Array.from(e.target.files || []);
+                      setNationalIdImages((previous) => [...previous, ...files]);
+                      const previewUrls = files.map((file) => {
+                        const url = URL.createObjectURL(file);
+                        loanPreviewUrlsRef.current.add(url);
+                        return url;
+                      });
+                      setNationalIdPreviews((previous) => [...previous, ...previewUrls]);
+                    }}
+                  />
                   {nationalIdPreviews.length > 0 && <div className="flex gap-2 mt-2">{nationalIdPreviews.map((src, i) => <img key={i} src={src} alt={`Security / Pledged Property Image ${i + 1}`} className="h-24 w-24 object-cover rounded" />)}</div>}
                 </div>
                 {loanType === 'guaranteed' && (
@@ -1529,9 +1623,13 @@ const handleOpenPurchase = (product) => {
                         const file = e.target.files?.[0];
                         if (file) {
                           setCollateralImage(file);
-                          const reader = new FileReader();
-                          reader.onloadend = () => setCollateralImagePreview(reader.result);
-                          reader.readAsDataURL(file);
+                          if (collateralImagePreview) {
+                            URL.revokeObjectURL(collateralImagePreview);
+                            loanPreviewUrlsRef.current.delete(collateralImagePreview);
+                          }
+                          const previewUrl = URL.createObjectURL(file);
+                          loanPreviewUrlsRef.current.add(previewUrl);
+                          setCollateralImagePreview(previewUrl);
                         }
                       }}
                       required
@@ -1553,9 +1651,11 @@ const handleOpenPurchase = (product) => {
                   />
                   <span>I have read and agree to the loan terms and conditions.</span>
                 </label>
-                <Button type="button" variant="outline" className="w-full" onClick={() => handleDownloadLoanAgreement(false)}>
-                  Download full terms PDF
-                </Button>
+                {isAdmin && (
+                  <Button type="button" variant="outline" className="w-full" onClick={() => handleDownloadLoanAgreement(false)}>
+                    Download full terms PDF
+                  </Button>
+                )}
               </div>
             </form>
           )}
@@ -1566,9 +1666,11 @@ const handleOpenPurchase = (product) => {
                 <Button type="button" className="bg-[#172B12] text-white hover:bg-[#0f2409]" onClick={() => handleDownloadLoanAgreement(true)}>
                   Download summary to sign
                 </Button>
-                <Button type="button" variant="outline" onClick={() => handleDownloadLoanAgreement(false)}>
-                  Download full terms PDF
-                </Button>
+                {isAdmin && (
+                  <Button type="button" variant="outline" onClick={() => handleDownloadLoanAgreement(false)}>
+                    Download full terms PDF
+                  </Button>
+                )}
                 <Button type="button" className="border border-slate-300 text-slate-700 hover:bg-slate-100" onClick={() => setQuickLoanOpen(false)}>
                   Close
                 </Button>

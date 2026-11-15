@@ -7,7 +7,15 @@
 html {
   min-height: 100%;
   background: transparent;
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: #87988A #EDF1EC;
   scroll-behavior: smooth;
+}
+
+html.dark {
+  scrollbar-color: #657669 #202823;
 }
 
 @keyframes cashhub-pull-spin {

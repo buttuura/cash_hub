@@ -10,7 +10,7 @@ import { toast } from 'sonner';
 // WebView stack on large PDFs and gets the app killed by Android.
 const arrayBufferToBase64 = (buffer) => {
   const bytes = new Uint8Array(buffer);
-  const CHUNK = 0x8000;
+  const CHUNK = 0x4000;
   let binary = '';
   for (let i = 0; i < bytes.length; i += CHUNK) {
     binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
@@ -25,10 +25,8 @@ export const savePdf = async (doc, filename) => {
   }
 
   try {
-    // Compress and use an ArrayBuffer rather than a data URI: it avoids
-    // materialising a base64 copy of the whole document in memory.
-    const compressed = doc.compress ? doc.compress(true) : doc;
-    const buffer = compressed.output('arraybuffer');
+    // Use an ArrayBuffer rather than a data URI to avoid an extra encoded copy.
+    const buffer = doc.output('arraybuffer');
     const base64Data = arrayBufferToBase64(buffer);
 
     // Android: Directory.Documents maps to the public Documents folder, which
@@ -190,14 +188,12 @@ const getImageFormat = (imageData) => {
   return match[1].toUpperCase().replace('JPG', 'JPEG');
 };
 
-// Downscales an image data URL so the PDF stays small. National ID photos come
-// from the camera at full sensor resolution, and embedding them raw is what
-// exhausts WebView memory on Android. Web is left untouched.
+// Downscales uploaded photos before embedding them so PDFs stay manageable on
+// both mobile WebViews and desktop browsers.
 const MAX_IMAGE_EDGE = 1000;
-const JPEG_QUALITY = 0.8;
+const JPEG_QUALITY = 0.75;
 
 const shrinkImage = async (dataUrl) => {
-  if (!Capacitor.isNativePlatform()) return dataUrl;
   if (typeof document === 'undefined' || typeof Image === 'undefined') return dataUrl;
 
   return new Promise((resolve) => {
@@ -230,6 +226,51 @@ const shrinkImage = async (dataUrl) => {
   });
 };
 
+const resizeBlobForPdf = async (blob) => {
+  let image;
+  let objectUrl;
+  let canvas;
+
+  try {
+    if (typeof createImageBitmap === 'function') {
+      image = await createImageBitmap(blob);
+    } else {
+      objectUrl = URL.createObjectURL(blob);
+      image = await new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = () => reject(new Error('Could not decode image for PDF'));
+        img.src = objectUrl;
+      });
+    }
+
+    const width = image.width || image.naturalWidth;
+    const height = image.height || image.naturalHeight;
+    const scale = Math.min(1, MAX_IMAGE_EDGE / Math.max(width, height));
+    canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(width * scale));
+    canvas.height = Math.max(1, Math.round(height * scale));
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Could not prepare image for PDF');
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+    const resizedBlob = await new Promise((resolve, reject) => {
+      canvas.toBlob((result) => {
+        if (result) resolve(result);
+        else reject(new Error('Could not compress image for PDF'));
+      }, 'image/jpeg', JPEG_QUALITY);
+    });
+    return await dataUrlFromBlob(resizedBlob);
+  } finally {
+    if (typeof image?.close === 'function') image.close();
+    if (objectUrl) URL.revokeObjectURL(objectUrl);
+    if (canvas) {
+      canvas.width = 0;
+      canvas.height = 0;
+    }
+  }
+};
+
 const getImageDataUrl = async (imageSource) => {
   if (!imageSource) return null;
 
@@ -251,7 +292,7 @@ const getImageDataUrl = async (imageSource) => {
   }
 
   if (!dataUrl && typeof Blob !== 'undefined' && imageSource instanceof Blob) {
-    dataUrl = await dataUrlFromBlob(imageSource);
+    return await resizeBlobForPdf(imageSource);
   }
 
   if (!dataUrl) return null;
@@ -289,7 +330,7 @@ const getImageSize = async (imageDataUrl, pageWidth) => {
 };
 
 export const exportLoanAgreementPDF = async (loanData, officer, options = { download: true }) => {
-  const doc = new jsPDF();
+  const doc = new jsPDF({ compress: true, putOnlyUsedFonts: true });
   const pageWidth = doc.internal.pageSize.width;
   const lineHeight = 7;
   let y = 45;
