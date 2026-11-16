@@ -14,6 +14,7 @@ from bson import ObjectId
 from pymongo import ReturnDocument
 import os
 import re
+import math
 import logging
 import shutil
 import secrets
@@ -3161,6 +3162,8 @@ async def admin_create_loan(data: AdminLoanCreate, user: dict = Depends(require_
 async def accrue_quick_loan_interest(quick_loan):
     if quick_loan.get("status") != "approved" or quick_loan.get("repaid"):
         return quick_loan
+    if quick_loan.get("manual_repayment_terms"):
+        return quick_loan
 
     approved_at = quick_loan.get("approved_at")
     if not approved_at:
@@ -3250,6 +3253,46 @@ async def get_quick_loan_valid_codes(user: dict = Depends(get_current_user_optio
         "all": officer_codes + member_codes,
     }
 
+def ugx_amount_in_words(amount: float) -> str:
+    number = int(amount)
+    if number == 0:
+        return "Zero Shillings Only"
+
+    ones = (
+        "Zero", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine",
+        "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen",
+        "Seventeen", "Eighteen", "Nineteen",
+    )
+    tens = ("", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety")
+    scales = ("", "Thousand", "Million", "Billion", "Trillion")
+
+    def under_thousand(value: int) -> str:
+        parts = []
+        hundreds, remainder = divmod(value, 100)
+        if hundreds:
+            parts.append(f"{ones[hundreds]} Hundred")
+        if remainder < 20:
+            if remainder:
+                parts.append(ones[remainder])
+        else:
+            ten, unit = divmod(remainder, 10)
+            parts.append(tens[ten] + (f" {ones[unit]}" if unit else ""))
+        return " ".join(parts)
+
+    parts = []
+    scale_index = 0
+    while number:
+        chunk = number % 1000
+        if chunk:
+            words = under_thousand(chunk)
+            if scales[scale_index]:
+                words = f"{words} {scales[scale_index]}"
+            parts.insert(0, words)
+        number //= 1000
+        scale_index += 1
+    return f"{' '.join(parts)} Shillings Only"
+
+
 @api_router.post("/quick-loans/request")
 async def request_quick_loan(
     request: Request,
@@ -3262,10 +3305,11 @@ async def request_quick_loan(
     is_guaranteed: bool = Form(...),
     officer_code: Optional[str] = Form(None),
     officer_name: Optional[str] = Form(None),
-    serial_number: Optional[str] = Form(None),
     collateral_image: Optional[UploadFile] = File(None),
+    collateral_images: Optional[List[UploadFile]] = File(None),
     user: Optional[dict] = Depends(get_current_user_optional),
     buyer_name: Optional[str] = Form(None),
+    seller_name: Optional[str] = Form(None),
     repayment_period: Optional[str] = Form(None),
     currency: Optional[str] = Form(None),
     borrower_address: Optional[str] = Form(None),
@@ -3276,8 +3320,18 @@ async def request_quick_loan(
     jurisdiction: Optional[str] = Form(None),
     witness_name: Optional[str] = Form(None),
     agreement_interest_rate: Optional[float] = Form(None),
+    agreed_total_due: Optional[float] = Form(None),
+    seller_phone: Optional[str] = Form(None),
+    property_description: Optional[str] = Form(None),
+    sale_date: Optional[str] = Form(None),
+    agreed_price_words: Optional[str] = Form(None),
+    payment_status: Optional[str] = Form(None),
+    handover_status: Optional[str] = Form(None),
+    witness_1_name: Optional[str] = Form(None),
+    witness_2_name: Optional[str] = Form(None),
+    members_confirmed: bool = Form(False),
 ):
-    if amount <= 0:
+    if not math.isfinite(amount) or amount <= 0:
         raise HTTPException(status_code=400, detail="Quick loan amount must be positive")
 
     if is_guaranteed and not officer_code:
@@ -3285,6 +3339,33 @@ async def request_quick_loan(
 
     if not is_guaranteed and not collateral:
         raise HTTPException(status_code=400, detail="Please provide collateral details for a collateral-backed quick loan")
+    selling_party_name = seller_name.strip() if seller_name and seller_name.strip() else (buyer_name.strip() if buyer_name and buyer_name.strip() else None)
+    if not is_guaranteed and not selling_party_name:
+        raise HTTPException(status_code=400, detail="Please enter the seller name")
+    collateral_uploads = [image for image in (collateral_images or []) if image and image.filename]
+    if collateral_image and collateral_image.filename:
+        collateral_uploads.insert(0, collateral_image)
+    if not is_guaranteed:
+        if not collateral_uploads:
+            raise HTTPException(status_code=400, detail="Please upload at least one security / pledged property photo")
+        if not seller_phone or not seller_phone.strip() or not property_description or not property_description.strip():
+            raise HTTPException(status_code=400, detail="Please complete the selling agreement details")
+        if not sale_date:
+            raise HTTPException(status_code=400, detail="Please provide the sale date")
+        try:
+            datetime.strptime(sale_date, "%Y-%m-%d")
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Enter a valid selling agreement date")
+        if payment_status not in {"paid", "will_pay"}:
+            raise HTTPException(status_code=400, detail="Choose a valid payment status")
+        if handover_status not in {"handed_over", "will_hand_over"}:
+            raise HTTPException(status_code=400, detail="Choose a valid property handover status")
+        if not members_confirmed:
+            raise HTTPException(status_code=400, detail="Confirm that the seller and buyer are group members")
+
+    if is_guaranteed:
+        if repayment_period and repayment_period not in {"2_weeks", "1_month"}:
+            raise HTTPException(status_code=400, detail="Invalid repayment period for a guaranteed loan")
 
     if is_guaranteed and officer_code:
         code = officer_code.strip()
@@ -3293,10 +3374,14 @@ async def request_quick_loan(
         if not officer_match and not member_match:
             raise HTTPException(status_code=400, detail="Invalid officer or member code. Please select a valid code from the list")
 
-    collateral_image_url = None
-    if collateral_image and collateral_image.filename:
-        upload_result = await upload_to_cloudinary(collateral_image)
-        collateral_image_url = upload_result.get("secure_url") or upload_result.get("url")
+    collateral_image_urls = []
+    for image in collateral_uploads:
+        upload_result = await upload_to_cloudinary(image)
+        image_url = upload_result.get("secure_url") or upload_result.get("url")
+        if image_url:
+            collateral_image_urls.append(image_url)
+    if not is_guaranteed and not collateral_image_urls:
+        raise HTTPException(status_code=502, detail="Could not upload the pledged property photos")
 
     national_id_images = []
     form_data = await request.form()
@@ -3307,6 +3392,20 @@ async def request_quick_loan(
                 if file and file.filename:
                     result = await upload_to_cloudinary(file)
                     national_id_images.append(result.get("secure_url") or result.get("url"))
+
+    if is_guaranteed:
+        interest_rate = 0.2 if (repayment_period == "1_month" and amount <= 50000) else 0.1
+        interest_amount = round(amount * interest_rate, 2)
+        total_due = round(amount + interest_amount, 2)
+        stored_agreement_interest_rate = (
+            float(agreement_interest_rate) if agreement_interest_rate is not None
+            else interest_rate * 100
+        )
+    else:
+        interest_rate = 0
+        interest_amount = 0
+        total_due = round(amount, 2)
+        stored_agreement_interest_rate = None
 
     loan_doc = {
         "user_id": user["id"] if user else None,
@@ -3321,9 +3420,21 @@ async def request_quick_loan(
         "is_guaranteed": is_guaranteed,
         "officer_code": officer_code.strip() if officer_code else None,
         "officer_name": officer_name.strip() if officer_name else None,
-        "serial_number": serial_number.strip() if serial_number else None,
-        "buyer_name": buyer_name.strip() if buyer_name else None,
-        "collateral_image": collateral_image_url,
+        "buyer_name": selling_party_name,
+        "seller_name": selling_party_name,
+        "agreement_buyer_name": loan_name.strip(),
+        "agreed_price": amount if not is_guaranteed else None,
+        "seller_phone": seller_phone.strip() if seller_phone else None,
+        "property_description": property_description.strip() if property_description else None,
+        "sale_date": sale_date,
+        "agreed_price_words": ugx_amount_in_words(amount) if not is_guaranteed else None,
+        "payment_status": payment_status,
+        "handover_status": handover_status,
+        "witness_1_name": (witness_1_name or "").strip() or None,
+        "witness_2_name": (witness_2_name or "").strip() or None,
+        "members_confirmed": members_confirmed,
+        "collateral_image": collateral_image_urls[0] if collateral_image_urls else None,
+        "collateral_images": collateral_image_urls,
         "national_id_images": national_id_images,
         "currency": currency.strip() if currency else "UGX",
         "borrower_address": borrower_address.strip() if borrower_address else None,
@@ -3333,11 +3444,15 @@ async def request_quick_loan(
         "guarantor_address": guarantor_address.strip() if guarantor_address else None,
         "jurisdiction": jurisdiction.strip() if jurisdiction else "Uganda",
         "witness_name": witness_name.strip() if witness_name else None,
-        "agreement_interest_rate": float(agreement_interest_rate) if agreement_interest_rate is not None else (0.2 if (repayment_period == "1_month" and amount <= 50000) else 0.1),
-        "interest_rate": 0.2 if (repayment_period == "1_month" and amount <= 50000) else 0.1,
-        "interest_period": repayment_period or "2_weeks",
-        "interest_amount": round(amount * (0.2 if (repayment_period == "1_month" and amount <= 50000) else 0.1), 2),
-        "total_due": round(amount * (1 + (0.2 if (repayment_period == "1_month" and amount <= 50000) else 0.1)), 2),
+        "agreement_interest_rate": stored_agreement_interest_rate,
+        "interest_rate": interest_rate,
+        "interest_period": repayment_period if is_guaranteed else None,
+        "repayment_period": repayment_period if is_guaranteed else None,
+        "interest_amount": interest_amount,
+        "total_due": total_due,
+        "outstanding_balance": total_due,
+        "manual_repayment_terms": not is_guaranteed,
+        "amount_repaid": 0,
         "status": "pending_treasurer",
         "created_at": datetime.now(timezone.utc).isoformat(),
         "approved_at": None,
@@ -3682,7 +3797,10 @@ async def get_loans(user: dict = Depends(get_current_user)):
             await accrue_quick_loan_interest(ql)
             ql.pop("_id", None)
             ql["is_quick_loan"] = True
-            ql["guarantor_name"] = ql.get("officer_name") or ql.get("officer_code") or "N/A"
+            ql["guarantor_name"] = (
+                ql.get("buyer_name") if ql.get("manual_repayment_terms")
+                else ql.get("officer_name") or ql.get("officer_code") or "N/A"
+            )
             if not ql.get("months_elapsed") and ql.get("approved_at"):
                 try:
                     parsed_date = datetime.fromisoformat(ql["approved_at"].replace('Z', '+00:00'))

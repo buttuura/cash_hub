@@ -86,10 +86,17 @@ const CategoryPage = () => {
   const [collateral, setCollateral] = useState('');
   const [loanType, setLoanType] = useState('guaranteed');
   const [loanIsGuaranteed, setLoanIsGuaranteed] = useState(true);
-  const [serialNumber, setSerialNumber] = useState('');
   const [buyerName, setBuyerName] = useState('');
-  const [collateralImage, setCollateralImage] = useState(null);
-  const [collateralImagePreview, setCollateralImagePreview] = useState('');
+  const [sellerPhone, setSellerPhone] = useState('');
+  const [propertyDescription, setPropertyDescription] = useState('');
+  const [saleDate, setSaleDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [paymentStatus, setPaymentStatus] = useState('will_pay');
+  const [handoverStatus, setHandoverStatus] = useState('will_hand_over');
+  const [witnessOneName, setWitnessOneName] = useState('');
+  const [witnessTwoName, setWitnessTwoName] = useState('');
+  const [membersConfirmed, setMembersConfirmed] = useState(false);
+  const [collateralImages, setCollateralImages] = useState([]);
+  const [collateralImagePreviews, setCollateralImagePreviews] = useState([]);
   const [officerCode, setOfficerCode] = useState('');
   const [nationalIdImages, setNationalIdImages] = useState([]);
   const [nationalIdPreviews, setNationalIdPreviews] = useState([]);
@@ -105,7 +112,10 @@ const CategoryPage = () => {
   const [purchasePhone, setPurchasePhone] = useState('');
   const [purchaseNote, setPurchaseNote] = useState('');
 
-  useEffect(() => { setLoanIsGuaranteed(loanType === 'guaranteed'); }, [loanType]);
+  useEffect(() => {
+    setLoanIsGuaranteed(loanType === 'guaranteed');
+    setRepaymentPeriod(loanType === 'guaranteed' ? '2_weeks' : '2_months');
+  }, [loanType]);
   useEffect(() => { if (!quickLoanOpen) return; let cancelled = false; (async () => { try { const res = await axios.get(`${API_URL}/api/quick-loans/valid-codes`); if (!cancelled && Array.isArray(res.data?.all)) setValidOfficerCodes(res.data.all); } catch { if (!cancelled) setValidOfficerCodes([]); } })(); return () => { cancelled = true; }; }, [quickLoanOpen]);
 
   useEffect(() => { window.localStorage.setItem('cash_hub_cart', JSON.stringify(cart)); }, [cart]);
@@ -228,7 +238,7 @@ const CategoryPage = () => {
 
   const handleRequestQuickLoan = async (e) => {
     e.preventDefault();
-    if (!loanName.trim() || !loanEmail.trim() || !loanAmount.trim()) { toast.error('Please fill your name, email and loan amount'); return; }
+    if (!loanName.trim() || !loanAmount.trim()) { toast.error('Please fill your name and loan amount'); return; }
     if (Number(loanAmount) <= 0) { toast.error('Loan amount must be greater than 0'); return; }
     if (!loanTermsAccepted) { toast.error('Please agree to the loan terms and conditions'); return; }
     const validEntry = validOfficerCodes.find(v => v.code === officerCode) || null;
@@ -236,6 +246,18 @@ const CategoryPage = () => {
     const officer = validEntry ? { name: extractPersonName(validEntry.label), code: validEntry.code } : staticOfficer ? { name: staticOfficer.name, code: staticOfficer.code } : null;
     if (loanIsGuaranteed && !officer) { toast.error('Please enter a valid officer code'); return; }
     if (!loanIsGuaranteed && !collateral.trim()) { toast.error('Please provide collateral details'); return; }
+    if (!loanIsGuaranteed && (!buyerName.trim() || !sellerPhone.trim() || !propertyDescription.trim() || !saleDate)) {
+      toast.error('Please complete the selling agreement details');
+      return;
+    }
+    if (!loanIsGuaranteed && !membersConfirmed) {
+      toast.error('Please confirm both parties are group members');
+      return;
+    }
+    if (!loanIsGuaranteed && collateralImages.length === 0) {
+      toast.error('Please upload at least one security / pledged property photo');
+      return;
+    }
     try {
       const formData = new FormData();
       formData.append('loan_name', loanName.trim());
@@ -245,14 +267,24 @@ const CategoryPage = () => {
       formData.append('purpose', loanPurpose.trim());
       formData.append('collateral', collateral.trim());
       formData.append('is_guaranteed', String(loanIsGuaranteed));
+      formData.append('currency', 'UGX');
       formData.append('officer_code', officerCode || '');
       formData.append('officer_name', officer?.name || '');
-      formData.append('serial_number', serialNumber || '');
       formData.append('buyer_name', buyerName.trim() || '');
-      if (!loanIsGuaranteed && collateralImage) formData.append('collateral_image', collateralImage);
-      if (loanIsGuaranteed) {
-        nationalIdImages.forEach(img => formData.append('national_id_images', img));
+      if (!loanIsGuaranteed) {
+        formData.append('seller_name', buyerName.trim());
+        formData.append('sale_date', saleDate);
+        formData.append('property_description', propertyDescription.trim());
+        formData.append('payment_status', paymentStatus);
+        formData.append('handover_status', handoverStatus);
+        formData.append('seller_phone', sellerPhone.trim());
+        formData.append('witness_1_name', witnessOneName.trim());
+        formData.append('witness_2_name', witnessTwoName.trim());
+        formData.append('members_confirmed', String(membersConfirmed));
+        collateralImages.forEach((image) => formData.append('collateral_images', image));
+      } else {
         formData.append('repayment_period', repaymentPeriod);
+        nationalIdImages.forEach(img => formData.append('national_id_images', img));
       }
       const headers = isAuthenticated ? { Authorization: `Bearer ${localStorage.getItem('access_token')}` } : {};
       const response = await axios.post(`${API_URL}/api/quick-loans/request`, formData, { headers });
@@ -265,19 +297,29 @@ const CategoryPage = () => {
     }
   };
 
-  const handleDownloadLoanAgreement = async (summary = false) => {
+  const handleDownloadLoanAgreement = async (summary = true) => {
     const pdfData = loanRequestData || {
       loan_name: loanName.trim() || 'Applicant',
       loan_email: loanEmail.trim(),
       loan_phone: loanPhone.trim(),
       amount: Number(loanAmount) || 0,
+      agreed_price: loanIsGuaranteed ? undefined : (Number(loanAmount) || 0),
       purpose: loanPurpose.trim(),
       collateral: collateral.trim(),
+      property_description: propertyDescription.trim(),
+      sale_date: saleDate,
+      payment_status: paymentStatus,
+      handover_status: handoverStatus,
+      witness_1_name: witnessOneName.trim(),
+      witness_2_name: witnessTwoName.trim(),
+      seller_phone: sellerPhone.trim(),
+      members_confirmed: membersConfirmed,
+      collateral_images: collateralImagePreviews,
       loan_type: loanIsGuaranteed ? 'guaranteed' : 'collateral-backed',
       is_guaranteed: loanIsGuaranteed,
       repayment_period: repaymentPeriod,
-      serial_number: serialNumber,
       buyer_name: buyerName.trim(),
+      seller_name: buyerName.trim(),
       officer_code: officerCode,
       officer_name: (validOfficerCodes.find((entry) => entry.code === officerCode)?.label || '').replace(/\s*\([^)]*\)\s*$/, ''),
     };
@@ -287,13 +329,16 @@ const CategoryPage = () => {
     await exportLoanAgreementPDF(pdfData, officer, {
       download: true,
       summary,
-      collateralImage: collateralImagePreview,
-      nationalIdImages: nationalIdPreviews,
+      collateralImages: loanIsGuaranteed ? [] : collateralImagePreviews,
+      nationalIdImages: loanIsGuaranteed ? nationalIdPreviews : [],
+      borrowerPhone: loanPhone.trim(),
+      borrowerEmail: loanEmail.trim(),
     }).catch(() => toast.error('Could not create the loan PDF'));
   };
 
   const resetQuickLoanDialogState = () => {
-    setLoanRequestSubmitted(false); setLoanRequestData(null); setLoanName(''); setLoanEmail(''); setLoanPhone(''); setLoanAmount(''); setLoanPurpose(''); setCollateral(''); setSerialNumber(''); setBuyerName(''); setCollateralImage(null); setCollateralImagePreview(''); setOfficerCode('');     setNationalIdImages([]);
+    setLoanType('guaranteed'); setLoanIsGuaranteed(true);
+    setLoanRequestSubmitted(false); setLoanRequestData(null); setLoanName(''); setLoanEmail(''); setLoanPhone(''); setLoanAmount(''); setLoanPurpose(''); setCollateral(''); setBuyerName(''); setSellerPhone(''); setPropertyDescription(''); setSaleDate(new Date().toISOString().slice(0, 10)); setPaymentStatus('will_pay'); setHandoverStatus('will_hand_over'); setWitnessOneName(''); setWitnessTwoName(''); setMembersConfirmed(false); setCollateralImages([]); setCollateralImagePreviews([]); setOfficerCode(''); setNationalIdImages([]);
     setLoanTermsAccepted(false);
     setNationalIdPreviews([]);
     setRepaymentPeriod('2_weeks');
@@ -535,16 +580,20 @@ return (
                   <p className="mt-2 text-sm text-slate-600">Your quick loan request has been submitted to the treasurer for approval.</p>
                   <div className="mt-4 text-sm text-slate-700">
                     <p><span className="font-semibold">Name:</span> {loanRequestData?.loanName || loanRequestData?.loan_name}</p>
-                    <p><span className="font-semibold">Email:</span> {loanRequestData?.loanEmail || loanRequestData?.loan_email}</p>
+                    <p><span className="font-semibold">Email:</span> {loanRequestData?.loanEmail || loanRequestData?.loan_email || 'Not provided'}</p>
                     <p><span className="font-semibold">Phone:</span> {loanRequestData?.loanPhone || loanRequestData?.loan_phone || 'Not provided'}</p>
                     <p><span className="font-semibold">Amount:</span> UGX {Number(loanRequestData?.loanAmount || loanRequestData?.amount || 0).toLocaleString()}</p>
-                    <p><span className="font-semibold">Interest:</span> UGX {Math.round((loanRequestData?.interest_amount || (Number(loanRequestData?.loanAmount || loanRequestData?.amount || 0) * (loanRequestData?.repayment_period === '1_month' ? 0.2 : 0.1)))).toLocaleString()}</p>
-                    <p><span className="font-semibold">Total Repayment:</span> UGX {Math.round((loanRequestData?.total_due || (Number(loanRequestData?.loanAmount || loanRequestData?.amount || 0) * 1.1))).toLocaleString()}</p>
+                    {loanIsGuaranteed ? (
+                      <>
+                        <p><span className="font-semibold">Interest:</span> UGX {Math.round((loanRequestData?.interest_amount || (Number(loanRequestData?.loanAmount || loanRequestData?.amount || 0) * (loanRequestData?.repayment_period === '1_month' ? 0.2 : 0.1)))).toLocaleString()}</p>
+                        <p><span className="font-semibold">Total Repayment:</span> UGX {Math.round((loanRequestData?.total_due || (Number(loanRequestData?.loanAmount || loanRequestData?.amount || 0) * 1.1))).toLocaleString()}</p>
+                      </>
+                    ) : null}
                   </div>
                 </div>
                 <div className="flex flex-col gap-3">
-                  <Button type="button" className="bg-[#172B12] text-white hover:bg-[#0f2409]" onClick={() => handleDownloadLoanAgreement(true)}>Download summary to sign</Button>
-                  <Button type="button" variant="outline" onClick={() => handleDownloadLoanAgreement(false)}>Download full terms PDF</Button>
+                  <Button type="button" className="bg-[#172B12] text-white hover:bg-[#0f2409]" onClick={() => handleDownloadLoanAgreement(true)}>{loanIsGuaranteed ? 'Download loan agreement PDF' : 'Download selling agreement PDF'}</Button>
+                  <Button type="button" variant="outline" onClick={() => handleDownloadLoanAgreement(false)}>Download terms and conditions PDF</Button>
                   <Button type="button" className="border border-slate-300 text-slate-700 hover:bg-slate-100" onClick={() => setQuickLoanOpen(false)}>Close</Button>
                 </div>
               </div>
@@ -552,22 +601,37 @@ return (
               <form onSubmit={handleRequestQuickLoan} className="space-y-4">
                 <div className="mb-4">
                   <Label className="text-sm font-medium text-slate-700">Loan type</Label>
-                  <div className="flex items-center gap-4 mt-2">
+                  <div className="flex flex-wrap items-center gap-4 mt-2">
                     <label className="inline-flex items-center"><input type="radio" name="loan-type" checked={loanType === 'guaranteed'} onChange={() => setLoanType('guaranteed')} className="mr-2" /><span className="ml-2">Guaranteed</span></label>
                     <label className="inline-flex items-center"><input type="radio" name="loan-type" checked={loanType === 'collateral-backed'} onChange={() => setLoanType('collateral-backed')} className="mr-2" /><span className="ml-2">Collateral-Backed</span></label>
                   </div>
                 </div>
-                <div className="space-y-2"><Label htmlFor="loan-name" className="text-sm font-medium text-slate-700">Full name</Label><Input id="loan-name" value={loanName} onChange={(e) => setLoanName(e.target.value)} placeholder="Your name" required /></div>
-                <div className="space-y-2"><Label htmlFor="loan-email" className="text-sm font-medium text-slate-700">Email</Label><Input id="loan-email" type="email" value={loanEmail} onChange={(e) => setLoanEmail(e.target.value)} placeholder="you@example.com" required /></div>
+                <div className="space-y-2"><Label htmlFor="loan-name" className="text-sm font-medium text-slate-700">{loanType === 'collateral-backed' ? 'Buyer full name' : 'Full name'}</Label><Input id="loan-name" value={loanName} onChange={(e) => setLoanName(e.target.value)} placeholder="Your name" required /></div>
+                <div className="space-y-2"><Label htmlFor="loan-email" className="text-sm font-medium text-slate-700">Email</Label><Input id="loan-email" type="email" value={loanEmail} onChange={(e) => setLoanEmail(e.target.value)} placeholder="you@example.com" /></div>
                 <div className="space-y-2"><Label htmlFor="loan-phone" className="text-sm font-medium text-slate-700">Phone number</Label><Input id="loan-phone" value={loanPhone} onChange={(e) => setLoanPhone(e.target.value)} placeholder="07XXXXXXXX" required /></div>
-                <div className="space-y-2">
+                {loanType === 'guaranteed' && <div className="space-y-2">
                   <Label className="text-sm font-medium text-slate-700">Repayment Period</Label>
-                  <div className="flex items-center gap-4 mt-2">
-                    <label className="inline-flex items-center"><input type="radio" name="repayment-period" checked={repaymentPeriod === '2_weeks'} onChange={() => setRepaymentPeriod('2_weeks')} className="mr-2" /><span className="ml-2">2 weeks</span></label>
-                    <label className="inline-flex items-center"><input type="radio" name="repayment-period" checked={repaymentPeriod === '1_month'} onChange={() => setRepaymentPeriod('1_month')} className="mr-2" /><span className="ml-2">1 month</span></label>
+                  <div className="flex flex-wrap items-center gap-4 mt-2">
+                    {[{ value: '2_weeks', label: '2 weeks' }, { value: '1_month', label: '1 month' }].map((period) => (
+                      <label key={period.value} className="inline-flex items-center">
+                        <input type="radio" name="repayment-period" checked={repaymentPeriod === period.value} onChange={() => setRepaymentPeriod(period.value)} className="mr-2" />
+                        <span className="ml-2">{period.label}</span>
+                      </label>
+                    ))}
                   </div>
-                </div>
-                <div className="space-y-2"><Label htmlFor="loan-amount" className="text-sm font-medium text-slate-700">{loanType === 'guaranteed' ? 'Loan amount (UGX)' : 'Selling Price (UGX)'}</Label><Input id="loan-amount" type="number" value={loanAmount} onChange={(e) => setLoanAmount(e.target.value)} placeholder="e.g. 100000" required />{loanAmount && Number(loanAmount) > 0 && loanType === 'guaranteed' && (<div className="bg-[#F5F7F5] rounded-lg p-3 text-xs text-[#5C665D] space-y-1"><div className="flex justify-between"><span>Amount:</span><span className="font-numbers font-semibold">UGX {Number(loanAmount).toLocaleString()}</span></div><div className="flex justify-between"><span>Interest:</span><span className="font-numbers font-semibold">UGX {Math.round(Number(loanAmount) * (repaymentPeriod === '1_month' ? 0.2 : 0.1)).toLocaleString()}</span></div><div className="flex justify-between border-t border-[#E8EBE8] pt-1 mt-1"><span>Total Repayment:</span><span className="font-numbers font-bold text-[#172B12]">UGX {Math.round(Number(loanAmount) * (1 + (repaymentPeriod === '1_month' ? 0.2 : 0.1))).toLocaleString()}</span></div></div>)}</div>
+                </div>}
+
+                {loanType === 'guaranteed' && <div className="space-y-2">
+                  <Label htmlFor="loan-amount" className="text-sm font-medium text-slate-700">Loan amount (UGX)</Label>
+                  <Input id="loan-amount" type="number" value={loanAmount} onChange={(e) => setLoanAmount(e.target.value)} placeholder="e.g. 100000" required />
+                  {loanAmount && Number(loanAmount) > 0 && (
+                    <div className="bg-[#F5F7F5] rounded-lg p-3 text-xs text-[#5C665D] space-y-1">
+                      <div className="flex justify-between"><span>Amount:</span><span className="font-numbers font-semibold">UGX {Number(loanAmount).toLocaleString()}</span></div>
+                      <div className="flex justify-between"><span>Interest:</span><span className="font-numbers font-semibold">UGX {Math.round(Number(loanAmount) * (repaymentPeriod === '1_month' ? 0.2 : 0.1)).toLocaleString()}</span></div>
+                      <div className="flex justify-between border-t border-[#E8EBE8] pt-1 mt-1"><span>Total Repayment:</span><span className="font-numbers font-bold text-[#172B12]">UGX {Math.round(Number(loanAmount) * (1 + (repaymentPeriod === '1_month' ? 0.2 : 0.1))).toLocaleString()}</span></div>
+                    </div>
+                  )}
+                </div>}
                 {loanType === 'guaranteed' && (
                   <>
                     <div className="space-y-2"><Label htmlFor="loan-purpose" className="text-sm font-medium text-slate-700">Loan purpose</Label><Textarea id="loan-purpose" value={loanPurpose} onChange={(e) => setLoanPurpose(e.target.value)} placeholder="Tell us why you need this loan" required /></div>
@@ -577,10 +641,19 @@ return (
                 )}
                 {loanType === 'collateral-backed' && (
                   <>
-                    <div className="space-y-2"><Label htmlFor="buyer-name" className="text-sm font-medium text-slate-700">Buyer Name</Label><Input id="buyer-name" value={buyerName} onChange={(e) => setBuyerName(e.target.value)} placeholder="Enter buyer's full name" /></div>
-                    <div className="space-y-2"><Label htmlFor="loan-collateral" className="text-sm font-medium text-slate-700">Item Name</Label><Textarea id="loan-collateral" value={collateral} onChange={(e) => setCollateral(e.target.value)} placeholder="e.g. iPhone 13, HP Laptop" required rows={2} /></div>
-                    <div className="space-y-2"><Label htmlFor="serial-number" className="text-sm font-medium text-slate-700">Serial Number</Label><Input id="serial-number" value={serialNumber} onChange={(e) => setSerialNumber(e.target.value)} placeholder="Serial/IMEI" /></div>
-                    <div className="space-y-2"><Label htmlFor="collateral-image" className="text-sm font-medium text-slate-700">Item Photo</Label><Input id="collateral-image" type="file" accept="image/*" onChange={(e) => { const file = e.target.files?.[0]; if (file) { setCollateralImage(file); const reader = new FileReader(); reader.onloadend = () => setCollateralImagePreview(reader.result); reader.readAsDataURL(file); } }} required />{collateralImagePreview && <img src={collateralImagePreview} alt="preview" className="mt-2 h-24 w-24 object-cover rounded" />}</div>
+                    <p className="text-sm font-semibold text-slate-800">Class One Group Selling Agreement details</p>
+                    <div className="space-y-2"><Label htmlFor="buyer-name" className="text-sm font-medium text-slate-700">Seller name</Label><Input id="buyer-name" value={buyerName} onChange={(e) => setBuyerName(e.target.value)} placeholder="Enter seller's full name" required /></div>
+                    <div className="space-y-2"><Label htmlFor="seller-phone" className="text-sm font-medium text-slate-700">Seller phone number</Label><Input id="seller-phone" type="tel" value={sellerPhone} onChange={(e) => setSellerPhone(e.target.value)} placeholder="Seller's phone number" required /></div>
+                    <div className="space-y-2"><Label htmlFor="sale-date" className="text-sm font-medium text-slate-700">Agreement date</Label><Input id="sale-date" type="date" value={saleDate} onChange={(e) => setSaleDate(e.target.value)} required /></div>
+                    <div className="space-y-2"><Label htmlFor="loan-collateral" className="text-sm font-medium text-slate-700">Property sold</Label><Textarea id="loan-collateral" value={collateral} onChange={(e) => setCollateral(e.target.value)} placeholder="e.g. Laptop, phone, motorcycle, TV" required rows={2} /></div>
+                    <div className="space-y-2"><Label htmlFor="property-description" className="text-sm font-medium text-slate-700">Property description</Label><Textarea id="property-description" value={propertyDescription} onChange={(e) => setPropertyDescription(e.target.value)} placeholder="Describe the property, condition, model, or identifying details" required rows={3} /></div>
+                    <div className="space-y-2"><Label htmlFor="loan-amount" className="text-sm font-medium text-slate-700">Agreed Price (UGX)</Label><Input id="loan-amount" type="number" value={loanAmount} onChange={(e) => setLoanAmount(e.target.value)} placeholder="e.g. 100000" required /></div>
+                    <div className="space-y-2"><Label htmlFor="payment-status" className="text-sm font-medium text-slate-700">Payment status</Label><select id="payment-status" value={paymentStatus} onChange={(e) => setPaymentStatus(e.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"><option value="paid">Buyer has paid the full amount</option><option value="will_pay">Buyer will pay the full amount as agreed</option></select></div>
+                    <div className="space-y-2"><Label htmlFor="handover-status" className="text-sm font-medium text-slate-700">Property handover</Label><select id="handover-status" value={handoverStatus} onChange={(e) => setHandoverStatus(e.target.value)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"><option value="handed_over">Seller has handed over the property</option><option value="will_hand_over">Seller will hand over the property</option></select></div>
+                    <div className="space-y-2"><Label htmlFor="collateral-images" className="text-sm font-medium text-slate-700">Security / Pledged Property photos</Label><Input id="collateral-images" type="file" accept="image/*" multiple required onChange={(e) => { const files = Array.from(e.target.files || []); setCollateralImages(files); const readers = files.map((file) => new Promise((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result || '')); reader.onerror = reject; reader.readAsDataURL(file); })); Promise.all(readers).then(setCollateralImagePreviews).catch(() => { setCollateralImagePreviews([]); toast.error('Could not preview the selected property photos'); }); }} />{collateralImagePreviews.length > 0 && <div className="mt-2 grid grid-cols-5 gap-2">{collateralImagePreviews.map((src, index) => <img key={`${index}-${src.slice(0, 24)}`} src={src} alt={`Pledged property photo ${index + 1}`} className="h-24 w-full rounded object-cover" />)}</div>}</div>
+                    <div className="space-y-2"><Label htmlFor="witness-one" className="text-sm font-medium text-slate-700">Group witness 1 name (optional)</Label><Input id="witness-one" value={witnessOneName} onChange={(e) => setWitnessOneName(e.target.value)} /></div>
+                    <div className="space-y-2"><Label htmlFor="witness-two" className="text-sm font-medium text-slate-700">Group witness 2 name (optional)</Label><Input id="witness-two" value={witnessTwoName} onChange={(e) => setWitnessTwoName(e.target.value)} /></div>
+                    <label className="flex items-start gap-2 text-sm text-slate-700"><input type="checkbox" checked={membersConfirmed} onChange={(e) => setMembersConfirmed(e.target.checked)} required className="mt-1" /><span>I confirm that the seller and buyer are members of Class One Savings Group.</span></label>
                   </>
                 )}
                 <div className="space-y-2 rounded-lg border border-slate-200 p-3">
@@ -595,7 +668,7 @@ return (
                     <span>I have reviewed and agree to the loan terms and conditions.</span>
                   </label>
                   <Button type="button" variant="outline" className="w-full" onClick={() => handleDownloadLoanAgreement(false)}>
-                    Download full terms PDF
+                    Download terms and conditions PDF
                   </Button>
                 </div>
                 <Button type="submit" className="w-full">Submit Request</Button>

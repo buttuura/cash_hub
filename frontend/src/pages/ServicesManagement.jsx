@@ -24,7 +24,7 @@ import {
   Home,
 } from 'lucide-react';
 import { Toaster, toast } from 'sonner';
-import { exportLoanAgreementPDF, exportSellerReceiptPDF, exportOrderReceiptPDF, savePdf } from '../utils/pdfExport';
+import { exportLoanAgreementPDF, exportSellerReceiptPDF, exportOrderReceiptPDF, savePdf, withPdfProgress } from '../utils/pdfExport';
 import { OFFICERS } from '../data/officers';
 import { resolveImageUrl } from '../lib/utils';
 import { API_URL } from '../lib/api';
@@ -199,6 +199,7 @@ useEffect(() => {
     try {
       await exportLoanAgreementPDF(loan, officer, {
         download: true,
+        summary: true,
         collateralImage: loan.collateral_image,
       });
     } catch (error) {
@@ -656,7 +657,7 @@ useEffect(() => {
                  {orders.length > 0 && (
                    <Button
                      variant="outline"
-                     onClick={exportOrdersPDF}
+                     onClick={() => withPdfProgress(exportOrdersPDF)()}
                      className="border-[#E8EBE8] rounded-full"
                    >
                      <FileDown className="w-4 h-4 mr-2" />
@@ -1000,7 +1001,7 @@ useEffect(() => {
                     {quickLoans.length > 0 && (
                       <Button
                         variant="outline"
-                        onClick={exportQuickLoansPDF}
+                        onClick={() => withPdfProgress(exportQuickLoansPDF)()}
                         className="border-[#E8EBE8] rounded-full whitespace-nowrap"
                       >
                         <FileDown className="w-4 h-4 mr-2" />
@@ -1178,7 +1179,7 @@ useEffect(() => {
                     {deletedOrders.length > 0 && (
                       <Button
                         variant="outline"
-                        onClick={exportDeletedOrdersPDF}
+                        onClick={() => withPdfProgress(exportDeletedOrdersPDF)()}
                         className="border-[#E8EBE8] rounded-full"
                       >
                         <FileDown className="w-4 h-4 mr-2" />

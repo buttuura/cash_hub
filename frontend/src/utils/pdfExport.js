@@ -18,6 +18,23 @@ const arrayBufferToBase64 = (buffer) => {
   return btoa(binary);
 };
 
+export const withPdfProgress = (generatePdf) => async (...args) => {
+  const toastId = toast.loading('Preparing your PDF for download... Please wait.');
+  await new Promise((resolve) => {
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(() => setTimeout(resolve, 0));
+    } else {
+      setTimeout(resolve, 0);
+    }
+  });
+
+  try {
+    return await generatePdf(...args);
+  } finally {
+    toast.dismiss(toastId);
+  }
+};
+
 export const savePdf = async (doc, filename) => {
   if (!Capacitor.isNativePlatform()) {
     doc.save(filename);
@@ -134,7 +151,7 @@ const addHeader = (doc, title, subtitle) => {
   return y; // ADD THIS - return the new y position
 };
 
-export const exportDepositsPDF = async (deposits, filenamePrefix = 'deposits') => {
+const createDepositsPDF = async (deposits, filenamePrefix = 'deposits') => {
   const doc = new jsPDF();
  const startY = addHeader(doc, 'Deposits Report', `Total records: ${deposits.length}`);
 autoTable(doc, {
@@ -154,7 +171,7 @@ autoTable(doc, {
   await savePdf(doc, `${filenamePrefix}-${new Date().toISOString().split('T')[0]}.pdf`);
 };
 
-export const exportLoansPDF = async (loans, filenamePrefix = 'loans') => {
+const createLoansPDF = async (loans, filenamePrefix = 'loans') => {
   const doc = new jsPDF();
   const startY = addHeader(doc, 'Loans Report', `Total records: ${loans.length}`);
 autoTable(doc, {
@@ -314,165 +331,111 @@ const getImageNaturalSize = (dataUrl) =>
     img.src = dataUrl;
   });
 
-// Standard ID-1 card dimensions (mm) used for every uploaded image in the
-// quick loan form so all photos are normalised to a uniform ID size on the PDF.
 const STANDARD_ID_WIDTH = 85.6;
 const STANDARD_ID_HEIGHT = 54;
 
-// Returns a fixed, standard ID-card sized box for every uploaded image so that
-// all images in the quick loan agreement PDF share the same dimensions.
-// eslint-disable-next-line no-unused-vars
-const getImageSize = async (imageDataUrl, pageWidth) => {
-  return {
-    width: STANDARD_ID_WIDTH,
-    height: STANDARD_ID_HEIGHT,
-  };
-};
-
-export const exportLoanAgreementPDF = async (loanData, officer, options = { download: true }) => {
+const createLoanAgreementPDF = async (loanData, officer, options = { download: true }) => {
   const doc = new jsPDF({ compress: true, putOnlyUsedFonts: true });
+  const opt = options || {};
   const pageWidth = doc.internal.pageSize.width;
-  const lineHeight = 7;
   let y = 45;
 
-  const collateralImageData = await getImageDataUrl(
-    loanData?.collateral_image || loanData?.collateralImage || options.collateralImage
-  );
   const isGuaranteed = loanData?.loan_type === 'guaranteed'
     || loanData?.loanType === 'guaranteed'
     || loanData?.is_guaranteed === true
     || loanData?.isGuaranteed === true;
-  const isCollateralBacked = !isGuaranteed;
 
-  // Collateral-backed / Selling agreement (unchanged)
-  if (isCollateralBacked && options.summary !== true) {
+  if (opt.summary !== true) {
+    const margin = 18;
+    const contentWidth = pageWidth - margin * 2;
+    const pageHeight = doc.internal.pageSize.height;
+    const bottomMargin = 16;
+    y = 40;
+
     try {
-      doc.addImage('/icons/icon-512.png', 'PNG', pageWidth / 2 - 15, 8, 30, 30);
-    } catch (e) {
-      // Logo load failed - icon may be missing
+      doc.addImage('/icons/icon-512.png', 'PNG', pageWidth / 2 - 12, 8, 24, 24);
+    } catch (error) {
+      console.warn('Could not add the logo to the terms PDF', error);
     }
-    doc.setFontSize(16);
-    doc.setFont(undefined, 'bold');
-    doc.text('CLASS ONE GROUP - SELLING AGREEMENT', pageWidth / 2, y, { align: 'center' });
-    y += 8;
 
-    doc.setFontSize(10);
+    doc.setFont(undefined, 'bold');
+    doc.setFontSize(14);
+    doc.text('CLASS ONE SAVINGS GROUP - LOAN TERMS AND CONDITIONS', pageWidth / 2, y, { align: 'center' });
+    y += 8;
     doc.setFont(undefined, 'italic');
-    const adText = 'Your trusted partner for quick, flexible emergency funds. We are always ready to help you with business, emergencies, and education financing.';
-    const splitAd = doc.splitTextToSize(adText, pageWidth - 30);
-    doc.text(splitAd, pageWidth / 2, y, { align: 'center' });
-    y += splitAd.length * 4 + 4;
-
-    doc.setFont(undefined, 'bold');
-    doc.setFontSize(12);
-    doc.text('SELLING AGREEMENT', 14, y);
-    y += 8;
-
-    doc.setFont(undefined, 'normal');
-    doc.setFontSize(11);
-
-    const sellerName = loanData?.loan_name || loanData?.user_name || '____';
-    const sellerAddress = loanData?.loan_phone || loanData?.loan_email || '____';
-    const itemName = loanData?.collateral || '____';
-    const serialNo = loanData?.serial_number || loanData?.serialNumber || '';
-    const saleAmount = loanData?.amount || 0;
-    const buyerName = loanData?.buyer_name || '________________________';
-
-    let p1 = `I, ${sellerName}, of ${sellerAddress}, do hereby declare that I am the rightful owner of ${itemName}`;
-    if (String(serialNo).trim() !== '') {
-      p1 += ` with Serial No. ${serialNo}`;
-    }
-    p1 += '.';
-
-    const p2 = `I have sold this item to ${buyerName} at a price of ${fmtUGX(saleAmount)}.`;
-    const p3 = `In case of any doubts about the item, I am ready to face the courts of law.`;
-
-    const p1Lines = doc.splitTextToSize(p1, 180);
-    doc.text(p1Lines, 14, y); y += lineHeight * (p1Lines.length + 1);
-    const p2Lines = doc.splitTextToSize(p2, 180);
-    doc.text(p2Lines, 14, y); y += lineHeight * (p2Lines.length + 0.5);
-    const p3Lines = doc.splitTextToSize(p3, 180);
-    doc.text(p3Lines, 14, y); y += lineHeight * (p3Lines.length + 1.5);
-
-    if (collateralImageData) {
-      const imageSize = await getImageSize(collateralImageData, pageWidth);
-      const pageHeight = doc.internal.pageSize.height;
-      if (y + imageSize.height + 10 > pageHeight) {
-        doc.addPage();
-        y = 20;
-      }
-      doc.setFontSize(10);
-      doc.setFont(undefined, 'bold');
-      doc.text('Item Photo:', 14, y);
-      y += 5;
-      try {
-        doc.addImage(collateralImageData, getImageFormat(collateralImageData), 14, y, imageSize.width, imageSize.height);
-        y += imageSize.height + 1;
-      } catch (imgErr) {
-        console.warn('Failed to add collateral image to PDF', imgErr);
-      }
-    }
-
-    y += 4;
-    doc.setFontSize(10);
-    doc.text(`Date: ${new Date().toLocaleDateString()}`, 14, y);
-    y += 12;
-    doc.text('Seller Signature: ________________________________', 14, y);
-    doc.text('Buyer Signature: _________________________________', 14, y + 10);
-    y += 20;
     doc.setFontSize(9);
-    doc.text('Seller Name: _________________________________', 14, y);
-    doc.text('Buyer Name: _________________________________', 14, y + 8);
+    doc.text('Please read carefully before you apply for a loan.', pageWidth / 2, y, { align: 'center' });
+    y += 10;
 
-    if (options.download !== false) {
-      const loanName = loanData?.loanName || loanData?.loan_name || 'Agreement';
-      const safeFileName = loanName.toString().replace(/\s/g, '_').replace(/[^\w-]/g, '');
+    const writeTermsText = (text, { size = 9.5, bold = false, gap = 2, indent = 0 } = {}) => {
+      doc.setFontSize(size);
+      doc.setFont(undefined, bold ? 'bold' : 'normal');
+      const lines = doc.splitTextToSize(text, contentWidth - indent);
+      for (const line of lines) {
+        if (y + 5.2 > pageHeight - bottomMargin) {
+          doc.addPage();
+          y = 18;
+        }
+        doc.text(line, margin + indent, y);
+        y += 5.2;
+      }
+      y += gap;
+    };
+    const terms = [
+      ['1. WHO CAN BORROW', 'You must be a fully registered member of Class One Savings Group, must have saved with the group consistently, and must have a good record of attending meetings and repaying past loans.'],
+      ['2. HOW TO APPLY', 'Fill in the Loan Application Form. State clearly how much you want and what you want to use it for. Your application must be approved by the group leaders or loan committee before money is given.'],
+      ['3. LOAN AMOUNT', 'The amount you get depends on your savings, your ability to repay, and what the group has available. The group has the right to approve a smaller amount than what you requested.'],
+      ['4. LOAN TERM / PERIOD', 'Guaranteed loans must be repaid within 12 weeks (3 months) from the date you receive the money, unless the group agrees otherwise in writing. For collateral-backed loans, the applicant and seller/guarantor agree to a repayment period of 2 months, 4 months, 6 months, or 1 year.'],
+      ['5. INTEREST RATE', 'For guaranteed loans managed by a loans officer, interest is 10%. For loans below UGX 60,000, the 10% applies to each 2-week repayment cycle. For loans of UGX 60,000 and above, the 10% applies per month and is calculated on the outstanding balance. For collateral-backed loans, the seller/guarantor and applicant agree the total repayment amount manually; the agreed amount and interest plan are recorded in the loan agreement.'],
+      ['6. REPAYMENT', 'A) Guaranteed loans below UGX 60,000 (UGX 1 - UGX 59,999): repayment is every 2 weeks (bi-weekly), with 10% interest per cycle. B) Guaranteed loans of UGX 60,000 and above: repayment is monthly, with 10% interest per month. Pay each installment on or before its agreed date until the loan is fully cleared. Early payment is allowed. For collateral-backed loans, the applicant and seller/guarantor manually agree the total repayment amount and choose a repayment period of 2, 4, 6, or 12 months. For all loans, inform the group immediately if you miss a payment and agree how to catch up. Late interest continues as specified in the applicable loan agreement.'],
+      ['7. SECURITY / COLLATERAL', 'To get a loan, you must provide security (property or an item pledged). This security will be held by the group until the loan is fully repaid. If you fail to repay, the group has the right to sell the security to recover the money.'],
+      ['8. GUARANTOR', 'You must bring a guarantor - a trusted member who agrees to stand for you. If you fail to repay, your guarantor will be responsible for repaying the loan and any interest. Your guarantor must be approved by the group.'],
+      ['9. DEFAULT / FAILURE TO PAY', 'If you fail to repay on time, the group will: (1) remind you and give you a short time to pay; (2) contact your guarantor; (3) use your savings and/or your security to recover the money; and (4) take legal action if necessary. You will also be responsible for any costs the group spends to recover the money.'],
+      ['10. YOUR RESPONSIBILITIES AS A BORROWER', 'Use the loan for the purpose you stated. Repay on time, every 2 weeks or every month as per your loan category. Attend meetings and keep the group updated if you have a problem. Do not transfer your loan to another person without group permission.'],
+      ["11. THE GROUP'S RESPONSIBILITIES", 'The group will keep your information confidential, give you a clear record of how much you borrowed, how much interest you owe, and how much you have paid, and treat all members fairly.'],
+      ['12. CHANGES TO THESE TERMS', 'These terms may be changed by the group leaders with agreement of members. Members will be informed before any change takes effect.'],
+      ['13. GOVERNING LAW', 'These terms are governed by the laws of Uganda.'],
+      ['14. IF YOU DO NOT HAVE A GUARANTOR', 'If you do not have a guarantor, you can still get a loan by getting a group member to act as your guarantor. You and that group member will write an agreement between the two of you. The agreement will show that you have sold your property to your guarantor at the price agreed by the members. The property, agreed price, and loan details must be clearly written in the agreement. The group will only act as witness and will not be a party to the sale. The agreement must be signed by you and your guarantor, and witnessed by group members. If you fail to pay the loan, your guarantor will take the property as agreed to recover the loan and interest. Once you fully repay the loan, the agreement is cancelled and the property remains yours.'],
+    ];
+
+    terms.forEach(([heading, text]) => {
+      writeTermsText(heading, { bold: true, size: 10, gap: 1 });
+      writeTermsText(text, { indent: 2, gap: 3 });
+    });
+    writeTermsText('By applying for a loan, you confirm that you have read and understood these Terms and Conditions.', { bold: true, gap: 4 });
+
+    if (opt.download !== false) {
       const date = new Date().toISOString().split('T')[0];
-      await savePdf(doc, `Sell_Agreement_${safeFileName}-${date}.pdf`);
+      await savePdf(doc, `Loan_Terms_and_Conditions-${date}.pdf`);
     }
     return doc;
   }
 
-  // GUARANTEED: formal 15-clause Loan Agreement
+  // Build the short, personalized loan agreement.
   const data = loanData || {};
-  const opt = options || {};
-
+  const collateralImageSources = Array.isArray(opt.collateralImages) && opt.collateralImages.length
+    ? opt.collateralImages
+    : Array.isArray(data.collateral_images) && data.collateral_images.length
+      ? data.collateral_images
+      : [opt.collateralImage || data.collateral_image || data.collateralImage].filter(Boolean);
+  const collateralImageData = (await Promise.all(collateralImageSources.map(getImageDataUrl))).filter(Boolean);
   const LENDER = {
     name: 'Class One Savings Group',
-    address: 'Fort Portal, Uganda',
-    city: '',
   };
 
   const borrowerName = data.loan_name || data.loanName || '________________________';
-  const borrowerAddress = data.borrower_address || data.borrowerAddress || opt.borrowerAddress || '';
-  const borrowerCity = data.borrower_city || data.borrowerCity || opt.borrowerCity || '';
-  const currency = String(data.currency || data.loanCurrency || opt.currency || 'UGX').toUpperCase();
+  const currency = (isGuaranteed ? String(data.currency || data.loanCurrency || opt.currency || 'UGX') : 'UGX').toUpperCase();
   const amountNum = Math.round(Number(data.amount || 0));
-  const amountWords = numberToWords(amountNum);
+  const sellerName = data.seller_name || data.sellerName || data.buyer_name || '________________________';
+  const agreedPrice = Number(data.agreed_price || data.amount || 0);
 
-  const repaymentPeriod = data.repayment_period || data.interest_period || '2_weeks';
-  const periodRatePct = amountNum > 50000 ? 10 : (repaymentPeriod === '1_month' ? 20 : 10);
-  const termWords = repaymentPeriod === '1_month' ? 'one (1) month' : 'two (2) weeks';
-  const termWordsCap = termWords.charAt(0).toUpperCase() + termWords.slice(1);
-
-  const interestRateNum = Math.round(Number(
-    data.agreement_interest_rate != null ? data.agreement_interest_rate
-      : (data.interest_rate_pct != null ? data.interest_rate_pct
-        : (opt.interestRatePct != null ? opt.interestRatePct : periodRatePct))
-  ) || 0);
-  const interestWords = numberToWords(interestRateNum);
-  const interestAmount = Math.round(amountNum * interestRateNum / 100);
-  const totalDue = amountNum + interestAmount;
-  const totalWords = numberToWords(totalDue);
-
+  const repaymentFrequency = amountNum < 60000 ? 'every two weeks (bi-weekly)' : 'monthly';
   const security = data.security_description || data.securityDescription || opt.security
     || data.collateral || 'the property pledged herein';
-  const guarantorName = data.guarantor_name || data.guarantorName || opt.guarantorName || '________________________';
-  const guarantorAddress = data.guarantor_address || data.guarantorAddress || opt.guarantorAddress || '';
-  const jurisdiction = data.jurisdiction || data.loanJurisdiction || opt.jurisdiction || 'Uganda';
-  const witnessName = data.witness_name || data.witnessName || opt.witnessName || '';
-  const officerName = officer?.name || data.officer_name || '';
-  const agreementDate = data.created_at ? fmtDate(data.created_at) : new Date().toLocaleDateString();
+  const guarantorName = data.guarantor_name || data.guarantorName || data.buyer_name || data.buyerName || opt.guarantorName || '________________________';
+  const agreementDate = isGuaranteed
+    ? (data.created_at ? fmtDate(data.created_at) : new Date().toLocaleDateString())
+    : fmtDate(data.sale_date || data.created_at || new Date().toISOString());
 
   const leftMargin = 18;
   const bottomMargin = 16;
@@ -499,15 +462,6 @@ export const exportLoanAgreementPDF = async (loanData, officer, options = { down
     y += gap;
   };
 
-  const writeClause = (label, text) => {
-    doc.setFont(undefined, 'bold');
-    doc.setFontSize(11);
-    ensureSpace(lh + 1);
-    doc.text(label, leftMargin, y);
-    y += lh + 1;
-    writeParagraph(text, { gap: 2 });
-  };
-
   const writePartyLine = (text, { bold = true, size = 11, gap = 1 } = {}) => {
     doc.setFont(undefined, bold ? 'bold' : 'normal');
     doc.setFontSize(size);
@@ -516,87 +470,6 @@ export const exportLoanAgreementPDF = async (loanData, officer, options = { down
     y += lh + gap;
   };
 
-  if (opt.summary === true) {
-    try {
-      doc.addImage('/icons/icon-512.png', 'PNG', pageWidth / 2 - 12, 8, 24, 24);
-    } catch (e) {
-      // Logo load failed - icon may be missing
-    }
-
-    doc.setFont(undefined, 'bold');
-    doc.setFontSize(14);
-    doc.text(
-      isGuaranteed ? 'LOAN AGREEMENT - SIGNABLE SUMMARY' : 'COLLATERAL-BACKED SALE AGREEMENT',
-      pageWidth / 2,
-      y,
-      { align: 'center' }
-    );
-    y += 9;
-
-    if (isGuaranteed) {
-      writeParagraph(`Borrower: ${borrowerName} | Phone: ${data.loan_phone || data.loanPhone || '________________'}`, { size: 9.5, gap: 1 });
-      writeParagraph(`Principal: ${fmtCurrency(amountNum, currency)} | Interest: ${fmtCurrency(interestAmount, currency)} (${interestRateNum}%) | Total due: ${fmtCurrency(totalDue, currency)}`, { size: 9.5, gap: 1 });
-      writeParagraph(`Term: ${termWords} from disbursement | Purpose: ${data.purpose || data.loan_purpose || 'Not specified'}`, { size: 9.5, gap: 1 });
-      writeParagraph(`Guarantor / officer: ${data.guarantor_name || data.guarantorName || officerName || '________________'}`, { size: 9.5, gap: 2 });
-      writeParagraph(
-        `The Borrower agrees to repay the principal and interest shown above by the end of the stated term. The named guarantor supports repayment. If the Borrower defaults, the Lender may seek recovery through the agreed guarantee in accordance with Ugandan law. Notices may be sent to the contact details above; changes to this agreement must be in writing. This is a concise signing copy; download the full terms PDF for the complete clauses.`,
-        { size: 9, gap: 2 }
-      );
-    } else {
-      const sellerName = data.loan_name || data.user_name || '________________';
-      const sellerAddress = data.loan_phone || data.loan_email || '________________';
-      const buyerName = data.buyer_name || data.buyerName || '________________';
-      const itemName = data.collateral || data.security_description || '________________';
-      const serialNo = data.serial_number || data.serialNumber || '';
-      writeParagraph(`Seller: ${sellerName} | Contact: ${sellerAddress} | Buyer: ${buyerName}`, { size: 9.5, gap: 1 });
-      writeParagraph(`Item: ${itemName}${serialNo ? ` | Serial / IMEI: ${serialNo}` : ''} | Sale price: ${fmtCurrency(amountNum, currency)}`, { size: 9.5, gap: 1 });
-      writeParagraph(
-        `The Seller confirms ownership of the item described above and agrees to sell it to the named Buyer for the stated price. The Seller accepts responsibility for ownership disputes. This is a concise signing copy; download the full terms PDF for the complete clauses.`,
-        { size: 9, gap: 2 }
-      );
-    }
-
-    if (!isGuaranteed && collateralImageData) {
-      ensureSpace(STANDARD_ID_HEIGHT + 12);
-      doc.setFont(undefined, 'bold');
-      doc.setFontSize(9);
-      doc.text('Collateral photo:', leftMargin, y);
-      y += 5;
-      try {
-        doc.addImage(collateralImageData, getImageFormat(collateralImageData), leftMargin, y, STANDARD_ID_WIDTH, STANDARD_ID_HEIGHT);
-      } catch (imgErr) {
-        console.warn('Failed to add collateral image to summary PDF', imgErr);
-      }
-      y += STANDARD_ID_HEIGHT + 4;
-    }
-
-    ensureSpace(31);
-    const signatureY = y + 2;
-    const rightColumn = pageWidth / 2 + 5;
-    doc.setFont(undefined, 'normal');
-    doc.setFontSize(8.5);
-    doc.text(isGuaranteed ? `Lender: ${LENDER.name}` : `Seller: ${data.loan_name || data.user_name || '________________'}`, leftMargin, signatureY);
-    doc.text(isGuaranteed ? `Borrower: ${borrowerName}` : `Buyer: ${data.buyer_name || data.buyerName || '________________'}`, rightColumn, signatureY);
-    doc.text('Signature: ______________________', leftMargin, signatureY + 8);
-    doc.text('Signature: ______________________', rightColumn, signatureY + 8);
-    doc.text('Date: ______________', leftMargin, signatureY + 16);
-    doc.text('Date: ______________', rightColumn, signatureY + 16);
-    if (isGuaranteed) {
-      doc.text(`Guarantor: ${data.guarantor_name || data.guarantorName || officerName || '________________'}`, leftMargin, signatureY + 25);
-      doc.text('Witness: ________________________', rightColumn, signatureY + 25);
-      doc.text('Signature: ______________________', leftMargin, signatureY + 33);
-      doc.text('Signature: ______________________', rightColumn, signatureY + 33);
-    }
-
-    if (opt.download !== false) {
-      const safeFileName = borrowerName.toString().replace(/\s/g, '_').replace(/[^\w-]/g, '') || 'Agreement';
-      const date = new Date().toISOString().split('T')[0];
-      await savePdf(doc, `Loan_Agreement_Summary_${safeFileName}-${date}.pdf`);
-    }
-    return doc;
-  }
-
-  // Logo
   try {
     doc.addImage('/icons/icon-512.png', 'PNG', pageWidth / 2 - 12, 8, 24, 24);
   } catch (e) {
@@ -604,137 +477,132 @@ export const exportLoanAgreementPDF = async (loanData, officer, options = { down
   }
 
   doc.setFont(undefined, 'bold');
-  doc.setFontSize(16);
-  ensureSpace(10);
-  doc.text('LOAN AGREEMENT', pageWidth / 2, y, { align: 'center' });
-  y += 12;
-
-  writeParagraph(
-    `This Loan Agreement ("Agreement") is made and entered into as of ${agreementDate} by and between:`,
-    { gap: 4 }
+  doc.setFontSize(14);
+  doc.text(
+    isGuaranteed ? 'CLASS ONE SAVINGS GROUP - LOAN AGREEMENT' : 'CLASS ONE GROUP - SELLING AGREEMENT',
+    pageWidth / 2,
+    y,
+    { align: 'center' }
   );
+  y += 9;
 
-  // Lender block
-  writePartyLine(LENDER.name);
-  writePartyLine(LENDER.address, { bold: false, size: 10.5 });
-  if (LENDER.city) writePartyLine(LENDER.city, { bold: false, size: 10.5 });
-  writePartyLine('(hereinafter referred to as the "Lender")', { bold: false, size: 10.5, italic: true });
-  y += 1;
-  writePartyLine('AND');
-  y += 1;
+  if (isGuaranteed) {
+    writeParagraph(`Borrower: ${borrowerName}`, { size: 9.5, gap: 1 });
+    writeParagraph(`Phone: ${data.loan_phone || data.loanPhone || opt.borrowerPhone || '________________'} | Email: ${data.loan_email || data.loanEmail || opt.borrowerEmail || '________________'}`, { size: 9.5, gap: 1 });
+    writeParagraph(`Loan type: Guaranteed | Loan amount: ${fmtCurrency(amountNum, currency)} | Purpose: ${data.purpose || data.loan_purpose || 'Not specified'}`, { size: 9.5, gap: 1 });
+    writeParagraph(`Interest: 10% ${amountNum < 60000 ? 'per two-week repayment cycle' : 'per month'} on the outstanding balance | Repayment: ${repaymentFrequency} | Maximum term: 12 weeks`, { size: 9.5, gap: 1 });
+    writeParagraph(`Security: ${security} | Guarantor: ${guarantorName}`, { size: 9.5, gap: 1 });
+    writeParagraph(`Loan officer: ${officer?.name || data.officer_name || 'Not specified'}`, { size: 9.5, gap: 1 });
+    writeParagraph('By signing, I confirm that I have read and understood the Loan Terms and Conditions.', { size: 9, bold: true, gap: 2 });
+  } else {
+    const paymentSentence = data.payment_status === 'paid'
+      ? 'The Buyer has paid the full amount as agreed by both parties.'
+      : 'The Buyer will pay the full amount as agreed by both parties.';
+    const handoverSentence = data.handover_status === 'handed_over'
+      ? 'The Seller has handed over the property to the Buyer, and from today the property belongs to the Buyer.'
+      : 'The Seller will hand over the property to the Buyer as agreed by both parties.';
 
-  // Borrower block
-  writePartyLine(borrowerName);
-  if (borrowerAddress) writePartyLine(borrowerAddress, { bold: false, size: 10.5 });
-  if (borrowerCity) writePartyLine(borrowerCity, { bold: false, size: 10.5 });
-  writePartyLine('(hereinafter referred to as the "Borrower")', { bold: false, size: 10.5, italic: true });
-  y += 2;
+    writeParagraph('Between Two Members of the Same Group', { size: 10, bold: true, gap: 1 });
+    writeParagraph(`Date: ${agreementDate}`, { size: 9.5, gap: 1 });
+    writeParagraph('DECLARATION', { size: 10, bold: true, gap: 1 });
+    writeParagraph(`I, ${sellerName} (Seller), do hereby declare that I have sold my property described below to ${borrowerName} (Buyer), at the price agreed by both of us.`, { size: 9.5, gap: 1 });
+    writeParagraph('I declare that the property is truly mine, it has no dispute, no debt, and no other claim, and I have not sold it to anyone else. In case of any doubt about this property, I am ready to face the courts of law.', { size: 9.5, gap: 1 });
+    if (data.members_confirmed) {
+      writeParagraph('Both the Seller and Buyer confirm that they are members of Class One Savings Group.', { size: 9.5, gap: 1 });
+    }
+    writeParagraph(`Seller phone: ${data.seller_phone || '________________'} | Buyer phone: ${data.loan_phone || data.loanPhone || opt.borrowerPhone || '________________'}`, { size: 9.5, gap: 1 });
+    writeParagraph(`1. Property Sold: ${data.collateral || '________________'}`, { size: 9.5, gap: 1 });
+    writeParagraph(`Description: ${data.property_description || '________________'}`, { size: 9.5, gap: 1 });
+    writeParagraph(`2. Agreed Price: ${fmtCurrency(agreedPrice, currency)}`, { size: 9.5, gap: 1 });
+    writeParagraph(`In words: ${numberToWords(agreedPrice)} Shillings Only`, { size: 9.5, gap: 1 });
+    writeParagraph(`3. Payment: ${paymentSentence}`, { size: 9.5, gap: 1 });
+    writeParagraph(`4. Handover: ${handoverSentence}`, { size: 9.5, gap: 1 });
+    writeParagraph('5. Role of Group: Class One Savings Group is only a witness to this sale. The Group is not a party to the sale.', { size: 9.5, gap: 1 });
+  }
 
-  doc.setFont(undefined, 'normal');
-  writeParagraph(
-    'WHEREAS, the Lender agrees to lend a certain sum of money to the Borrower, and the Borrower agrees to repay the loan under the terms and conditions set forth herein.',
-    { gap: 3 }
-  );
-  writeParagraph(
-    'NOW, THEREFORE, in consideration of the mutual covenants and agreements contained herein, the parties agree as follows:',
-    { gap: 4 }
-  );
-
-  writeClause('1. LOAN AMOUNT', `${amountWords} (${fmtCurrency(amountNum, currency)}) The Lender agrees to lend the Borrower the sum of ${fmtCurrency(amountNum, currency)} (the "Loan Amount").`);
-  writeClause('2. LOAN TERM', `${termWordsCap} The term of this loan shall be for a period of ${termWords}, commencing on the date of disbursement of the Loan Amount.`);
-  writeClause('3. INTEREST RATE', `${interestWords} percent (${interestRateNum}%) The Loan Amount shall bear interest at the rate of ${interestRateNum}% per month, calculated on the outstanding principal balance.`);
-  writeClause('4. REPAYMENT', `${totalWords} (${fmtCurrency(totalDue, currency)}) The Borrower agrees to repay the Loan Amount along with accrued interest in full on or before the expiration of the Loan Term. The total amount due at the end of the Loan Term shall be ${fmtCurrency(totalDue, currency)}, which includes the principal and interest.`);
-  writeClause('5. SECURITY', `As security for the Loan Amount, the Borrower hereby pledges the following property: ${security}.`);
-  writeClause('6. GUARANTOR', `${guarantorName} The Borrower shall provide a guarantor, ${guarantorName}, who agrees to guarantee the repayment of the Loan Amount and any accrued interest in the event that the Borrower fails to make the required payments.`);
-  writeClause('7. DEFAULT', `In the event that the Borrower fails to repay the Loan Amount and accrued interest by the end of the Loan Term, the Lender shall have the right to sell the pledged security (${security}) to recover the outstanding balance. The Borrower shall be responsible for any costs associated with the sale of the security.`);
-  writeClause('8. NOTICES', 'Any notice required or permitted under this Agreement shall be in writing and shall be deemed to have been duly given when delivered personally or sent by registered or certified mail, return receipt requested, to the addresses set forth above or to such other address as either party may designate in writing.');
-  writeClause('9. GOVERNING LAW', `This Agreement shall be governed by and construed in accordance with the laws of ${jurisdiction}. Any disputes arising out of or in connection with this Agreement shall be subject to the exclusive jurisdiction of the courts located in ${jurisdiction}.`);
-  writeClause('10. ENTIRE AGREEMENT', 'This Agreement constitutes the entire understanding between the parties with respect to the subject matter hereof and supersedes all prior agreements, understandings, and negotiations, whether written or oral.');
-  writeClause('11. AMENDMENTS', 'This Agreement may not be amended or modified except in writing signed by both parties.');
-  writeClause('12. SEVERABILITY', 'If any provision of this Agreement is found to be invalid or unenforceable, the remaining provisions shall continue in full force and effect.');
-  writeClause('13. ASSIGNMENT', 'The Borrower may not assign or transfer any of its rights or obligations under this Agreement without the prior written consent of the Lender.');
-  writeClause('14. WAIVER', 'No waiver of any term or condition of this Agreement shall be deemed or shall constitute a waiver of any other term or condition, nor shall any waiver constitute a continuing waiver.');
-  writeClause('15. COUNTERPARTS', 'This Agreement may be executed in counterparts, each of which shall be deemed an original, but all of which together shall constitute one and the same instrument.');
-
-  writeParagraph(
-    'IN WITNESS WHEREOF, the parties hereto have executed this Loan Agreement as of the day and year first above written.',
-    { gap: 6 }
-  );
-
-  const writeSignatureBlock = (label, name) => {
-    writePartyLine(label);
-    writePartyLine('By: ________________________', { bold: false, size: 10.5 });
-    writePartyLine(`Name: ${name}`, { bold: false, size: 10.5 });
-    writePartyLine('Title: ________________________', { bold: false, size: 10.5 });
-    writePartyLine('Date: ________________________', { bold: false, size: 10.5 });
-    y += 2;
-  };
-
-  writeSignatureBlock('LENDER:', `${LENDER.name}  (Signed by: ${officerName || 'Authorized Signatory'})`);
-  writeSignatureBlock('BORROWER:', borrowerName);
-  writeSignatureBlock('GUARANTOR:', guarantorName);
-  writeSignatureBlock('WITNESS:', witnessName || '________________________');
-
-  // Security / Pledged Property images at the bottom of the agreement (3-column grid)
-  const pledgedImages = options.nationalIdImages || data.national_id_images || [];
-  if (Array.isArray(pledgedImages) && pledgedImages.length > 0) {
+  const providedImages = Array.isArray(opt.nationalIdImages) && opt.nationalIdImages.length
+    ? opt.nationalIdImages
+    : (Array.isArray(data.national_id_images) ? data.national_id_images : []);
+  const imageSources = [...collateralImageData, ...providedImages].filter(Boolean);
+  const imageData = (await Promise.all(imageSources.map(getImageDataUrl))).filter(Boolean);
+  if (imageData.length) {
+    ensureSpace(isGuaranteed ? 12 : 44);
     doc.setFont(undefined, 'bold');
-    doc.setFontSize(11);
-    ensureSpace(lh + 2);
-    doc.text('SECURITY / PLEDGED PROPERTY IMAGES', leftMargin, y);
-    y += lh + 4;
-
-    const columns = 3;
-    const gridGap = 6;
-    const columnWidth = (contentWidth - (columns - 1) * gridGap) / columns;
-    let col = 0;
-    let rowMaxHeight = 0;
-
-    for (let i = 0; i < pledgedImages.length; i += 1) {
-      const imgData = await getImageDataUrl(pledgedImages[i]);
-      if (!imgData) continue;
-      const nat = await getImageNaturalSize(imgData);
-      const aspect = nat.width && nat.height ? nat.width / nat.height : (STANDARD_ID_WIDTH / STANDARD_ID_HEIGHT);
-      let displayHeight = columnWidth / aspect;
-      if (displayHeight > 60) displayHeight = 60;
-
-      if (col === 0 && y + displayHeight + 6 > pageHeight - bottomMargin) {
-        doc.addPage();
-        y = 18;
+    doc.setFontSize(10);
+    doc.text(isGuaranteed ? 'Borrower / pledged property image(s):' : 'Property photos:', leftMargin, y);
+    y += 7;
+    if (isGuaranteed) {
+      for (const image of imageData) {
+        const dimensions = await getImageNaturalSize(image);
+        const scale = Math.min(1, 70 / dimensions.width, 48 / dimensions.height);
+        const imageWidth = dimensions.width * scale;
+        const imageHeight = dimensions.height * scale;
+        ensureSpace(imageHeight + 4);
+        try {
+          doc.addImage(image, getImageFormat(image), leftMargin, y, imageWidth, imageHeight);
+          y += imageHeight + 4;
+        } catch (imgErr) {
+          console.warn('Failed to add loan image to PDF', imgErr);
+        }
       }
-
-      const x = leftMargin + col * (columnWidth + gridGap);
-      try {
-        doc.addImage(imgData, getImageFormat(imgData), x, y, columnWidth, displayHeight);
-      } catch (imgErr) {
-        console.warn('Failed to add pledged property image to PDF', imgErr);
-      }
-      doc.setFontSize(8);
-      doc.setFont(undefined, 'normal');
-      doc.text(`Image ${i + 1}`, x, y + displayHeight + 3);
-
-      rowMaxHeight = Math.max(rowMaxHeight, displayHeight + 6);
-      col += 1;
-      if (col >= columns) {
-        col = 0;
-        y += rowMaxHeight;
-        rowMaxHeight = 0;
+    } else {
+      const columns = 5;
+      const gap = 3;
+      const cellWidth = (contentWidth - gap * (columns - 1)) / columns;
+      const cellHeight = 30;
+      for (let start = 0; start < imageData.length; start += columns) {
+        ensureSpace(cellHeight + 4);
+        const rowY = y;
+        const rowImages = imageData.slice(start, start + columns);
+        for (let column = 0; column < rowImages.length; column += 1) {
+          const image = rowImages[column];
+          const dimensions = await getImageNaturalSize(image);
+          const scale = Math.min(cellWidth / dimensions.width, cellHeight / dimensions.height);
+          const imageWidth = dimensions.width * scale;
+          const imageHeight = dimensions.height * scale;
+          const x = leftMargin + column * (cellWidth + gap) + (cellWidth - imageWidth) / 2;
+          const imageY = rowY + (cellHeight - imageHeight) / 2;
+          try {
+            doc.addImage(image, getImageFormat(image), x, imageY, imageWidth, imageHeight);
+          } catch (imgErr) {
+            console.warn('Failed to add loan image to PDF', imgErr);
+          }
+        }
+        y += cellHeight + gap;
       }
     }
-    if (col !== 0) y += rowMaxHeight;
   }
 
-  if (options.download !== false) {
-    const loanName = data.loanName || data.loan_name || borrowerName || 'Agreement';
-    const safeFileName = loanName.toString().replace(/\s/g, '_').replace(/[^\w-]/g, '');
+  ensureSpace(isGuaranteed ? 40 : 55);
+  y += 2;
+  if (isGuaranteed) {
+    writePartyLine(`Lender: ${LENDER.name}`);
+    writePartyLine('Signature: ______________________________', { bold: false, size: 9.5 });
+    writePartyLine(`Borrower: ${borrowerName}`);
+    writePartyLine('Signature: ______________________________', { bold: false, size: 9.5 });
+    writePartyLine(`Guarantor: ${guarantorName}`);
+    writePartyLine('Signature: ______________________________', { bold: false, size: 9.5 });
+    writePartyLine('Witness: ________________________________');
+    writePartyLine('Signature: ______________________________', { bold: false, size: 9.5 });
+    writePartyLine(`Date: ${agreementDate}`, { bold: false, size: 9.5 });
+  } else {
+    writePartyLine('Seller Signature: ______________________________', { bold: false, size: 9.5 });
+    writePartyLine('Buyer Signature: _______________________________', { bold: false, size: 9.5 });
+    writePartyLine('Witnesses - Group Members:');
+    writePartyLine(`1. Name: ${data.witness_1_name || '________________'}  Signature: __________________`, { bold: false, size: 9.5 });
+    writePartyLine(`2. Name: ${data.witness_2_name || '________________'}  Signature: __________________`, { bold: false, size: 9.5 });
+  }
+
+  if (opt.download !== false) {
+    const safeFileName = borrowerName.toString().replace(/\s/g, '_').replace(/[^\w-]/g, '') || 'Agreement';
     const date = new Date().toISOString().split('T')[0];
-    await savePdf(doc, `Loan_Agreement_${safeFileName}-${date}.pdf`);
+    const documentPrefix = isGuaranteed ? 'Loan_Agreement' : 'Selling_Agreement';
+    await savePdf(doc, `${documentPrefix}_${safeFileName}-${date}.pdf`);
   }
-
   return doc;
 };
 
-export const exportWithdrawalsPDF = async (withdrawals, filenamePrefix = 'withdrawals') => {
+const createWithdrawalsPDF = async (withdrawals, filenamePrefix = 'withdrawals') => {
   const doc = new jsPDF();
   addHeader(doc, 'Withdrawals Report', `Total records: ${withdrawals.length}`);
   autoTable(doc, {
@@ -754,7 +622,7 @@ export const exportWithdrawalsPDF = async (withdrawals, filenamePrefix = 'withdr
   await savePdf(doc, `${filenamePrefix}-${new Date().toISOString().split('T')[0]}.pdf`);
 };
 
-export const exportPettyCashPDF = async (items, filenamePrefix = 'petty-cash') => {
+const createPettyCashPDF = async (items, filenamePrefix = 'petty-cash') => {
   const doc = new jsPDF();
   addHeader(doc, 'Petty Cash Report', `Total records: ${items.length}`);
   autoTable(doc, {
@@ -897,7 +765,7 @@ const drawReceiptFooter = (doc, y, receiptLabel) => {
   doc.rect(left, y + 31, width, 1, 'F');
 };
 
-export const exportOrderReceiptPDF = async (order, buyerName, buyerPhone, buyerEmail) => {
+const createOrderReceiptPDF = async (order, buyerName, buyerPhone, buyerEmail) => {
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.width;
   const receiptLogo = await loadReceiptLogo();
@@ -1002,7 +870,7 @@ export const exportOrderReceiptPDF = async (order, buyerName, buyerPhone, buyerE
   await savePdf(doc, `receipt-${getOrderReceiptNumber(order)}.pdf`);
 };
 
-export const exportCustomerReceiptPDF = async (customers, options = {}) => {
+const createCustomerReceiptPDF = async (customers, options = {}) => {
   const { singleSeller, dateRange } = options;
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.width;
@@ -1120,7 +988,7 @@ export const exportCustomerReceiptPDF = async (customers, options = {}) => {
   await savePdf(doc, `customer-receipt-${new Date().toISOString().split('T')[0]}.pdf`);
 };
 
-export const exportSellerReceiptPDF = async (sellers, options = {}) => {
+const createSellerReceiptPDF = async (sellers, options = {}) => {
   const { dateRange } = options;
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.width;
@@ -1238,7 +1106,7 @@ export const exportSellerReceiptPDF = async (sellers, options = {}) => {
   await savePdf(doc, `seller-receipt-${new Date().toISOString().split('T')[0]}.pdf`);
 };
 
-export const exportFullGroupReportPDF = async ({ financials, deposits, loans, withdrawals, pettyCash, members }) => {
+const createFullGroupReportPDF = async ({ financials, deposits, loans, withdrawals, pettyCash, members }) => {
   const doc = new jsPDF();
   addHeader(doc, 'Full Group Report', `Comprehensive record for admin`);
   
@@ -1338,3 +1206,13 @@ export const exportFullGroupReportPDF = async ({ financials, deposits, loans, wi
   
   await savePdf(doc, `group-report-${new Date().toISOString().split('T')[0]}.pdf`);
 };
+
+export const exportDepositsPDF = withPdfProgress(createDepositsPDF);
+export const exportLoansPDF = withPdfProgress(createLoansPDF);
+export const exportLoanAgreementPDF = withPdfProgress(createLoanAgreementPDF);
+export const exportWithdrawalsPDF = withPdfProgress(createWithdrawalsPDF);
+export const exportPettyCashPDF = withPdfProgress(createPettyCashPDF);
+export const exportOrderReceiptPDF = withPdfProgress(createOrderReceiptPDF);
+export const exportCustomerReceiptPDF = withPdfProgress(createCustomerReceiptPDF);
+export const exportSellerReceiptPDF = withPdfProgress(createSellerReceiptPDF);
+export const exportFullGroupReportPDF = withPdfProgress(createFullGroupReportPDF);
