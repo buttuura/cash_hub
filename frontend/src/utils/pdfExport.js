@@ -489,6 +489,9 @@ const createLoanAgreementPDF = async (loanData, officer, options = { download: t
   if (isGuaranteed) {
     writeParagraph(`Borrower: ${borrowerName}`, { size: 9.5, gap: 1 });
     writeParagraph(`Phone: ${data.loan_phone || data.loanPhone || opt.borrowerPhone || '________________'} | Email: ${data.loan_email || data.loanEmail || opt.borrowerEmail || '________________'}`, { size: 9.5, gap: 1 });
+    if (data.nin_number || data.ninNumber) {
+      writeParagraph(`NIN: ${data.nin_number || data.ninNumber}`, { size: 9.5, gap: 1 });
+    }
     writeParagraph(`Loan type: Guaranteed | Loan amount: ${fmtCurrency(amountNum, currency)} | Purpose: ${data.purpose || data.loan_purpose || 'Not specified'}`, { size: 9.5, gap: 1 });
     writeParagraph(`Interest: 10% ${amountNum < 60000 ? 'per two-week repayment cycle' : 'per month'} on the outstanding balance | Repayment: ${repaymentFrequency} | Maximum term: 12 weeks`, { size: 9.5, gap: 1 });
     writeParagraph(`Security: ${security} | Guarantor: ${guarantorName}`, { size: 9.5, gap: 1 });
@@ -523,27 +526,44 @@ const createLoanAgreementPDF = async (loanData, officer, options = { download: t
   const providedImages = Array.isArray(opt.nationalIdImages) && opt.nationalIdImages.length
     ? opt.nationalIdImages
     : (Array.isArray(data.national_id_images) ? data.national_id_images : []);
-  const imageSources = [...collateralImageData, ...providedImages].filter(Boolean);
+  const imageSources = (isGuaranteed ? providedImages : collateralImageData).filter(Boolean);
   const imageData = (await Promise.all(imageSources.map(getImageDataUrl))).filter(Boolean);
   if (imageData.length) {
     ensureSpace(isGuaranteed ? 12 : 44);
     doc.setFont(undefined, 'bold');
     doc.setFontSize(10);
-    doc.text(isGuaranteed ? 'Borrower / pledged property image(s):' : 'Property photos:', leftMargin, y);
+    doc.text(isGuaranteed ? 'Borrower National ID photos (front and back) - age verification (18+):' : 'Property photos:', leftMargin, y);
     y += 7;
     if (isGuaranteed) {
-      for (const image of imageData) {
-        const dimensions = await getImageNaturalSize(image);
-        const scale = Math.min(1, 70 / dimensions.width, 48 / dimensions.height);
-        const imageWidth = dimensions.width * scale;
-        const imageHeight = dimensions.height * scale;
-        ensureSpace(imageHeight + 4);
-        try {
-          doc.addImage(image, getImageFormat(image), leftMargin, y, imageWidth, imageHeight);
-          y += imageHeight + 4;
-        } catch (imgErr) {
-          console.warn('Failed to add loan image to PDF', imgErr);
+      writeParagraph('Check the National ID date of birth to confirm the borrower is at least 18 years old.', { size: 9, gap: 2 });
+      const columns = 2;
+      const gap = 6;
+      const cellWidth = (contentWidth - gap) / columns;
+      const cellHeight = 42;
+      for (let start = 0; start < imageData.length; start += columns) {
+        ensureSpace(cellHeight + 10);
+        const rowY = y;
+        const rowImages = imageData.slice(start, start + columns);
+        for (let column = 0; column < rowImages.length; column += 1) {
+          const image = rowImages[column];
+          const dimensions = await getImageNaturalSize(image);
+          const scale = Math.min(cellWidth / dimensions.width, cellHeight / dimensions.height);
+          const imageWidth = dimensions.width * scale;
+          const imageHeight = dimensions.height * scale;
+          const x = leftMargin + column * (cellWidth + gap) + (cellWidth - imageWidth) / 2;
+          const imageY = rowY + 5 + (cellHeight - imageHeight) / 2;
+          const imageIndex = start + column;
+          const label = imageIndex === 0 ? 'Front' : imageIndex === 1 ? 'Back' : `Additional photo ${imageIndex + 1}`;
+          doc.setFont(undefined, 'bold');
+          doc.setFontSize(8);
+          doc.text(label, leftMargin + column * (cellWidth + gap), rowY);
+          try {
+            doc.addImage(image, getImageFormat(image), x, imageY, imageWidth, imageHeight);
+          } catch (imgErr) {
+            console.warn('Failed to add National ID image to PDF', imgErr);
+          }
         }
+        y += cellHeight + 8;
       }
     } else {
       const columns = 5;

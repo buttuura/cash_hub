@@ -2,6 +2,7 @@ import asyncio
 import importlib
 import os
 import sys
+from datetime import timedelta, timezone
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -28,6 +29,9 @@ class FakeDatabase:
     async def insert_many(self, documents):
         self.notification_documents.extend(documents)
         return Mock(inserted_ids=[])
+
+    async def update_many(self, *_args, **_kwargs):
+        return Mock()
 
     def find(self, *_args, **_kwargs):
         return FakeCursor([])
@@ -74,6 +78,104 @@ def test_push_events_are_persisted_for_each_recipient(server_module):
     assert [notification["user_id"] for notification in stored] == ["member-1", "member-2"]
     assert all(notification["event_id"] == "order-123" for notification in stored)
     assert all(notification["type"] == "new_order" for notification in stored)
+
+
+def test_new_deposit_notification_is_scheduled_to_repeat(server_module):
+    server_module.VAPID_PUBLIC_KEY = None
+    server_module.VAPID_PRIVATE_KEY = None
+    server_module.firebase_app = None
+    deposit_id = str(ObjectId())
+
+    asyncio.run(server_module.send_push_to_users(
+        ["admin-1", "treasurer-1"],
+        {
+            "id": f"deposit-{deposit_id}",
+            "type": "new_deposit",
+            "deposit_id": deposit_id,
+            "title": "Deposit received",
+            "body": "A member deposited UGX 5,000",
+        },
+    ))
+
+    stored = server_module.db.notification_documents
+    assert len(stored) == 2
+    assert all(notification["deposit_id"] == deposit_id for notification in stored)
+    assert all(notification["sound_enabled"] is True for notification in stored)
+    assert all(
+        notification["next_repeat_at"] > server_module.datetime.now(timezone.utc)
+        for notification in stored
+    )
+
+
+@pytest.mark.parametrize(
+    ("deposit_status", "expected_send_count"),
+    [("pending", 1), ("approved", 0), ("rejected", 0)],
+)
+def test_deposit_notification_repeats_only_while_pending(
+    server_module, deposit_status, expected_send_count
+):
+    deposit_id = str(ObjectId())
+    notification = {
+        "_id": ObjectId(),
+        "event_id": f"deposit-{deposit_id}",
+        "type": "new_deposit",
+        "deposit_id": deposit_id,
+        "user_id": "admin-1",
+        "title": "Deposit received",
+        "body": "A member deposited UGX 5,000",
+        "next_repeat_at": server_module.datetime.now(timezone.utc) - timedelta(seconds=1),
+    }
+
+    class FakeNotifications:
+        def find(self, query):
+            return FakeCursor([notification] if query.get("type") == "new_deposit" else [])
+
+        async def update_one(self, _query, update):
+            notification.update(update.get("$set", {}))
+            if "$inc" in update:
+                for field, amount in update["$inc"].items():
+                    notification[field] = notification.get(field, 0) + amount
+            return Mock(modified_count=1)
+
+        async def update_many(self, _query, update):
+            notification.update(update.get("$set", {}))
+            return Mock()
+
+    class FakeDeposits:
+        async def find_one(self, _query):
+            return {"status": deposit_status}
+
+    class FakeTokens:
+        def find(self, _query):
+            return FakeCursor([{"_id": "token-1", "token": "test-token"}])
+
+    server_module.firebase_app = object()
+    server_module.VAPID_PUBLIC_KEY = None
+    server_module.VAPID_PRIVATE_KEY = None
+    server_module.db.notifications = FakeNotifications()
+    server_module.db.deposits = FakeDeposits()
+    server_module.db.fcm_tokens = FakeTokens()
+
+    with (
+        patch.object(server_module.messaging, "Notification", side_effect=lambda **data: data),
+        patch.object(server_module.messaging, "Message", side_effect=lambda **data: data),
+        patch.object(server_module.messaging, "AndroidConfig", side_effect=lambda **data: data),
+        patch.object(server_module.messaging, "AndroidNotification", side_effect=lambda **data: data),
+        patch.object(server_module.messaging, "send") as send_message,
+        patch.object(
+            server_module.anyio.to_thread,
+            "run_sync",
+            new=AsyncMock(side_effect=lambda callback: callback()),
+        ),
+    ):
+        asyncio.run(server_module.resend_pending_deposit_notifications())
+
+    assert send_message.call_count == expected_send_count
+    if deposit_status == "pending":
+        assert notification["repeat_count"] == 1
+        assert notification["next_repeat_at"] > server_module.datetime.now(timezone.utc)
+    else:
+        assert notification["next_repeat_at"] is None
 
 
 def test_approving_savings_deposit_applies_late_fee_then_development_fee(server_module):

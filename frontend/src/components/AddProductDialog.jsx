@@ -75,10 +75,6 @@ const AddProductDialog = ({
         toast.error('Please select only image files');
         return false;
       }
-      if (file.size > 5 * 1024 * 1024) {
-        toast.error('Each image must be less than 5MB');
-        return false;
-      }
       return true;
     });
     if (validFiles.length > 0) {
@@ -270,7 +266,7 @@ const AddProductDialog = ({
                   hover:file:bg-[#0f2409]
                   disabled:opacity-50"
               />
-              <p className="text-xs text-[#4B5A45]">Max file size: 5MB each. Supported formats: JPG, PNG, GIF, WebP. Select multiple images by holding Ctrl/Cmd.</p>
+              <p className="text-xs text-[#4B5A45]">Images are automatically optimized to 300 KB or less. Supported formats: JPG, PNG, GIF, WebP. Select multiple images by holding Ctrl/Cmd.</p>
               <div className="flex flex-wrap gap-2">
                 {newProductImages.map((_, index) => (
                   <div key={index} className="relative">

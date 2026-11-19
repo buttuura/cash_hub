@@ -184,7 +184,8 @@ const NotificationSound = () => {
       seenNotifications.set(described.id, now);
 
       const isOrder = data.type === 'new_order';
-      const shouldPlaySound = isOrder && (
+      const isAttentionTransaction = ['new_deposit', 'new_loan', 'new_withdrawal'].includes(data.type);
+      const shouldPlaySound = (isOrder || isAttentionTransaction) && (
         data.sound_enabled === undefined
           ? orderSoundEnabledRef.current
           : data.sound_enabled === true || data.sound_enabled === 'true'

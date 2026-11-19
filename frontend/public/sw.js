@@ -132,6 +132,8 @@ self.addEventListener('message', (event) => {
 self.addEventListener('push', (event) => {
   if (!event.data) return;
   const data = event.data.json();
+  const shouldAlert = ['new_order', 'new_deposit'].includes(data.type)
+    && (data.sound_enabled === true || data.sound_enabled === 'true');
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
       clients.forEach((client) => {
@@ -142,9 +144,9 @@ self.addEventListener('push', (event) => {
         icon: '/icons/icon-192.png',
         badge: '/icons/icon-192.png',
         tag: data.id || `${data.type || 'cash-hub-notification'}-${Date.now()}`,
-        renotify: data.type === 'new_order' && data.sound_enabled === true,
-        silent: data.type !== 'new_order' || data.sound_enabled !== true,
-        vibrate: data.sound_enabled === true ? [200, 100, 200] : [],
+        renotify: shouldAlert,
+        silent: !shouldAlert,
+        vibrate: shouldAlert ? [200, 100, 200] : [],
         actions: data.type === 'new_order' ? [{
           action: 'received-order',
           title: 'I received this order',

@@ -1,9 +1,11 @@
 import importlib
 import os
 import sys
+from types import SimpleNamespace
 from unittest.mock import Mock, patch, MagicMock, AsyncMock
 
 import pytest
+from bson import ObjectId
 from fastapi import HTTPException
 
 os.environ.setdefault("MONGO_URL", "mongodb://localhost:27017")
@@ -112,6 +114,101 @@ def test_get_members_includes_remaining_guarantee_slots(server_module):
         assert result[0]["remaining_guarantee_slots"] == 1
         assert result[1]["remaining_guarantee_slots"] == 3
 
+    asyncio.run(run_test())
+
+
+def test_quick_loan_guarantor_repayment_waits_for_admin_approval(server_module):
+    async def run_test():
+        loan_id = ObjectId()
+        borrower_id = str(ObjectId())
+        repayment_id = ObjectId()
+        quick_loan = {
+            "_id": loan_id,
+            "user_id": borrower_id,
+            "user_name": "Borrower",
+            "loan_name": "Borrower",
+            "officer_code": "GUARANTOR01",
+            "status": "approved",
+            "repaid": False,
+            "amount": 100000,
+            "total_due": 100000,
+            "outstanding_balance": 100000,
+            "amount_repaid": 0,
+        }
+        pending_cursor = MagicMock()
+        pending_cursor.to_list = AsyncMock(return_value=[])
+        server_module.db = MagicMock()
+        server_module.db.quick_loans.find_one = AsyncMock(return_value=quick_loan)
+        server_module.db.quick_loans.update_one = AsyncMock()
+        server_module.db.deposits.find.return_value = pending_cursor
+        server_module.db.deposits.insert_one = AsyncMock(return_value=SimpleNamespace(inserted_id=repayment_id))
+        server_module.send_push_to_roles = AsyncMock()
+        server_module.send_push_to_users = AsyncMock()
+
+        result = await server_module.repay_quick_loan(
+            str(loan_id),
+            25000,
+            {"id": str(ObjectId()), "name": "Guarantor", "member_code": "GUARANTOR01"},
+        )
+
+        assert result["message"] == "Repayment submitted for administrator approval"
+        assert result["repaid"] is False
+        submitted_repayment = server_module.db.deposits.insert_one.await_args.args[0]
+        assert submitted_repayment["status"] == "pending"
+        assert submitted_repayment["deposit_type"] == "quick_loan_payment"
+        assert submitted_repayment["quick_loan_id"] == str(loan_id)
+        server_module.db.quick_loans.update_one.assert_not_awaited()
+
+    import asyncio
+    asyncio.run(run_test())
+
+
+def test_admin_approval_applies_quick_loan_repayment(server_module):
+    async def run_test():
+        loan_id = ObjectId()
+        repayment_id = ObjectId()
+        borrower_id = str(ObjectId())
+        payer_id = str(ObjectId())
+        quick_loan = {
+            "_id": loan_id,
+            "user_id": borrower_id,
+            "status": "approved",
+            "repaid": False,
+            "amount": 50000,
+            "total_due": 50000,
+            "outstanding_balance": 50000,
+            "amount_repaid": 0,
+        }
+        repayment = {
+            "_id": repayment_id,
+            "user_id": payer_id,
+            "amount": 50000,
+            "deposit_type": "quick_loan_payment",
+            "quick_loan_id": str(loan_id),
+            "quick_loan_borrower_id": borrower_id,
+            "status": "pending",
+        }
+        server_module.db = MagicMock()
+        server_module.db.deposits.find_one = AsyncMock(return_value=repayment)
+        server_module.db.deposits.update_one = AsyncMock()
+        server_module.db.quick_loans.find_one = AsyncMock(return_value=quick_loan)
+        server_module.db.quick_loans.update_one = AsyncMock()
+        server_module.db.users.find_one = AsyncMock(return_value=None)
+        server_module.send_push_to_users = AsyncMock()
+
+        result = await server_module._process_deposit_approval(
+            server_module.TransactionApproval(transaction_id=str(repayment_id), approved=True),
+            {"id": str(ObjectId()), "role": "admin"},
+        )
+
+        assert result == {"message": "Deposit approved"}
+        update = server_module.db.quick_loans.update_one.await_args.args[1]
+        assert update["$set"]["outstanding_balance"] == 0
+        assert update["$set"]["repaid"] is True
+        assert update["$set"]["status"] == "repaid"
+        assert update["$inc"]["amount_repaid"] == 50000
+
+    import asyncio
     asyncio.run(run_test())
 
 

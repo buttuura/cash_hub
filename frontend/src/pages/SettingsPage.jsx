@@ -69,12 +69,6 @@ const SettingsPage = () => {
       event.target.value = '';
       return;
     }
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error('Profile picture must be 5 MB or smaller');
-      event.target.value = '';
-      return;
-    }
-
     setProfilePictureUploading(true);
     try {
       const formData = new FormData();

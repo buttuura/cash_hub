@@ -4,6 +4,7 @@ uvicorn
 python-multipart
 python-dotenv
 cloudinary
+Pillow>=9.1.0
 
 # Database
 motor

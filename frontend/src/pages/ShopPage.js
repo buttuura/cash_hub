@@ -199,6 +199,7 @@ const ShopPage = () => {
   const [officerCode, setOfficerCode] = useState('');
   const [nationalIdImages, setNationalIdImages] = useState([]);
   const [nationalIdPreviews, setNationalIdPreviews] = useState([]);
+  const [ninNumber, setNinNumber] = useState('');
   const [repaymentPeriod, setRepaymentPeriod] = useState('2_weeks');
   const [validOfficerCodes, setValidOfficerCodes] = useState([]);
   const [loanRequestSubmitted, setLoanRequestSubmitted] = useState(false);
@@ -587,6 +588,7 @@ const ShopPage = () => {
       seller_name: buyerName.trim(),
       officer_code: officerCode,
       officer_name: (validOfficerCodes.find((entry) => entry.code === officerCode)?.label || '').replace(/\s*\([^)]*\)\s*$/, ''),
+      nin_number: ninNumber.trim(),
       security_description: loanSecurity.trim(),
       guarantor_name: loanGuarantorName.trim(),
       guarantor_address: loanGuarantorAddress.trim(),
@@ -656,6 +658,7 @@ const ShopPage = () => {
     setOfficerCode('');
     setNationalIdImages([]);
     setNationalIdPreviews([]);
+    setNinNumber('');
     setRepaymentPeriod('2_weeks');
   };
 
@@ -793,6 +796,31 @@ const ShopPage = () => {
     setSelectedCategory(categoryId);
   };
 
+  const handleNationalIdImageChange = async (event) => {
+    const files = Array.from(event.target.files || []);
+    event.target.value = '';
+    if (!files.length) return;
+
+    try {
+      const previews = await Promise.all(files.map((file) => new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(reader.error || new Error('Could not read the selected image'));
+        reader.readAsDataURL(file);
+      })));
+      setNationalIdImages((current) => [...current, ...files]);
+      setNationalIdPreviews((current) => [...current, ...previews]);
+    } catch (error) {
+      console.error('Failed to preview National ID images:', error);
+      toast.error('Could not preview the selected National ID photos');
+    }
+  };
+
+  const removeNationalIdImage = (indexToRemove) => {
+    setNationalIdImages((current) => current.filter((_, index) => index !== indexToRemove));
+    setNationalIdPreviews((current) => current.filter((_, index) => index !== indexToRemove));
+  };
+
   const handleAddCategory = (e) => {
     e.preventDefault();
     const trimmedName = newCategoryName.trim();
@@ -857,6 +885,14 @@ const ShopPage = () => {
   }
 
   if (loanIsGuaranteed) {
+    if (ninNumber.trim().length !== 14) {
+      toast.error('Please enter a valid 14-character NIN number');
+      return;
+    }
+    if (nationalIdImages.length < 2) {
+      toast.error('Please upload at least two National ID photos (front and back)');
+      return;
+    }
     if (!loanAddress.trim() || !loanCity.trim()) {
       toast.error('Please enter the borrower address and city');
       return;
@@ -912,6 +948,7 @@ const ShopPage = () => {
     formData.append('jurisdiction', loanJurisdiction.trim());
     formData.append('witness_name', loanWitnessName.trim());
     if (loanIsGuaranteed) {
+      formData.append('nin_number', ninNumber.trim());
       formData.append('repayment_period', repaymentPeriod);
       formData.append('agreement_interest_rate', String(Number(loanAmount) > 50000 ? 10 : (repaymentPeriod === '1_month' ? 20 : 10)));
     } else {
@@ -1622,6 +1659,42 @@ const handleOpenPurchase = (product) => {
                     <div className="space-y-2">
                       <Label htmlFor="loan-purpose" className="text-sm font-medium text-slate-700">Loan purpose</Label>
                       <Textarea id="loan-purpose" value={loanPurpose} onChange={(e) => setLoanPurpose(e.target.value)} placeholder="Tell us why you need this loan" required rows={2} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="loan-nin" className="text-sm font-medium text-slate-700">NIN number</Label>
+                      <Input
+                        id="loan-nin"
+                        value={ninNumber}
+                        onChange={(e) => setNinNumber(e.target.value)}
+                        placeholder="Enter your 14-character NIN"
+                        maxLength={14}
+                        required
+                      />
+                      <p className="text-xs text-slate-500">Enter the NIN printed on your National ID.</p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="national-id-images" className="text-sm font-medium text-slate-700">National ID photos (front and back)</Label>
+                      <Input
+                        id="national-id-images"
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        onChange={handleNationalIdImageChange}
+                      />
+                      <p className="text-xs text-slate-500">Upload at least two images. You can add more or remove and replace a photo before submitting.</p>
+                      {nationalIdPreviews.length > 0 && (
+                        <div className="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                          {nationalIdPreviews.map((src, index) => (
+                            <div key={`${index}-${src.slice(0, 24)}`} className="space-y-1">
+                              <img src={src} alt={`National ID ${index === 0 ? 'front' : index === 1 ? 'back' : `image ${index + 1}`}`} className="h-28 w-full rounded object-cover" />
+                              <p className="text-xs text-slate-600">{index === 0 ? 'Front' : index === 1 ? 'Back' : `Additional photo ${index - 1}`}</p>
+                              <button type="button" onClick={() => removeNationalIdImage(index)} className="text-xs text-red-600 hover:text-red-800">
+                                Remove photo
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="officer-code" className="text-sm font-medium text-slate-700">Officer Code</Label>

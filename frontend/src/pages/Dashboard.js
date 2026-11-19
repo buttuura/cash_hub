@@ -1356,7 +1356,7 @@ useEffect(() => {
         { amount: parseFloat(amount) },
         { headers: getAuthHeaders() }
       );
-      toast.success('Payment recorded');
+      toast.success('Repayment submitted for administrator approval');
       fetchData();
       refreshUser();
     } catch (err) {
@@ -1475,6 +1475,9 @@ useEffect(() => {
   };
 
   const handleToggleFinancialDeposit = (depositId) => {
+    const deposit = deposits.find((item) => item.id === depositId);
+    if (deposit?.deposit_type === 'quick_loan_payment' && deposit.status === 'approved') return;
+
     setSelectedFinancialDeposits((prev) => {
       const next = new Set(prev);
       if (next.has(depositId)) {
@@ -1488,7 +1491,11 @@ useEffect(() => {
 
   const handleSelectAllFinancialDeposits = (checked) => {
     if (checked) {
-      setSelectedFinancialDeposits(new Set(deposits.map((d) => d.id)));
+      setSelectedFinancialDeposits(new Set(
+        deposits
+          .filter((d) => !(d.deposit_type === 'quick_loan_payment' && d.status === 'approved'))
+          .map((d) => d.id)
+      ));
     } else {
       setSelectedFinancialDeposits(new Set());
     }
@@ -3066,7 +3073,8 @@ return (
               <CardContent>
                 <div className="space-y-4">
                   {deposits.filter(d => depositMonthFilter === 'all' || d.month === depositMonthFilter).slice(0, 5).map((d) => {
-                    const canDelete = d.user_id === user?.id || isTreasurer;
+                    const canDelete = !(d.deposit_type === 'quick_loan_payment' && d.status === 'approved')
+                      && (d.user_id === user?.id || isTreasurer);
                     return (
                     <div key={d.id} className="flex items-center justify-between py-3 border-b border-[#E8EBE8] last:border-0">
                       <div className="flex items-center gap-3">
@@ -3075,7 +3083,13 @@ return (
                         </div>
                         <div>
                           <p className="font-medium text-[#1E231F]">
-                             {d.deposit_type === 'development_fee' ? 'Development Fee' : d.deposit_type === 'loan_payment' ? 'Loan Payment' : 'Savings Deposit'}
+                             {d.deposit_type === 'quick_loan_payment'
+                               ? 'Quick Loan Repayment'
+                               : d.deposit_type === 'development_fee'
+                                 ? 'Development Fee'
+                                 : d.deposit_type === 'loan_payment'
+                                   ? 'Loan Payment'
+                                   : 'Savings Deposit'}
                           </p>
                           <p className="text-sm text-[#5C665D]">{d.description || d.month}</p>
                         </div>
@@ -3280,7 +3294,9 @@ return (
                        <tr className="border-b border-[#E8EBE8] bg-[#FAFAF8]">
                          <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D] whitespace-nowrap w-10">
                            <Checkbox
-                             checked={deposits.length > 0 && deposits.every((d) => selectedFinancialDeposits.has(d.id))}
+                             checked={deposits.some((d) => !(d.deposit_type === 'quick_loan_payment' && d.status === 'approved'))
+                               && deposits.filter((d) => !(d.deposit_type === 'quick_loan_payment' && d.status === 'approved'))
+                                 .every((d) => selectedFinancialDeposits.has(d.id))}
                              onCheckedChange={(checked) => handleSelectAllFinancialDeposits(checked)}
                            />
                          </th>
@@ -3295,20 +3311,28 @@ return (
                      </thead>
                      <tbody>
                        {deposits.filter(d => depositMonthFilter === 'all' || d.month === depositMonthFilter).map((d) => {
-                         const canDelete = d.user_id === user?.id || isTreasurer;
+                         const canDelete = !(d.deposit_type === 'quick_loan_payment' && d.status === 'approved')
+                           && (d.user_id === user?.id || isTreasurer);
                          return (
                            <tr key={d.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5] transition-colors">
                              <td className="py-4 px-6 text-[#1E231F] whitespace-nowrap">
                                <Checkbox
                                  checked={selectedFinancialDeposits.has(d.id)}
                                  onCheckedChange={(checked) => handleToggleFinancialDeposit(d.id)}
+                                 disabled={d.deposit_type === 'quick_loan_payment' && d.status === 'approved'}
                                />
                              </td>
                           <td className="py-4 px-6 text-[#1E231F]">
                             {d.user_name || '-'}
                           </td>
                           <td className="py-4 px-6 text-[#1E231F]">
-                            {d.deposit_type === 'development_fee' ? 'Development' : d.deposit_type === 'loan_payment' ? 'Loan Payment' : 'Savings'}
+                            {d.deposit_type === 'quick_loan_payment'
+                              ? 'Quick Loan Repayment'
+                              : d.deposit_type === 'development_fee'
+                                ? 'Development'
+                                : d.deposit_type === 'loan_payment'
+                                  ? 'Loan Payment'
+                                  : 'Savings'}
                           </td>
                           <td className="py-4 px-6 font-semibold text-[#347242] font-numbers">
                             {formatCurrency(d.amount)}
@@ -5057,7 +5081,9 @@ return (
 <tr className="border-b border-[#E8EBE8] bg-[#FAFAF8]">
                          <th className="text-left py-4 px-6 text-sm font-semibold text-[#5C665D] whitespace-nowrap w-10">
                            <Checkbox
-                             checked={deposits.length > 0 && deposits.every((d) => selectedFinancialDeposits.has(d.id))}
+                             checked={deposits.some((d) => !(d.deposit_type === 'quick_loan_payment' && d.status === 'approved'))
+                               && deposits.filter((d) => !(d.deposit_type === 'quick_loan_payment' && d.status === 'approved'))
+                                 .every((d) => selectedFinancialDeposits.has(d.id))}
                              onCheckedChange={(checked) => handleSelectAllFinancialDeposits(checked)}
                            />
                          </th>
@@ -5072,13 +5098,15 @@ return (
                      </thead>
                      <tbody>
                        {deposits.filter(d => depositMonthFilter === 'all' || d.month === depositMonthFilter).map((d) => {
-                         const canDelete = d.user_id === user?.id || isTreasurer;
+                         const canDelete = !(d.deposit_type === 'quick_loan_payment' && d.status === 'approved')
+                           && (d.user_id === user?.id || isTreasurer);
                          return (
                            <tr key={d.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5] transition-colors">
                              <td className="py-4 px-6 text-[#1E231F] whitespace-nowrap">
                                <Checkbox
                                  checked={selectedFinancialDeposits.has(d.id)}
                                  onCheckedChange={(checked) => handleToggleFinancialDeposit(d.id)}
+                                 disabled={d.deposit_type === 'quick_loan_payment' && d.status === 'approved'}
                                />
                              </td>
                              <td className="py-4 px-6 text-[#1E231F]">
@@ -5088,7 +5116,13 @@ return (
                                {d.user_name || '-'}
                              </td>
                              <td className="py-4 px-6 text-[#1E231F]">
-                               {d.deposit_type === 'development_fee' ? 'Development' : d.deposit_type === 'loan_payment' ? 'Loan Payment' : 'Savings'}
+                               {d.deposit_type === 'quick_loan_payment'
+                                 ? 'Quick Loan Repayment'
+                                 : d.deposit_type === 'development_fee'
+                                   ? 'Development'
+                                   : d.deposit_type === 'loan_payment'
+                                     ? 'Loan Payment'
+                                     : 'Savings'}
                              </td>
                              <td className="py-4 px-6 font-semibold text-[#347242] font-numbers">
                                {formatCurrency(d.amount)}
@@ -5327,7 +5361,10 @@ return (
                                 Status: {l.status === 'approved' ? 'Approved' : l.status === 'pending_treasurer' ? 'Pending Treasurer' : l.status}
                               </p>
                             </div>
-                            {l.status === 'approved' && !l.repaid && (
+                            {l.pending_repayment_amount > 0 && (
+                              <p className="text-xs text-amber-700">Repayment pending administrator approval: {formatCurrency(l.pending_repayment_amount)}</p>
+                            )}
+                            {l.status === 'approved' && !l.repaid && !isAdmin && !isTreasurer && !l.pending_repayment_amount && (
                               <Button
                                 size="sm"
                                 onClick={() => handleRepayQuickLoan(l.id, outstanding)}
@@ -5845,7 +5882,10 @@ return (
                         <span className="font-medium text-[#1E231F]">{d.user_name}</span>
                         <span className="font-semibold text-[#347242] font-numbers">{formatCurrency(d.amount)}</span>
                       </div>
-                      <p className="text-xs text-[#5C665D] mb-1">{d.deposit_type}</p>
+                      <p className="text-xs text-[#5C665D] mb-1">
+                        {d.deposit_type === 'quick_loan_payment' ? 'Quick Loan Repayment' : d.deposit_type}
+                        {d.quick_loan_borrower_name ? ` for ${d.quick_loan_borrower_name}` : ''}
+                      </p>
                       {d.late_fee > 0 && (
                         <p className="text-xs text-[#D05A49] mb-2">Late fee: {formatCurrency(d.late_fee)}</p>
                       )}

@@ -61,3 +61,32 @@ def test_profile_picture_upload_rejects_non_image_file(server_module, monkeypatc
 
     assert error.value.status_code == 400
     upload.assert_not_awaited()
+
+
+def test_large_image_is_compressed_before_cloudinary_upload(server_module, monkeypatch):
+    source_image = server_module.Image.effect_noise((1600, 1200), 100).convert("RGB")
+    original = BytesIO()
+    source_image.save(original, format="PNG")
+    original_bytes = original.getvalue()
+    assert len(original_bytes) > server_module.MAX_IMAGE_UPLOAD_BYTES
+
+    upload_file = UploadFile(
+        filename="large-profile.png",
+        file=BytesIO(original_bytes),
+        headers={"content-type": "image/png"},
+    )
+    uploaded_sizes = []
+
+    def cloudinary_upload(file_obj, **options):
+        uploaded_sizes.append(len(file_obj.read()))
+        return {"secure_url": "https://images.example/profile.webp"}
+
+    monkeypatch.setattr(server_module, "CLOUDINARY_URL", "cloudinary://key:secret@example")
+    monkeypatch.setattr(server_module.cloudinary.uploader, "upload", cloudinary_upload)
+
+    result = asyncio.run(server_module.upload_to_cloudinary(upload_file))
+
+    assert result["secure_url"] == "https://images.example/profile.webp"
+    assert upload_file.filename == "large-profile.webp"
+    assert upload_file.content_type == "image/webp"
+    assert uploaded_sizes and uploaded_sizes[0] <= server_module.MAX_IMAGE_UPLOAD_BYTES

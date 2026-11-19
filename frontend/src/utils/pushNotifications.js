@@ -69,7 +69,8 @@ export async function initPushNotifications(userId) {
       const soundEnabled = data.sound_enabled === undefined
         ? getOrderSoundEnabled(userId)
         : data.sound_enabled === true || data.sound_enabled === 'true';
-      const channelId = data.type === 'new_order' && soundEnabled
+      const attentionTypes = ['new_order', 'new_deposit', 'new_loan', 'new_withdrawal'];
+      const channelId = attentionTypes.includes(data.type) && soundEnabled
         ? ORDER_NOTIFICATION_CHANNEL_ID
         : SILENT_NOTIFICATION_CHANNEL_ID;
 
