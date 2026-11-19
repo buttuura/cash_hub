@@ -16,6 +16,7 @@ import {
   saveOrderSoundEnabled,
 } from '../lib/notificationSettings';
 import { acknowledgeOrderNotification } from '../lib/notificationActions';
+import { runRefresh } from '../lib/refreshBus';
 
 const getWebSocketUrl = (channel) => {
   const url = new URL(API_URL || window.location.origin);
@@ -203,6 +204,9 @@ const NotificationSound = () => {
 
       if (isOrder) {
         window.dispatchEvent(new Event('new-order-received'));
+      }
+      if (['new_deposit', 'new_loan', 'new_withdrawal', 'transaction_update'].includes(data.type)) {
+        runRefresh();
       }
 
       toast.info(described.body, isOrder ? {
