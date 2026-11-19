@@ -17,10 +17,30 @@ async def get_members(user: dict = Depends(get_current_user)):
     members = await db.users.find({"role": {"$nin": ["super_admin", "treasurer"]}}, {"password_hash": 0}).to_list(1000)
     result = []
     is_treasurer = user.get("role") in ["super_admin", "treasurer"]
+    patron_ids = {
+        ObjectId(str(member["patron_id"]))
+        for member in members
+        if member.get("patron_id") and ObjectId.is_valid(str(member["patron_id"]))
+    }
+    patrons = await db.users.find(
+        {"_id": {"$in": list(patron_ids)}},
+        {"name": 1, "member_code": 1},
+    ).to_list(1000) if patron_ids else []
+    patrons_by_id = {str(patron["_id"]): patron for patron in patrons}
     
     for m in members:
         m["id"] = str(m["_id"])
         m.pop("_id", None)
+        patron = patrons_by_id.get(str(m.get("patron_id")))
+        m["patron"] = {
+            "id": str(patron["_id"]),
+            "name": patron.get("name"),
+            "member_code": patron.get("member_code") or m.get("patron_member_code"),
+        } if patron else ({
+            "id": str(m.get("patron_id")),
+            "name": m.get("patron_name"),
+            "member_code": m.get("patron_member_code"),
+        } if m.get("patron_name") or m.get("patron_member_code") else None)
         # Hide admin role from non-super-admins
         if not is_treasurer and m.get("role") == "admin":
             m["role"] = "member"

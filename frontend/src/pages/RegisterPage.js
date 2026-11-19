@@ -14,6 +14,8 @@ const RegisterPage = () => {
   const [nextOfKinName, setNextOfKinName] = useState('');
   const [nextOfKinPhone, setNextOfKinPhone] = useState('');
   const [nationalId, setNationalId] = useState('');
+  const [membershipType, setMembershipType] = useState('seller');
+  const [patronCode, setPatronCode] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -65,6 +67,11 @@ const RegisterPage = () => {
       return;
     }
 
+    if (membershipType === 'premium' && !patronCode.trim()) {
+      setError('A patron member code is required for premium membership');
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -75,7 +82,9 @@ const RegisterPage = () => {
         email.trim() || null,
         nextOfKinName.trim(),
         nextOfKinPhone.trim(),
-        nationalId.trim() || null
+        nationalId.trim() || null,
+        membershipType,
+        patronCode.trim()
       );
       navigate(postRegisterPath);
     } catch (err) {
@@ -195,6 +204,40 @@ const RegisterPage = () => {
                   data-testid="register-next-of-kin-phone-input"
                   className="h-11 border-white/50 !bg-black/40 !text-white caret-white placeholder:!text-white/70 focus:ring-[#2C5530] focus:border-[#2C5530]"
                 />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="membershipType" className="text-white font-medium">Membership</Label>
+                <select
+                  id="membershipType"
+                  value={membershipType}
+                  onChange={(e) => setMembershipType(e.target.value)}
+                  data-testid="register-membership-select"
+                  className="h-11 w-full rounded-md border border-white/50 bg-black/40 px-3 text-white focus:border-[#2C5530] focus:outline-none focus:ring-1 focus:ring-[#2C5530]"
+                >
+                  <option value="seller" className="text-black">Seller</option>
+                  <option value="ordinary" className="text-black">Ordinary member</option>
+                  <option value="premium" className="text-black">Premium member</option>
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="patronCode" className="text-white font-medium">
+                  Patron member code {membershipType === 'premium' ? <span className="text-[#D05A49">*</span> : <span className="text-white/70 font-normal text-xs">(optional)</span>}
+                </Label>
+                <Input
+                  id="patronCode"
+                  type="text"
+                  placeholder="Enter an existing member's code"
+                  value={patronCode}
+                  onChange={(e) => setPatronCode(e.target.value)}
+                  required={membershipType === 'premium'}
+                  data-testid="register-patron-code-input"
+                  className="h-11 border-white/50 !bg-black/40 !text-white caret-white placeholder:!text-white/70 focus:ring-[#2C5530] focus:border-[#2C5530]"
+                />
+                <p className="text-xs text-white/75">
+                  Premium membership requires a patron who is already in the group.
+                </p>
               </div>
 
               <div className="space-y-2">

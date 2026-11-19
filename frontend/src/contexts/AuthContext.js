@@ -161,7 +161,17 @@ export const AuthProvider = ({ children }) => {
     return login(credentials.username, credentials.password);
   };
 
-  const register = async (name, phone, password, email, nextOfKinName, nextOfKinPhone, nationalId) => {
+  const register = async (
+    name,
+    phone,
+    password,
+    email,
+    nextOfKinName,
+    nextOfKinPhone,
+    nationalId,
+    membershipType = 'seller',
+    patronCode = ''
+  ) => {
     setError(null);
     try {
       if (!API_URL) {
@@ -175,10 +185,11 @@ export const AuthProvider = ({ children }) => {
         password,
         next_of_kin_name: nextOfKinName,
         next_of_kin_phone: nextOfKinPhone,
-        membership_type: 'seller',
+        membership_type: membershipType,
       };
       if (email) payload.email = email;
       if (nationalId) payload.national_id = nationalId;
+      if (patronCode.trim()) payload.patron_code = patronCode.trim();
       const response = await axios.post(`${API_URL}/api/auth/register`, payload);
       const { access_token, refresh_token, ...userData } = response.data;
       localStorage.setItem('access_token', access_token);

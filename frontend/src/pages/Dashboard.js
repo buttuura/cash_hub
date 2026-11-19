@@ -3832,6 +3832,12 @@ return (
                     <p className="text-sm text-[#5C665D] mb-1">
                       {getRoleLabel(m.role)} • {m.phone || 'No phone'}
                     </p>
+                    {m.patron?.name && (
+                      <p className="text-xs text-[#5C665D] mb-1">
+                        Patron: <span className="font-medium text-[#1E231F]">{m.patron.name}</span>
+                        {m.patron.member_code ? ` (${m.patron.member_code})` : ''}
+                      </p>
+                    )}
                     <div className="pt-3 border-t border-[#E8EBE8] grid grid-cols-2 gap-2">
                       <div>
                         <p className="text-xs text-[#5C665D]">Savings</p>

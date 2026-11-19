@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
-from fastapi import Request
+from fastapi import HTTPException, Request
 from fastapi.testclient import TestClient
 from bson import ObjectId
 
@@ -254,6 +254,85 @@ def test_register_defaults_new_users_to_seller_membership(server_module):
     assert response["email"] == "Alice.Example@Example.COM"
     assert fake_users.inserted["email"] == "Alice.Example@Example.COM"
     assert fake_users.inserted["normalized_email"] == "alice.example@example.com"
+
+
+def test_premium_registration_requires_patron_code(server_module):
+    server_module.db.users = MagicMock()
+    server_module.db.users.find_one = AsyncMock(return_value=None)
+    server_module.db.users.insert_one = AsyncMock()
+
+    with pytest.raises(HTTPException) as error:
+        asyncio.run(server_module.register(
+            server_module.UserCreate(
+                name="Alice",
+                phone="0771234567",
+                password="secret123",
+                next_of_kin_name="Jane",
+                next_of_kin_phone="0700000000",
+                membership_type="premium",
+            )
+        ))
+
+    assert error.value.status_code == 400
+    assert "patron member code is required" in error.value.detail.lower()
+    server_module.db.users.insert_one.assert_not_awaited()
+
+
+def test_premium_registration_links_existing_patron(server_module):
+    patron_id = ObjectId()
+    patron = {"_id": patron_id, "name": "Patron Person", "member_code": "pat1234"}
+
+    class FakeUsersCollection:
+        inserted = None
+
+        async def find_one(self, query):
+            if "member_code" in query:
+                return patron
+            return None
+
+        async def insert_one(self, document):
+            self.inserted = document
+            return Mock(inserted_id=ObjectId())
+
+    users = FakeUsersCollection()
+    server_module.db.users = users
+    response = asyncio.run(server_module.register(
+        server_module.UserCreate(
+            name="Alice",
+            phone="0771234567",
+            password="secret123",
+            next_of_kin_name="Jane",
+            next_of_kin_phone="0700000000",
+            membership_type="premium",
+            patron_code=" PAT1234 ",
+        )
+    ))
+
+    assert users.inserted["role"] == "member"
+    assert users.inserted["patron_id"] == str(patron_id)
+    assert response["patron"] == {
+        "id": str(patron_id),
+        "name": "Patron Person",
+        "member_code": "pat1234",
+    }
+
+
+def test_member_can_link_patron_from_settings(server_module):
+    patron_id = ObjectId()
+    current_user_id = ObjectId()
+    patron = {"_id": patron_id, "name": "Patron Person", "member_code": "pat1234"}
+    server_module.db.users.find_one = AsyncMock(return_value=patron)
+    server_module.db.users.update_one = AsyncMock()
+
+    response = asyncio.run(server_module.set_patron(
+        server_module.PatronCodeUpdate(patron_code="pat1234"),
+        user={"id": str(current_user_id)},
+    ))
+
+    assert response["patron"]["name"] == "Patron Person"
+    update = server_module.db.users.update_one.await_args
+    assert update.args[0] == {"_id": current_user_id}
+    assert update.args[1]["$set"]["patron_id"] == str(patron_id)
 
 
 def test_login_finds_preserved_email_case_insensitively(server_module):

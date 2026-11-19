@@ -26,12 +26,17 @@ const SettingsPage = () => {
   const [orderSoundEnabled, setOrderSoundEnabled] = useState(() => getOrderSoundEnabled(userId));
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [patronCode, setPatronCode] = useState('');
+  const [patronSaving, setPatronSaving] = useState(false);
 
   useEffect(() => {
     let active = true;
     axios.get(`${API_URL}/api/auth/me`, { headers: getAuthHeaders() })
       .then(({ data }) => {
-        if (active) setProfile(data);
+        if (active) {
+          setProfile(data);
+          setPatronCode(data.patron?.member_code || data.patron_member_code || '');
+        }
       })
       .catch((error) => {
         console.error('Failed to load account profile:', error);
@@ -129,6 +134,32 @@ const SettingsPage = () => {
       toast.error(error.response?.data?.detail || 'Could not save notification setting');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSavePatron = async (event) => {
+    event.preventDefault();
+    setPatronSaving(true);
+    try {
+      const { data } = await axios.put(
+        `${API_URL}/api/auth/patron`,
+        { patron_code: patronCode.trim() },
+        { headers: getAuthHeaders() },
+      );
+      setProfile((current) => ({
+        ...current,
+        patron: data.patron,
+        patron_id: data.patron.id,
+        patron_name: data.patron.name,
+        patron_member_code: data.patron.member_code,
+      }));
+      await refreshUser();
+      toast.success(`Your patron is ${data.patron.name}`);
+    } catch (error) {
+      console.error('Failed to save patron code:', error);
+      toast.error(error.response?.data?.detail || 'Could not save patron code');
+    } finally {
+      setPatronSaving(false);
     }
   };
 
@@ -238,6 +269,39 @@ const SettingsPage = () => {
                 </dl>
               )}
             </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-[#E8EBE8] shadow-sm">
+          <CardHeader>
+            <CardTitle>Your patron</CardTitle>
+            <CardDescription>
+              Enter the member code of someone already in the group. Premium members must have a patron.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {profile?.patron?.name && (
+              <div className="rounded-lg border border-[#D8E9D1] bg-[#F1F8ED] p-3">
+                <p className="text-xs font-medium uppercase tracking-wide text-[#5C665D]">Your patron</p>
+                <p className="mt-1 font-semibold text-[#1E231F]">{profile.patron.name}</p>
+                {profile.patron.member_code && (
+                  <p className="text-sm text-[#5C665D]">Member code: {profile.patron.member_code}</p>
+                )}
+              </div>
+            )}
+            <form onSubmit={handleSavePatron} className="flex flex-col gap-3 sm:flex-row">
+              <Input
+                value={patronCode}
+                onChange={(event) => setPatronCode(event.target.value)}
+                placeholder="Enter patron member code"
+                aria-label="Patron member code"
+                required
+                maxLength={32}
+              />
+              <Button type="submit" disabled={profileLoading || patronSaving || !patronCode.trim()}>
+                {patronSaving ? 'Checking code...' : 'Save patron'}
+              </Button>
+            </form>
           </CardContent>
         </Card>
 

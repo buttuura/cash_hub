@@ -12,6 +12,16 @@ for _name in dir(_shared):
         globals()[_name] = getattr(_shared, _name)
 
 
+async def find_patron_by_code(patron_code: str):
+    normalized_code = patron_code.strip()
+    if not normalized_code:
+        return None
+    return await db.users.find_one({
+        "member_code": {"$regex": f"^{re.escape(normalized_code)}$", "$options": "i"},
+        "role": {"$nin": ["admin", "super_admin", "treasurer"]},
+    })
+
+
 @api_router.post("/auth/register")
 async def register(user_data: UserCreate):
     phone = user_data.phone.strip()
@@ -55,12 +65,22 @@ async def register(user_data: UserCreate):
     if requested_membership not in ["seller", "ordinary", "premium"]:
         requested_membership = "seller"
 
+    patron = None
+    patron_code = (user_data.patron_code or "").strip()
+    if requested_membership == "premium" and not patron_code:
+        raise HTTPException(status_code=400, detail="A patron member code is required for premium membership")
+    if patron_code:
+        patron = await find_patron_by_code(patron_code)
+        if not patron:
+            raise HTTPException(status_code=400, detail="Patron code was not found. Enter a code belonging to an existing member.")
+
+    account_role = "seller" if requested_membership == "seller" else "member"
     user_doc = {
         "phone": phone,
         "normalized_phone": normalized_phone,
         "password_hash": hash_password(user_data.password),
         "name": user_data.name,
-        "role": "seller",
+        "role": account_role,
         "membership_type": requested_membership,
         "total_savings": 0,
         "development_fund": 0,
@@ -71,6 +91,10 @@ async def register(user_data: UserCreate):
         "member_code": generate_member_code(user_data.name, phone),
         "created_at": datetime.now(timezone.utc).isoformat()
     }
+    if patron:
+        user_doc["patron_id"] = str(patron["_id"])
+        user_doc["patron_name"] = patron.get("name")
+        user_doc["patron_member_code"] = patron.get("member_code")
     if email:
         user_doc["email"] = email
         user_doc["normalized_email"] = normalized_email
@@ -93,9 +117,14 @@ async def register(user_data: UserCreate):
         "next_of_kin_name": next_of_kin_name,
         "next_of_kin_phone": next_of_kin_phone,
         "national_id": national_id,
-        "role": "seller",
+        "role": account_role,
         "membership_type": requested_membership,
         "member_code": user_doc.get("member_code"),
+        "patron": {
+            "id": user_doc["patron_id"],
+            "name": user_doc["patron_name"],
+            "member_code": user_doc["patron_member_code"],
+        } if patron else None,
         "access_token": access_token,
         "refresh_token": refresh_token
     }
@@ -145,7 +174,44 @@ async def get_me(user: dict = Depends(get_current_user)):
     code = await get_or_create_user_member_code(user)
     data = dict(user)
     data["member_code"] = code
+    patron_id = data.get("patron_id")
+    if patron_id and ObjectId.is_valid(patron_id):
+        patron = await db.users.find_one(
+            {"_id": ObjectId(patron_id)},
+            {"name": 1, "member_code": 1},
+        )
+        data["patron"] = {
+            "id": str(patron["_id"]),
+            "name": patron.get("name"),
+            "member_code": patron.get("member_code") or data.get("patron_member_code"),
+        } if patron else None
+    else:
+        data["patron"] = None
     return data
+
+
+@api_router.put("/auth/patron")
+async def set_patron(data: PatronCodeUpdate, user: dict = Depends(get_current_user)):
+    patron = await find_patron_by_code(data.patron_code)
+    if not patron:
+        raise HTTPException(status_code=404, detail="Patron code was not found. Enter a code belonging to an existing member.")
+    if str(patron["_id"]) == str(user["id"]):
+        raise HTTPException(status_code=400, detail="You cannot select yourself as your patron")
+
+    patron_data = {
+        "id": str(patron["_id"]),
+        "name": patron.get("name"),
+        "member_code": patron.get("member_code"),
+    }
+    await db.users.update_one(
+        {"_id": ObjectId(user["id"])},
+        {"$set": {
+            "patron_id": patron_data["id"],
+            "patron_name": patron_data["name"],
+            "patron_member_code": patron_data["member_code"],
+        }},
+    )
+    return {"patron": patron_data}
 
 
 @api_router.post("/auth/profile-picture")

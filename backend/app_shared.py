@@ -144,6 +144,7 @@ class UserCreate(BaseModel):
     next_of_kin_phone: Optional[str] = None
     national_id: Optional[str] = None
     membership_type: str = 'seller'
+    patron_code: Optional[str] = None
 
     @field_validator('email')
     @classmethod
@@ -155,6 +156,9 @@ class UserCreate(BaseModel):
         except EmailNotValidError as error:
             raise ValueError(str(error)) from error
         return value
+
+class PatronCodeUpdate(BaseModel):
+    patron_code: str = Field(..., min_length=1, max_length=32)
 
 class UserLogin(BaseModel):
     identifier: str
@@ -582,10 +586,10 @@ async def resend_pending_transaction_notifications():
                     logger.warning('Repeated transaction Web Push delivery failed: %s', exc)
 
 async def send_push_to_roles(roles: list[str], payload: dict):
-    expanded_roles = set(roles)
-    if 'treasurer' in expanded_roles:
-        expanded_roles.update({'treasurer', 'super_admin'})
-    users = await db.users.find({'role': {'$in': list(expanded_roles)}}, {'_id': 1}).to_list(1000)
+    expanded_roles = list(dict.fromkeys(roles))
+    if 'treasurer' in expanded_roles and 'super_admin' not in expanded_roles:
+        expanded_roles.append('super_admin')
+    users = await db.users.find({'role': {'$in': expanded_roles}}, {'_id': 1}).to_list(1000)
     await send_push_to_users([str(user['_id']) for user in users], payload)
 
 async def find_unique_legacy_seller(seller_name: Optional[str]):
