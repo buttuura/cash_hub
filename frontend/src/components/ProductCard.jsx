@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { ShoppingCart } from 'lucide-react';
 import { ChevronLeft, ChevronRight, Phone, MessageCircle } from 'lucide-react';
 import ProductShareButton from './ProductShareButton';
+import VerifiedMemberName from './VerifiedMemberName';
 
 function ProductCard({ product, onAddToCart, onBuyNow, getImageUrl }) {
   const [currentImgIndex, setCurrentImgIndex] = useState(0);
@@ -104,6 +105,14 @@ function ProductCard({ product, onAddToCart, onBuyNow, getImageUrl }) {
             ) : (
               <p className="text-xs font-bold text-[#D48C70] mb-2">Contact seller</p>
             )}
+            <p className="mb-2 text-[10px] text-[#4B5A45]">
+              Sold by:{' '}
+              <VerifiedMemberName
+                name={product.sellerName || product.seller_name || 'Member'}
+                verified={product.seller_verified}
+                nameClassName="font-medium text-[#172B12]"
+              />
+            </p>
           </Link>
           {!Number(product.price) > 0 && product.contact_phone && (
             <div className="flex items-center gap-2 mb-2">

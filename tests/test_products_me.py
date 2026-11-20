@@ -105,6 +105,36 @@ def test_create_product_without_images(server_module):
     assert len(products.items) == 1
 
 
+def test_product_listing_exposes_verified_seller_status(server_module):
+    verified_id = ObjectId()
+    unverified_id = ObjectId()
+    products = [
+        {"_id": ObjectId(), "seller_id": str(verified_id), "sellerName": "Verified Seller"},
+        {"_id": ObjectId(), "seller_id": str(unverified_id), "sellerName": "Other Seller"},
+    ]
+
+    class FakeProductsCollection:
+        def find(self, _query):
+            return FakeCursorWithSort(products)
+
+    class FakeCursorWithSort(FakeCursor):
+        def sort(self, *_args, **_kwargs):
+            return self
+
+    class FakeUsersCollection:
+        def find(self, query, _projection):
+            assert set(query["_id"]["$in"]) == {verified_id, unverified_id}
+            return FakeCursor([{"_id": verified_id, "is_verified": True}])
+
+    server_module.db.products = FakeProductsCollection()
+    server_module.db.users = FakeUsersCollection()
+
+    response = asyncio.run(server_module.list_products(None))
+
+    assert response[0]["seller_verified"] is True
+    assert response[1]["seller_verified"] is False
+
+
 def test_create_product_with_uploaded_image(server_module):
     products = FakeInsertProductsCollection()
     server_module.db.products = products
@@ -280,7 +310,12 @@ def test_premium_registration_requires_patron_code(server_module):
 
 def test_premium_registration_links_existing_patron(server_module):
     patron_id = ObjectId()
-    patron = {"_id": patron_id, "name": "Patron Person", "member_code": "pat1234"}
+    patron = {
+        "_id": patron_id,
+        "name": "Patron Person",
+        "member_code": "pat1234",
+        "is_verified": True,
+    }
 
     class FakeUsersCollection:
         inserted = None
@@ -313,14 +348,18 @@ def test_premium_registration_links_existing_patron(server_module):
     assert response["patron"] == {
         "id": str(patron_id),
         "name": "Patron Person",
-        "member_code": "pat1234",
     }
 
 
 def test_member_can_link_patron_from_settings(server_module):
     patron_id = ObjectId()
     current_user_id = ObjectId()
-    patron = {"_id": patron_id, "name": "Patron Person", "member_code": "pat1234"}
+    patron = {
+        "_id": patron_id,
+        "name": "Patron Person",
+        "member_code": "pat1234",
+        "is_verified": True,
+    }
     server_module.db.users.find_one = AsyncMock(return_value=patron)
     server_module.db.users.update_one = AsyncMock()
 
@@ -330,9 +369,266 @@ def test_member_can_link_patron_from_settings(server_module):
     ))
 
     assert response["patron"]["name"] == "Patron Person"
+    assert "member_code" not in response["patron"]
     update = server_module.db.users.update_one.await_args
     assert update.args[0] == {"_id": current_user_id}
     assert update.args[1]["$set"]["patron_id"] == str(patron_id)
+
+
+def test_member_list_includes_patron_name_without_disclosing_patron_code(server_module):
+    member_id = ObjectId()
+    patron_id = ObjectId()
+    member = {
+        "_id": member_id,
+        "name": "Alice Member",
+        "role": "member",
+        "patron_id": str(patron_id),
+        "patron_name": "Patron Person",
+        "patron_member_code": "pat1234",
+    }
+    patron = {"_id": patron_id, "name": "Patron Person", "member_code": "pat1234"}
+    users = MagicMock()
+    users.find.side_effect = [FakeCursor([member]), FakeCursor([patron])]
+    server_module.db.users = users
+    server_module.db.loans = SimpleNamespace(count_documents=AsyncMock(return_value=0))
+
+    members = asyncio.run(server_module.get_members({"role": "admin"}))
+
+    assert members[0]["patron"] == {
+        "id": str(patron_id),
+        "name": "Patron Person",
+    }
+    assert "patron_member_code" not in members[0]
+    assert "member_code" not in members[0]["patron"]
+
+
+def test_auth_me_hides_patron_code_but_includes_patron_name(server_module):
+    patron_id = ObjectId()
+    member_id = ObjectId()
+    server_module.db.users.find_one = AsyncMock(return_value={
+        "_id": patron_id,
+        "name": "Patron Person",
+        "member_code": "pat1234",
+    })
+    user = {
+        "id": str(member_id),
+        "name": "Alice Member",
+        "member_code": "ali4567",
+        "patron_id": str(patron_id),
+        "patron_name": "Patron Person",
+        "patron_member_code": "pat1234",
+    }
+
+    profile = asyncio.run(server_module.get_me(user))
+
+    assert profile["patron"] == {"id": str(patron_id), "name": "Patron Person"}
+    assert "patron_member_code" not in profile
+
+
+def test_unverified_member_code_cannot_be_used_as_a_patron_code(server_module):
+    class FakeUsersCollection:
+        async def find_one(self, query):
+            assert query["is_verified"] is True
+            return None
+
+        def find(self, query, _projection):
+            assert query["is_verified"] is True
+            return FakeCursor([])
+
+    server_module.db.users = FakeUsersCollection()
+
+    patron = asyncio.run(server_module.find_patron_by_code("unverified1"))
+
+    assert patron is None
+
+
+def test_admin_can_verify_or_unverify_a_member(server_module):
+    member_id = ObjectId()
+    server_module.db.users.find_one = AsyncMock(return_value={"_id": member_id, "role": "member"})
+    server_module.db.users.update_one = AsyncMock()
+
+    response = asyncio.run(
+        server_module.set_member_verification(
+            server_module.MemberVerificationUpdate(user_id=str(member_id), verified=True),
+            user={"role": "admin"},
+        )
+    )
+
+    assert response["verified"] is True
+    server_module.db.users.update_one.assert_awaited_once_with(
+        {"_id": member_id},
+        {"$set": {"is_verified": True}},
+    )
+
+
+def test_admin_account_can_be_verified(server_module):
+    admin_id = ObjectId()
+    server_module.db.users.find_one = AsyncMock(return_value={"_id": admin_id, "role": "admin"})
+    server_module.db.users.update_one = AsyncMock()
+
+    response = asyncio.run(
+        server_module.set_member_verification(
+            server_module.MemberVerificationUpdate(user_id=str(admin_id), verified=True),
+            user={"role": "admin"},
+        )
+    )
+
+    assert response["verified"] is True
+    server_module.db.users.update_one.assert_awaited_once_with(
+        {"_id": admin_id},
+        {"$set": {"is_verified": True}},
+    )
+
+
+@pytest.mark.parametrize(
+    ("provided_code", "expected_code"),
+    [(None, "ali4567"), ("GROUP-ALICE", "GROUP-ALICE")],
+)
+def test_treasurer_can_assign_generated_or_custom_member_code(server_module, provided_code, expected_code):
+    member_id = ObjectId()
+    target_user = {
+        "_id": member_id,
+        "name": "Alice Member",
+        "phone": "0771234567",
+        "role": "member",
+    }
+
+    class FakeUsersCollection:
+        async def find_one(self, query):
+            return target_user if query == {"_id": member_id} else None
+
+        async def update_one(self, _query, update):
+            target_user.update(update["$set"])
+            return SimpleNamespace(modified_count=1)
+
+    server_module.db.users = FakeUsersCollection()
+
+    result = asyncio.run(
+        server_module.assign_member_code(
+            server_module.MemberCodeUpdate(
+                user_id=str(member_id),
+                member_code=provided_code,
+            ),
+            user={"role": "treasurer"},
+        )
+    )
+
+    assert result["member_code"] == expected_code
+    assert target_user["member_code"] == expected_code
+
+
+def test_admin_can_change_existing_member_code(server_module):
+    member_id = ObjectId()
+    target_user = {
+        "_id": member_id,
+        "name": "Alice Member",
+        "phone": "0771234567",
+        "role": "member",
+        "member_code": "old-code",
+    }
+
+    class FakeUsersCollection:
+        async def find_one(self, query):
+            return target_user if query == {"_id": member_id} else None
+
+        async def update_one(self, query, update):
+            assert query == {"_id": member_id, "member_code": "old-code"}
+            target_user.update(update["$set"])
+            return SimpleNamespace(modified_count=1)
+
+    server_module.db.users = FakeUsersCollection()
+
+    result = asyncio.run(
+        server_module.assign_member_code(
+            server_module.MemberCodeUpdate(user_id=str(member_id), member_code="new-code"),
+            user={"role": "admin"},
+        )
+    )
+
+    assert result["member_code"] == "new-code"
+    assert target_user["member_code"] == "new-code"
+
+
+def test_verified_admin_code_can_be_used_as_a_patron_code(server_module):
+    admin = {
+        "_id": ObjectId(),
+        "name": "Group Admin",
+        "member_code": "admin123",
+        "is_verified": True,
+        "role": "admin",
+    }
+
+    async def find_one(query):
+        assert query["is_verified"] is True
+        assert query["role"] == {"$nin": ["super_admin", "treasurer"]}
+        return admin
+
+    server_module.db.users.find_one = AsyncMock(side_effect=find_one)
+
+    patron = asyncio.run(server_module.find_patron_by_code("ADMIN123"))
+
+    assert patron == admin
+
+
+def test_quick_loan_codes_include_existing_members_without_saved_codes(server_module):
+    legacy_member = {
+        "_id": ObjectId(),
+        "name": "Alice Member",
+        "phone": "0771234567",
+    }
+
+    class FakeUsersCollection:
+        def __init__(self):
+            self.updated = []
+
+        def find(self, _query, _projection):
+            return FakeCursor([legacy_member])
+
+        async def update_one(self, query, update):
+            self.updated.append((query, update))
+
+    users = FakeUsersCollection()
+    server_module.db.users = users
+
+    response = asyncio.run(server_module.get_quick_loan_valid_codes())
+
+    assert {"code": "ali4567", "label": "Alice Member (ali4567)", "type": "member"} in response["members"]
+    assert users.updated == [
+        (
+            {"_id": legacy_member["_id"]},
+            {"$set": {"member_code": "ali4567"}},
+        )
+    ]
+
+
+def test_legacy_member_code_can_be_used_as_a_patron_code(server_module):
+    legacy_member = {
+        "_id": ObjectId(),
+        "name": "Alice Member",
+        "phone": "0771234567",
+        "is_verified": True,
+    }
+
+    class FakeUsersCollection:
+        def __init__(self):
+            self.updated = []
+
+        async def find_one(self, _query):
+            return None
+
+        def find(self, _query, _projection):
+            return FakeCursor([legacy_member])
+
+        async def update_one(self, query, update):
+            self.updated.append((query, update))
+
+    users = FakeUsersCollection()
+    server_module.db.users = users
+
+    patron = asyncio.run(server_module.find_patron_by_code("ALI4567"))
+
+    assert patron["member_code"] == "ali4567"
+    assert users.updated[0][1] == {"$set": {"member_code": "ali4567"}}
 
 
 def test_login_finds_preserved_email_case_insensitively(server_module):

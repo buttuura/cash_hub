@@ -79,6 +79,8 @@ import { resolveImageUrl } from '../lib/utils';
 import { getLoanDisplayBalance } from '../utils/loanDisplay';
 import { buildWhatsAppUrl as buildNormalizedWhatsAppUrl } from '../utils/whatsapp';
 import { SellProductsCard } from '../components/AddProductDialog';
+import AdminTableFloatingScrollbar from '../components/AdminTableFloatingScrollbar';
+import VerifiedMemberName from '../components/VerifiedMemberName';
 import { API_URL } from '../lib/api';
 import { registerRefreshHandler } from '../lib/refreshBus';
 import {
@@ -1396,6 +1398,51 @@ useEffect(() => {
     }
   };
 
+  const handleSetMemberVerification = async (userId, verified) => {
+    try {
+      await axios.post(
+        `${API_URL}/api/admin/set-member-verification`,
+        { user_id: userId, verified },
+        { headers: getAuthHeaders() }
+      );
+      setMembers((prevMembers) =>
+        prevMembers.map((member) =>
+          member.id === userId ? { ...member, is_verified: verified } : member
+        )
+      );
+      toast.success(verified ? 'Member verified' : 'Member verification removed');
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Failed to update member verification');
+    }
+  };
+
+  const handleAssignMemberCode = async (userId, memberCode = null) => {
+    try {
+      const previousCode = members.find((member) => member.id === userId)?.member_code;
+      const response = await axios.post(
+        `${API_URL}/api/admin/assign-member-code`,
+        { user_id: userId, member_code: memberCode },
+        { headers: getAuthHeaders() }
+      );
+      setMembers((prevMembers) =>
+        prevMembers.map((member) =>
+          member.id === userId ? { ...member, member_code: response.data.member_code } : member
+        )
+      );
+      toast.success(
+        `${previousCode ? 'Member code updated' : 'Member code assigned'}: ${response.data.member_code}`
+      );
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Failed to assign member code');
+    }
+  };
+
+  const handlePromptMemberCode = (userId) => {
+    const memberCode = window.prompt('Enter a unique member code (3-32 letters, numbers, hyphens, or underscores):');
+    if (memberCode === null) return;
+    handleAssignMemberCode(userId, memberCode);
+  };
+
   const handleSetMaxGuarantees = async (userId, maxGuarantees) => {
     try {
       await axios.post(
@@ -2482,7 +2529,7 @@ return (
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="overflow-x-auto">
+                  <div className="admin-table-scroll overflow-x-auto">
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="border-b border-[#E8EBE8] bg-[#FAFAF8]">
@@ -3288,7 +3335,7 @@ return (
             
             <Card className="bg-white border border-[#E8EBE8] shadow-sm">
               <CardContent className="p-0">
-                <div className="overflow-x-auto">
+                <div className="admin-table-scroll overflow-x-auto">
                   <table className="w-full">
 <thead>
                        <tr className="border-b border-[#E8EBE8] bg-[#FAFAF8]">
@@ -3539,7 +3586,7 @@ return (
             
             <Card className="bg-white border border-[#E8EBE8] shadow-sm">
               <CardContent className="p-0">
-                <div className="overflow-x-auto">
+                <div className="admin-table-scroll overflow-x-auto">
                   <table className="w-full">
                      <thead>
                        <tr className="border-b border-[#E8EBE8] bg-[#FAFAF8]">
@@ -3719,7 +3766,7 @@ return (
             
             <Card className="bg-white border border-[#E8EBE8] shadow-sm">
               <CardContent className="p-0">
-                <div className="overflow-x-auto">
+                <div className="admin-table-scroll overflow-x-auto">
                   <table className="w-full">
                     <thead>
                       <tr className="border-b border-[#E8EBE8] bg-[#FAFAF8]">
@@ -3828,14 +3875,15 @@ return (
                         {m.membership_type}
                       </Badge>
                     </div>
-                    <h3 className="font-semibold text-[#1E231F] mb-1">{m.name}</h3>
+                    <h3 className="font-semibold text-[#1E231F] mb-1">
+                      <VerifiedMemberName name={m.name} verified={m.is_verified} />
+                    </h3>
                     <p className="text-sm text-[#5C665D] mb-1">
                       {getRoleLabel(m.role)} • {m.phone || 'No phone'}
                     </p>
                     {m.patron?.name && (
                       <p className="text-xs text-[#5C665D] mb-1">
                         Patron: <span className="font-medium text-[#1E231F]">{m.patron.name}</span>
-                        {m.patron.member_code ? ` (${m.patron.member_code})` : ''}
                       </p>
                     )}
                     <div className="pt-3 border-t border-[#E8EBE8] grid grid-cols-2 gap-2">
@@ -4501,7 +4549,7 @@ return (
                       No order requests found yet. Buyers can place orders from the shop page, and they will appear here for review.
                     </div>
                   ) : (
-                    <div className="overflow-x-auto">
+                    <div className="admin-table-scroll overflow-x-auto">
                       <Table>
                         <TableHeader>
                           <TableRow>
@@ -4657,7 +4705,7 @@ return (
                     No products found. Your current shop listings will appear here when available.
                   </div>
                 ) : (
-                  <div className="overflow-x-auto">
+                  <div className="admin-table-scroll overflow-x-auto">
                     <Table>
                       <TableHeader>
                         <TableRow>
@@ -4825,7 +4873,7 @@ return (
               </div>
             </div>
 
-            <div className="overflow-x-auto">
+            <div className="admin-table-scroll overflow-x-auto">
               <div className="flex items-center gap-1 bg-[#F5F7F5] p-1 rounded-xl w-fit min-w-max">
                 <button 
                   onClick={() => setActiveFinancialTab('overview')}
@@ -5081,7 +5129,7 @@ return (
                 </div>
               </CardHeader>
               <CardContent className="p-0">
-                <div className="overflow-x-auto">
+                <div className="admin-table-scroll overflow-x-auto">
                   <table className="w-full">
                     <thead>
 <tr className="border-b border-[#E8EBE8] bg-[#FAFAF8]">
@@ -5249,7 +5297,7 @@ return (
                 </div>
               </CardHeader>
               <CardContent className="p-0">
-                <div className="overflow-x-auto">
+                <div className="admin-table-scroll overflow-x-auto">
                   <table className="w-full">
                       <thead>
                         <tr className="border-b border-[#E8EBE8] bg-[#FAFAF8]">
@@ -5423,7 +5471,7 @@ return (
                 </div>
               </CardHeader>
               <CardContent className="p-0">
-                <div className="overflow-x-auto">
+                <div className="admin-table-scroll overflow-x-auto">
                   <table className="w-full">
 <thead>
                        <tr className="border-b border-[#E8EBE8] bg-[#FAFAF8]">
@@ -5600,7 +5648,7 @@ return (
                 )}
               </CardHeader>
               <CardContent className="p-0">
-                <div className="overflow-x-auto">
+                <div className="admin-table-scroll overflow-x-auto">
                   <table className="w-full">
 <thead>
                        <tr className="border-b border-[#E8EBE8] bg-[#FAFAF8]">
@@ -5730,6 +5778,13 @@ return (
               </button>
               <button
                 type="button"
+                onClick={() => setActiveAdminPage('member-verification')}
+                className={`rounded-full px-4 py-2 text-sm font-medium transition-all ${activeAdminPage === 'member-verification' ? 'bg-[#2C5530] text-white' : 'text-[#5C665D] hover:bg-[#ECF8E9] hover:text-[#2C5530]'}`}
+              >
+                Member Verification
+              </button>
+              <button
+                type="button"
                 onClick={() => setActiveAdminPage('member-management')}
                 className={`rounded-full px-4 py-2 text-sm font-medium transition-all ${activeAdminPage === 'member-management' ? 'bg-[#2C5530] text-white' : 'text-[#5C665D] hover:bg-[#ECF8E9] hover:text-[#2C5530]'}`}
               >
@@ -5745,6 +5800,101 @@ return (
             </div>
 
             <h2 className="text-2xl font-bold font-['Manrope'] text-[#1E231F]">Admin Panel</h2>
+
+            {isAdmin && activeAdminPage === 'member-verification' && (
+              <div>
+                <p className="mb-3 text-sm text-[#5C665D]">
+                  Only verified members' codes can be used to register premium members.
+                </p>
+                <div className="admin-table-scroll w-full overflow-x-auto rounded-xl border border-[#E8EBE8] bg-white shadow-sm">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-[#E8EBE8] bg-[#FAFAF8]">
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-[#5C665D]">Member</th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-[#5C665D]">Patron</th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-[#5C665D]">Member Code</th>
+                      <th className="px-4 py-3 text-left text-sm font-semibold text-[#5C665D]">Status</th>
+                      <th className="px-4 py-3 text-right text-sm font-semibold text-[#5C665D]">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {members.map((member) => {
+                      const verified = member.is_verified === true;
+                      return (
+                        <tr key={member.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5]">
+                          <td className="px-4 py-3">
+                            <p className="font-medium text-[#1E231F]">
+                              <VerifiedMemberName name={member.name} verified={member.is_verified} />
+                            </p>
+                            <p className="text-xs text-[#5C665D]">{member.phone || member.email}</p>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-[#5C665D]">{member.patron?.name || '-'}</td>
+                          <td className="px-4 py-3 text-sm text-[#5C665D]">
+                            {member.member_code ? (
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span>{member.member_code}</span>
+                                {isAdmin && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => handlePromptMemberCode(member.id)}
+                                  >
+                                    Change code
+                                  </Button>
+                                )}
+                              </div>
+                            ) : (
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span>Not assigned</span>
+                                {isAdmin && (
+                                  <>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => handleAssignMemberCode(member.id)}
+                                    >
+                                      Generate code
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => handlePromptMemberCode(member.id)}
+                                    >
+                                      Enter code
+                                    </Button>
+                                  </>
+                                )}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className={`rounded-full px-3 py-1 text-xs font-medium ${verified ? 'bg-[#DEF2DD] text-[#2C5530]' : 'bg-[#FEF6E8] text-[#C57A17]'}`}>
+                              {verified ? 'Verified' : 'Not verified'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <Button
+                              size="sm"
+                              variant={verified ? 'outline' : 'default'}
+                              onClick={() => handleSetMemberVerification(member.id, !verified)}
+                              className={verified ? 'border-[#D05A49] text-[#D05A49] hover:bg-[#D05A49]/10' : 'bg-[#347242] hover:bg-[#2C5530]'}
+                            >
+                              {verified ? 'Remove verification' : 'Verify member'}
+                            </Button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {members.length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="px-4 py-6 text-center text-sm text-[#5C665D]">No members found.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+                </div>
+              </div>
+            )}
 
             {isAdmin && activeAdminPage === 'broadcast' && (
               <div className="rounded-2xl border border-[#E8EBE8] bg-white p-4 shadow-sm">
@@ -6188,11 +6338,12 @@ return (
             {/* Member Management (Treasurer only) */}
             {isTreasurer && activeAdminPage === 'member-management' && (
               <div id="member-management" className="w-full">
-                <div className="overflow-x-auto rounded-xl border border-[#E8EBE8] bg-white shadow-sm">
+                <div className="admin-table-scroll overflow-x-auto rounded-xl border border-[#E8EBE8] bg-white shadow-sm">
                     <table className="w-full">
                       <thead>
                         <tr className="border-b border-[#E8EBE8] bg-[#FAFAF8]">
                           <th className="text-left py-3 px-4 text-sm font-semibold text-[#5C665D]">Member</th>
+                          <th className="text-left py-3 px-4 text-sm font-semibold text-[#5C665D]">Patron</th>
                           <th className="text-left py-3 px-4 text-sm font-semibold text-[#5C665D]">Role</th>
                           <th className="text-left py-3 px-4 text-sm font-semibold text-[#5C665D]">Membership</th>
                           <th className="text-left py-3 px-4 text-sm font-semibold text-[#5C665D]">Guarantee Slots</th>
@@ -6214,9 +6365,12 @@ return (
                           return (
                         <tr key={m.id} className="border-b border-[#E8EBE8] hover:bg-[#F5F7F5]">
                             <td className="py-3 px-4">
-                              <p className="font-medium text-[#1E231F]">{m.name}</p>
+                              <p className="font-medium text-[#1E231F]">
+                                <VerifiedMemberName name={m.name} verified={m.is_verified} />
+                              </p>
                               <p className="text-xs text-[#5C665D]">{m.email}</p>
                             </td>
+                            <td className="py-3 px-4 text-sm text-[#5C665D]">{m.patron?.name || '-'}</td>
                             <td className="py-3 px-4">
                               <select
                                 value={m.role}
@@ -6290,6 +6444,7 @@ return (
           </div>
         )}
       </main>
+      <AdminTableFloatingScrollbar />
     </div>
   );
 };

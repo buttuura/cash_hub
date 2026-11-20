@@ -219,6 +219,14 @@ class MembershipUpdate(BaseModel):
     user_id: str
     membership_type: str
 
+class MemberVerificationUpdate(BaseModel):
+    user_id: str
+    verified: bool
+
+class MemberCodeUpdate(BaseModel):
+    user_id: str
+    member_code: Optional[str] = None
+
 class MaxGuaranteesUpdate(BaseModel):
     user_id: str
     max_guarantees: int
@@ -807,10 +815,11 @@ async def get_or_create_user_member_code(user: Optional[dict]) -> Optional[str]:
     if user.get('member_code'):
         return user['member_code']
     code = generate_member_code(user.get('name'), user.get('phone', ''))
-    try:
-        await db.users.update_one({'_id': ObjectId(user['id'])}, {'$set': {'member_code': code}})
-    except Exception:
-        pass
+    user_id = user.get('id') or user.get('_id')
+    if user_id:
+        if not isinstance(user_id, ObjectId):
+            user_id = ObjectId(str(user_id))
+        await db.users.update_one({'_id': user_id}, {'$set': {'member_code': code}})
     return code
 
 async def migrate_normalized_phone() -> None:

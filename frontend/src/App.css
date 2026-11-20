@@ -113,6 +113,46 @@ body {
   container-type: inline-size;
 }
 
+.admin-table-scroll {
+  max-width: 100%;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x pan-y;
+}
+
+.admin-table-scroll table {
+  min-width: 720px;
+}
+
+.admin-table-scroll > div {
+  max-width: 100%;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-x pan-y;
+}
+
+.admin-table-floating-scrollbar {
+  position: fixed;
+  right: 0;
+  bottom: env(safe-area-inset-bottom, 0px);
+  left: 0;
+  z-index: 50;
+  height: 20px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border-top: 1px solid #DDE4DD;
+  background: rgba(245, 247, 245, 0.96);
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-color: #87988A #EDF1EC;
+  scrollbar-width: thin;
+  touch-action: pan-x;
+}
+
+.admin-table-floating-scrollbar > div {
+  height: 1px;
+}
+
 @container (max-width: 270px) {
   .dashboard-brand-name {
     display: none;

@@ -35,7 +35,7 @@ const SettingsPage = () => {
       .then(({ data }) => {
         if (active) {
           setProfile(data);
-          setPatronCode(data.patron?.member_code || data.patron_member_code || '');
+          setPatronCode('');
         }
       })
       .catch((error) => {
@@ -113,6 +113,7 @@ const SettingsPage = () => {
     ['Member code', profile?.member_code],
     ['Account role', profile?.role?.replace(/_/g, ' ')],
     ['Membership', profile?.membership_type],
+    ['Patron', profile?.patron?.name || profile?.patron_name],
     ['Next of kin', profile?.next_of_kin_name],
     ['Next of kin phone', profile?.next_of_kin_phone],
     ['National ID', profile?.national_id],
@@ -151,8 +152,8 @@ const SettingsPage = () => {
         patron: data.patron,
         patron_id: data.patron.id,
         patron_name: data.patron.name,
-        patron_member_code: data.patron.member_code,
       }));
+      setPatronCode('');
       await refreshUser();
       toast.success(`Your patron is ${data.patron.name}`);
     } catch (error) {
@@ -274,21 +275,12 @@ const SettingsPage = () => {
 
         <Card className="border-[#E8EBE8] shadow-sm">
           <CardHeader>
-            <CardTitle>Your patron</CardTitle>
+            <CardTitle>Link or change your patron</CardTitle>
             <CardDescription>
               Enter the member code of someone already in the group. Premium members must have a patron.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {profile?.patron?.name && (
-              <div className="rounded-lg border border-[#D8E9D1] bg-[#F1F8ED] p-3">
-                <p className="text-xs font-medium uppercase tracking-wide text-[#5C665D]">Your patron</p>
-                <p className="mt-1 font-semibold text-[#1E231F]">{profile.patron.name}</p>
-                {profile.patron.member_code && (
-                  <p className="text-sm text-[#5C665D]">Member code: {profile.patron.member_code}</p>
-                )}
-              </div>
-            )}
             <form onSubmit={handleSavePatron} className="flex flex-col gap-3 sm:flex-row">
               <Input
                 value={patronCode}

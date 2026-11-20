@@ -12,6 +12,30 @@ for _name in dir(_shared):
         globals()[_name] = getattr(_shared, _name)
 
 
+async def add_seller_verification(products: List[dict]) -> None:
+    seller_ids = {
+        ObjectId(str(product["seller_id"]))
+        for product in products
+        if product.get("seller_id") and ObjectId.is_valid(str(product["seller_id"]))
+    }
+    if not seller_ids:
+        for product in products:
+            product["seller_verified"] = False
+        return
+
+    sellers = await db.users.find(
+        {"_id": {"$in": list(seller_ids)}},
+        {"is_verified": 1},
+    ).to_list(1000)
+    verified_seller_ids = {
+        str(seller["_id"])
+        for seller in sellers
+        if seller.get("is_verified") is True
+    }
+    for product in products:
+        product["seller_verified"] = str(product.get("seller_id") or "") in verified_seller_ids
+
+
 @api_router.post("/products")
 async def create_product(
     title: str = Form(...),
@@ -52,6 +76,7 @@ async def create_product(
         "seller_id": user.get("id"),
         "sellerName": user.get("name", user.get("full_name", "Member")),
         "seller_name": user.get("name", user.get("full_name", "Member")),
+        "seller_verified": user.get("is_verified") is True,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -74,6 +99,7 @@ async def list_products(user: Optional[dict] = Depends(get_current_user_optional
     if not is_admin:
         query = {"$or": [{"sold_out": {"$exists": False}}, {"sold_out": False}]}
     products = await db.products.find(query).sort("created_at", -1).to_list(200)
+    await add_seller_verification(products)
     for product in products:
         product["id"] = str(product["_id"])
         product.pop("_id", None)
@@ -83,6 +109,7 @@ async def list_products(user: Optional[dict] = Depends(get_current_user_optional
 @api_router.get("/products/me")
 async def list_my_products(user: dict = Depends(get_current_user)):
     products = await db.products.find({"seller_id": user["id"]}).sort("created_at", -1).to_list(200)
+    await add_seller_verification(products)
     for product in products:
         product["id"] = str(product["_id"])
         product.pop("_id", None)
@@ -97,6 +124,7 @@ async def get_product(product_id: str):
     product = await db.products.find_one({"_id": ObjectId(product_id)})
     if not product:
         return {}
+    await add_seller_verification([product])
     product["id"] = str(product["_id"])
     product.pop("_id", None)
     return product

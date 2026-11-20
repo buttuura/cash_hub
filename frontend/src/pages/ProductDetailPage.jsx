@@ -16,6 +16,7 @@ import { resolveImageUrl } from '../lib/utils';
 import { API_URL } from '../lib/api';
 import { registerRefreshHandler } from '../lib/refreshBus';
 import CheckoutAccountChoice from '../components/CheckoutAccountChoice';
+import VerifiedMemberName from '../components/VerifiedMemberName';
 const PUBLIC_APP_URL = process.env.REACT_APP_PUBLIC_APP_URL || 'https://c1group.site';
 
 function getImageUrl(imageUrl) {
@@ -791,7 +792,14 @@ function ProductDetailPage() {
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 flex-wrap">
                   <MapPin className="h-4 w-4 text-[#4B5A45]" />
-                  <span className="text-sm text-[#4B5A45]">Sold by: <span className="font-medium text-[#172B12]">{product.sellerName || product.seller_name || 'Member'}</span></span>
+                  <span className="text-sm text-[#4B5A45]">
+                    Sold by:{' '}
+                    <VerifiedMemberName
+                      name={product.sellerName || product.seller_name || 'Member'}
+                      verified={product.seller_verified}
+                      nameClassName="font-medium text-[#172B12]"
+                    />
+                  </span>
                   {contactPhone && (
                     <span className="text-sm text-[#5C665D]">
                       ({contactPhone})

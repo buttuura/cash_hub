@@ -24,7 +24,7 @@ async def get_members(user: dict = Depends(get_current_user)):
     }
     patrons = await db.users.find(
         {"_id": {"$in": list(patron_ids)}},
-        {"name": 1, "member_code": 1},
+        {"name": 1},
     ).to_list(1000) if patron_ids else []
     patrons_by_id = {str(patron["_id"]): patron for patron in patrons}
     
@@ -35,12 +35,11 @@ async def get_members(user: dict = Depends(get_current_user)):
         m["patron"] = {
             "id": str(patron["_id"]),
             "name": patron.get("name"),
-            "member_code": patron.get("member_code") or m.get("patron_member_code"),
         } if patron else ({
             "id": str(m.get("patron_id")),
             "name": m.get("patron_name"),
-            "member_code": m.get("patron_member_code"),
-        } if m.get("patron_name") or m.get("patron_member_code") else None)
+        } if m.get("patron_name") or m.get("patron_id") else None)
+        m.pop("patron_member_code", None)
         # Hide admin role from non-super-admins
         if not is_treasurer and m.get("role") == "admin":
             m["role"] = "member"
@@ -57,6 +56,7 @@ async def get_member(member_id: str, user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=404, detail="Member not found")
     member["id"] = str(member["_id"])
     member.pop("_id", None)
+    member.pop("patron_member_code", None)
     
     # Hide admin role from non-super-admins
     if user.get("role") not in ["super_admin", "treasurer"] and member.get("role") in ["admin", "super_admin", "treasurer"]:

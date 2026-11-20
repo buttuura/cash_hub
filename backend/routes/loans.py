@@ -219,11 +219,11 @@ async def admin_create_loan(data: AdminLoanCreate, user: dict = Depends(require_
 
 @api_router.get("/quick-loans/valid-codes")
 async def get_quick_loan_valid_codes(user: dict = Depends(get_current_user_optional)):
-    member_cursor = db.users.find({"member_code": {"$exists": True, "$ne": None}}, {"member_code": 1, "name": 1})
+    member_cursor = db.users.find({}, {"_id": 1, "id": 1, "member_code": 1, "name": 1, "phone": 1})
     members = await member_cursor.to_list(10000)
     member_codes = []
     for m in members:
-        code = m.get("member_code")
+        code = await get_or_create_user_member_code(m)
         if code:
             member_codes.append({
                 "code": code,
@@ -332,7 +332,9 @@ async def request_quick_loan(
     if is_guaranteed and officer_code:
         code = officer_code.strip()
         officer_match = next((o for o in OFFICERS if o["code"] == code), None)
-        member_match = await db.users.find_one({"member_code": code})
+        member_match = await db.users.find_one({
+            "member_code": {"$regex": f"^{re.escape(code)}$", "$options": "i"}
+        })
         if not officer_match and not member_match:
             raise HTTPException(status_code=400, detail="Invalid officer or member code. Please select a valid code from the list")
 

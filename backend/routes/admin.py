@@ -105,6 +105,82 @@ async def set_membership_type(data: MembershipUpdate, user: dict = Depends(requi
     return {"message": f"Membership updated to {data.membership_type}"}
 
 
+@api_router.post("/admin/set-member-verification")
+async def set_member_verification(data: MemberVerificationUpdate, user: dict = Depends(require_admin)):
+    if not ObjectId.is_valid(data.user_id):
+        raise HTTPException(status_code=400, detail="Invalid member ID")
+
+    member_id = ObjectId(data.user_id)
+    target_user = await db.users.find_one({"_id": member_id})
+    if not target_user:
+        raise HTTPException(status_code=404, detail="Member not found")
+    if target_user.get("role") in ["super_admin", "treasurer"]:
+        raise HTTPException(status_code=400, detail="Treasurer accounts cannot be verified")
+
+    await db.users.update_one(
+        {"_id": member_id},
+        {"$set": {"is_verified": data.verified}},
+    )
+    return {"message": "Member verification updated", "verified": data.verified}
+
+
+@api_router.post("/admin/assign-member-code")
+async def assign_member_code(data: MemberCodeUpdate, user: dict = Depends(require_admin)):
+    if not ObjectId.is_valid(data.user_id):
+        raise HTTPException(status_code=400, detail="Invalid member ID")
+
+    member_id = ObjectId(data.user_id)
+    target_user = await db.users.find_one({"_id": member_id})
+    if not target_user:
+        raise HTTPException(status_code=404, detail="Member not found")
+    if target_user.get("role") in ["super_admin", "treasurer"]:
+        raise HTTPException(status_code=400, detail="Treasurer accounts cannot be assigned member codes")
+    previous_code = target_user.get("member_code")
+
+    if data.member_code is None:
+        code = generate_member_code(target_user.get("name"), target_user.get("phone", ""))
+        if not code:
+            raise HTTPException(status_code=400, detail="Member has no name or phone to generate a code; enter a custom code")
+    else:
+        code = data.member_code.strip()
+        if not re.fullmatch(r"[A-Za-z0-9_-]{3,32}", code):
+            raise HTTPException(status_code=400, detail="Code must be 3-32 letters, numbers, hyphens, or underscores")
+
+    code_query = {
+        "member_code": {"$regex": f"^{re.escape(code)}$", "$options": "i"},
+        "_id": {"$ne": member_id},
+    }
+    if await db.users.find_one(code_query):
+        if data.member_code is not None:
+            raise HTTPException(status_code=409, detail="That member code is already in use")
+
+        code = f"{code}-{str(member_id)[-6:]}"
+        code_query["member_code"] = {"$regex": f"^{re.escape(code)}$", "$options": "i"}
+        if await db.users.find_one(code_query):
+            raise HTTPException(status_code=409, detail="Could not generate a unique member code; enter a custom code")
+
+    if previous_code and previous_code.casefold() == code.casefold():
+        return {"message": "Member code unchanged", "member_code": previous_code, "changed": False}
+
+    update_query = {"_id": member_id}
+    if previous_code:
+        update_query["member_code"] = previous_code
+    else:
+        update_query["member_code"] = {"$in": [None, ""]}
+    result = await db.users.update_one(
+        update_query,
+        {"$set": {"member_code": code}},
+    )
+    if result.modified_count != 1:
+        raise HTTPException(status_code=409, detail="Member code changed; refresh and try again")
+
+    return {
+        "message": "Member code updated" if previous_code else "Member code assigned",
+        "member_code": code,
+        "changed": True,
+    }
+
+
 @api_router.post("/admin/set-max-guarantees")
 async def set_max_guarantees(data: MaxGuaranteesUpdate, user: dict = Depends(require_treasurer)):
     if data.max_guarantees < 0:
