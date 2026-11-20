@@ -102,8 +102,8 @@ if static_dir.exists():
         escaped_product_url = product_url.replace("&", "&amp;")
         html = f'''<!doctype html>
 <html lang="en">
-  <head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><title>{escaped_title} | Class One Savings Group</title><meta property="og:title" content="{escaped_title}" /><meta property="og:description" content="{escaped_description}" /><meta property="og:url" content="{escaped_product_url}" /><meta property="og:image" content="{escaped_image_url}" /></head>
-  <body><p>Redirecting to the product page…</p></body>
+  <head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" /><meta http-equiv="refresh" content="0;url={escaped_product_url}" /><title>{escaped_title} | Class One Savings Group</title><meta property="og:title" content="{escaped_title}" /><meta property="og:description" content="{escaped_description}" /><meta property="og:url" content="{escaped_product_url}" /><meta property="og:image" content="{escaped_image_url}" /></head>
+  <body><p>Redirecting to the product page… <a href="{escaped_product_url}">Continue</a></p></body>
 </html>'''
         return HTMLResponse(content=html)
 
