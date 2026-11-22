@@ -16,6 +16,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { ShoppingCart } from 'lucide-react';
 import { API_URL } from '../lib/api';
 import { optimizeProductImage } from '../utils/productImage';
+import OpenStreetMapLocationPicker from './OpenStreetMapLocationPicker';
 
 const DEFAULT_CATEGORIES = [
   { id: 'food', name: 'Food', description: 'Fresh meals, groceries and snacks sold by group members.' },
@@ -44,6 +45,10 @@ const AddProductDialog = ({
   const [newProductImages, setNewProductImages] = useState([]);
   const [newProductPrice, setNewProductPrice] = useState('');
   const [newProductContactPhone, setNewProductContactPhone] = useState('');
+  const [newProductLocation, setNewProductLocation] = useState('');
+  const [newProductLocationUrl, setNewProductLocationUrl] = useState('');
+  const [newProductLatitude, setNewProductLatitude] = useState('');
+  const [newProductLongitude, setNewProductLongitude] = useState('');
   const [uploadingProduct, setUploadingProduct] = useState(false);
   const [uploadStage, setUploadStage] = useState('');
 
@@ -91,6 +96,10 @@ const AddProductDialog = ({
     setNewProductDescription('');
     setNewProductPrice('');
     setNewProductContactPhone('');
+    setNewProductLocation('');
+    setNewProductLocationUrl('');
+    setNewProductLatitude('');
+    setNewProductLongitude('');
     setNewProductCategory('food');
     setNewProductImages([]);
   };
@@ -132,6 +141,16 @@ const AddProductDialog = ({
         formData.append('price', String(price));
       }
       formData.append('category', newProductCategory);
+      if (newProductLocation.trim()) {
+        formData.append('location', newProductLocation.trim());
+      }
+      if (newProductLocationUrl.trim()) {
+        formData.append('location_url', newProductLocationUrl.trim());
+      }
+      if (newProductLatitude && newProductLongitude) {
+        formData.append('latitude', newProductLatitude);
+        formData.append('longitude', newProductLongitude);
+      }
       if (contactPhone) {
         formData.append('contact_phone', contactPhone);
       }
@@ -157,6 +176,10 @@ const AddProductDialog = ({
         category: newProductCategory,
         title: responseData.title || newProductTitle.trim(),
         description: responseData.description || newProductDescription.trim(),
+        location: responseData.location || newProductLocation.trim(),
+        location_url: responseData.location_url || newProductLocationUrl.trim(),
+        latitude: responseData.latitude ?? (newProductLatitude ? Number(newProductLatitude) : null),
+        longitude: responseData.longitude ?? (newProductLongitude ? Number(newProductLongitude) : null),
         price: responseData.price ?? price,
         sellerName: user?.name || 'Member',
         seller_name: user?.name || 'Member',
@@ -223,6 +246,49 @@ const AddProductDialog = ({
                 <option key={category.id} value={category.id}>{category.name}</option>
               ))}
             </select>
+          </div>
+          <div>
+            <Label htmlFor="product-location" className="text-sm font-medium text-slate-700">Seller location <span className="text-slate-400">optional</span></Label>
+            <Input
+              id="product-location"
+              value={newProductLocation}
+              onChange={(event) => {
+                setNewProductLocation(event.target.value);
+                setNewProductLocationUrl('');
+                setNewProductLatitude('');
+                setNewProductLongitude('');
+              }}
+              placeholder="Enter an address, area, or landmark"
+              disabled={uploadingProduct}
+            />
+            <p className="text-xs text-slate-400 mt-1">Enter an address yourself, or pick your location on the map.</p>
+            <div className="mt-3">
+              <OpenStreetMapLocationPicker
+                selectedPosition={newProductLatitude && newProductLongitude
+                  ? { lat: Number(newProductLatitude), lng: Number(newProductLongitude) }
+                  : null}
+                onLocationSelected={({ location, locationUrl, latitude, longitude }) => {
+                  setNewProductLocation(location);
+                  setNewProductLocationUrl(locationUrl);
+                  setNewProductLatitude(String(latitude));
+                  setNewProductLongitude(String(longitude));
+                }}
+                onError={(message) => toast.error(message)}
+              />
+            </div>
+            <Input
+              id="product-location-url"
+              type="url"
+              value={newProductLocationUrl}
+              onChange={(event) => {
+                setNewProductLocationUrl(event.target.value);
+                setNewProductLatitude('');
+                setNewProductLongitude('');
+              }}
+              placeholder="OpenStreetMap link (optional)"
+              className="mt-2"
+              disabled={uploadingProduct}
+            />
           </div>
           <div>
             <Label htmlFor="product-price" className="text-sm font-medium text-slate-700">Price (UGX) <span className="text-slate-400">optional</span></Label>

@@ -23,6 +23,30 @@ function getImageUrl(imageUrl) {
   return resolveImageUrl(imageUrl, API_URL);
 }
 
+function getOpenStreetMapUrl(location, locationUrl, latitude, longitude) {
+  if (locationUrl) {
+    try {
+      const parsedUrl = new URL(locationUrl);
+      if (parsedUrl.protocol === 'https:' && ['openstreetmap.org', 'www.openstreetmap.org'].includes(parsedUrl.hostname)) {
+        return parsedUrl.href;
+      }
+    } catch (error) {}
+  }
+  const lat = Number(latitude);
+  const lng = Number(longitude);
+  if (
+    latitude !== null && latitude !== undefined && latitude !== ''
+    && longitude !== null && longitude !== undefined && longitude !== ''
+    && Number.isFinite(lat) && Number.isFinite(lng)
+    && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180
+  ) {
+    return `https://www.openstreetmap.org/?mlat=${lat}&mlon=${lng}#map=16/${lat}/${lng}`;
+  }
+  return location
+    ? `https://www.openstreetmap.org/search?query=${encodeURIComponent(location)}`
+    : null;
+}
+
 function ProductDetailPage() {
   const { productId } = useParams();
   const navigate = useNavigate();
@@ -763,20 +787,9 @@ function ProductDetailPage() {
 
             <div className="bg-white rounded-xl border border-slate-200 p-4">
               <h3 className="font-semibold text-[#172B12] mb-3">About this item</h3>
-              <ul className={`space-y-2 ${!expandedDesc && product.description && product.description.length > 200 ? 'line-clamp-5' : ''}`}>
-                {(product.description || '').split('. ').filter(Boolean).map((text, idx) => (
-                  <li key={idx} className="flex items-start gap-2 text-sm text-[#4B5A45]">
-                    <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-[#2B6F38]" />
-                    <span>{text}{!text.endsWith('.') && '.'}</span>
-                  </li>
-                ))}
-                {(!product.description || product.description.split('. ').filter(Boolean).length === 0) && (
-                  <li className="flex items-start gap-2 text-sm text-[#4B5A45]">
-                    <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-[#2B6F38]" />
-                    <span>{product.description || 'No description available for this product.'}</span>
-                  </li>
-                )}
-              </ul>
+              <p className={`whitespace-pre-wrap break-words text-sm text-[#4B5A45] ${!expandedDesc && product.description && product.description.length > 200 ? 'line-clamp-5' : ''}`}>
+                {product.description || 'No description available for this product.'}
+              </p>
               {product.description && product.description.length > 200 && (
                 <button
                   type="button"
@@ -829,6 +842,25 @@ function ProductDetailPage() {
                     <MessageCircle className="h-3 w-3" />
                     WhatsApp
                   </a>
+                </div>
+              )}
+              {(product.location || product.location_url || (product.latitude != null && product.longitude != null)) && (
+                <div className="mt-3 border-t border-slate-100 pt-3">
+                  <p className="text-sm font-medium text-[#172B12]">Seller location</p>
+                  <p className="mt-1 whitespace-pre-wrap text-sm text-[#5C665D]">
+                    {product.location || `${product.latitude}, ${product.longitude}`}
+                  </p>
+                  {getOpenStreetMapUrl(product.location, product.location_url, product.latitude, product.longitude) && (
+                    <a
+                      href={getOpenStreetMapUrl(product.location, product.location_url, product.latitude, product.longitude)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-[#2B6F38] hover:underline"
+                    >
+                      <MapPin className="h-4 w-4" />
+                      Visit the seller's shop/location
+                    </a>
+                  )}
                 </div>
               )}
             </div>

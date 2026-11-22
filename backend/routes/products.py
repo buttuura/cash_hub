@@ -43,6 +43,10 @@ async def create_product(
     price: Optional[str] = Form(None),
     category: str = Form(...),
     contact_phone: Optional[str] = Form(None),
+    location: Optional[str] = Form(None),
+    location_url: Optional[str] = Form(None),
+    latitude: Optional[str] = Form(None),
+    longitude: Optional[str] = Form(None),
     user: dict = Depends(get_current_user),
     images: List[UploadFile] = File(default=[]),
 ):
@@ -51,6 +55,17 @@ async def create_product(
         raise HTTPException(status_code=400, detail="Provide either a price or a contact phone number")
     if parsed_price is not None and parsed_price < 0:
         raise HTTPException(status_code=400, detail="Price cannot be negative")
+
+    parsed_latitude = None
+    parsed_longitude = None
+    if latitude is not None or longitude is not None:
+        try:
+            parsed_latitude = float(latitude)
+            parsed_longitude = float(longitude)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="Provide valid latitude and longitude coordinates")
+        if not (-90 <= parsed_latitude <= 90 and -180 <= parsed_longitude <= 180):
+            raise HTTPException(status_code=400, detail="Location coordinates are out of range")
 
     valid_images = [img for img in images if img and img.filename]
     upload_semaphore = asyncio.Semaphore(3)
@@ -71,6 +86,10 @@ async def create_product(
         "price": parsed_price,
         "category": category,
         "contact_phone": contact_phone,
+        "location": location.strip() if location else None,
+        "location_url": location_url.strip() if location_url else None,
+        "latitude": parsed_latitude,
+        "longitude": parsed_longitude,
         "image_url": image_urls[0] if image_urls else None,
         "image_urls": image_urls,
         "seller_id": user.get("id"),
@@ -205,7 +224,10 @@ async def update_product(product_id: str, payload: dict = Body(...), user: dict 
         raise HTTPException(status_code=403, detail="You can only update your own products")
 
     # Whitelist updatable fields
-    allowed_fields = {"sold_out", "title", "description", "price", "category", "image_url", "image_urls"}
+    allowed_fields = {
+        "sold_out", "title", "description", "price", "category", "image_url",
+        "image_urls", "location", "location_url", "latitude", "longitude",
+    }
     update_fields = {k: v for k, v in (payload or {}).items() if k in allowed_fields}
     if not update_fields:
         raise HTTPException(status_code=400, detail="No valid fields to update")

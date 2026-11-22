@@ -90,16 +90,25 @@ def test_create_product_without_images(server_module):
             headers={"Authorization": "Bearer test-token"},
             data={
                 "title": "Handmade soap",
-                "description": "Unscented soap",
+                "description": "Unscented soap\nMade by hand",
                 "price": "5000",
                 "category": "health-beauty",
+                "location": "Kampala, Uganda",
+                "location_url": "https://www.openstreetmap.org/?mlat=0.3476&mlon=32.5825",
+                "latitude": "0.3476",
+                "longitude": "32.5825",
             },
         )
 
     assert response.status_code == 200
     saved_product = response.json()
     assert saved_product["title"] == "Handmade soap"
+    assert saved_product["description"] == "Unscented soap\nMade by hand"
     assert saved_product["price"] == 5000
+    assert saved_product["location"] == "Kampala, Uganda"
+    assert saved_product["location_url"] == "https://www.openstreetmap.org/?mlat=0.3476&mlon=32.5825"
+    assert saved_product["latitude"] == 0.3476
+    assert saved_product["longitude"] == 32.5825
     assert saved_product["image_urls"] == []
     assert saved_product["seller_id"] == "user-1"
     assert len(products.items) == 1
